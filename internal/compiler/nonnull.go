@@ -35,6 +35,12 @@ func (p *program) validateNonNull(info *types.Info) error {
 			}
 			p.checkCollection(node, info, check, reject)
 			switch n := node.(type) {
+			case *ast.SendStmt:
+				if typ := info.TypeOf(n.Chan); typ != nil {
+					if channel, ok := typ.Underlying().(*types.Chan); ok {
+						check(n.Value, channel.Elem())
+					}
+				}
 			case *ast.StarExpr:
 				if info.Types[n].IsValue() && p.classType(info.TypeOf(n)) != nil && !p.CheckedDereferences[n] {
 					reject(n, "nullable dereference requires a stable nil check")
@@ -75,7 +81,7 @@ func (p *program) validateNonNull(info *types.Info) error {
 					}
 				}
 			case *ast.CallExpr:
-				if signature, ok := info.TypeOf(n.Fun).(*types.Signature); ok {
+				if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok {
 					for i, value := range n.Args {
 						index := i
 						if index >= signature.Params().Len() {

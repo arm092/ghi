@@ -146,7 +146,7 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 		f.expression(e.Fun, proof)
 		for i, arg := range e.Args {
 			f.expression(arg, proof)
-			if signature, ok := f.info.TypeOf(e.Fun).(*types.Signature); ok && i < signature.Params().Len() && !(signature.Variadic() && i == signature.Params().Len()-1) {
+			if signature, ok := functionSignature(f.info.TypeOf(e.Fun)); ok && i < signature.Params().Len() && !(signature.Variadic() && i == signature.Params().Len()-1) {
 				e.Args[i] = f.require(arg, signature.Params().At(i).Type(), proof)
 			}
 		}

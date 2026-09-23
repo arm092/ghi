@@ -13,21 +13,7 @@ func (p *program) expressionClass(expression ast.Expr, info *types.Info) *classD
 	if info == nil {
 		return nil
 	}
-	typ := info.TypeOf(expression)
-	if typ == nil {
-		return nil
-	}
-	named, ok := types.Unalias(typ).(*types.Named)
-	if !ok || named.Obj().Pkg() == nil {
-		return nil
-	}
-	path := named.Obj().Pkg().Path()
-	for _, ns := range p.Ordered {
-		if namespacePath(ns) == path {
-			return p.classes()[ns.Name+"."+named.Obj().Name()]
-		}
-	}
-	return nil
+	return p.classType(info.TypeOf(expression))
 }
 
 func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int) bool {
@@ -53,7 +39,7 @@ func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int) b
 
 func (p *program) rewrite(info *types.Info) (bool, error) {
 	changed := false
-	mutationID := 0
+	nativeValues := p.nativeFunctionValues(info)
 	var failure error
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
@@ -102,19 +88,12 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 											return node
 										}
 										if n.Tok != token.ASSIGN {
-											operators := map[token.Token]token.Token{token.ADD_ASSIGN: token.ADD, token.SUB_ASSIGN: token.SUB, token.MUL_ASSIGN: token.MUL, token.QUO_ASSIGN: token.QUO, token.REM_ASSIGN: token.REM, token.AND_ASSIGN: token.AND, token.OR_ASSIGN: token.OR, token.XOR_ASSIGN: token.XOR, token.SHL_ASSIGN: token.SHL, token.SHR_ASSIGN: token.SHR, token.AND_NOT_ASSIGN: token.AND_NOT}
-											op, ok := operators[n.Tok]
-											if !ok {
-												reject("invalid field assignment")
-												return node
-											}
-											mutationID++
-											name := fmt.Sprintf("ghi_receiver_%d", mutationID)
-											get := &ast.CallExpr{Fun: &ast.SelectorExpr{X: ast.NewIdent(name), Sel: ast.NewIdent(fieldGet(field))}}
-											set := &ast.CallExpr{Fun: &ast.SelectorExpr{X: ast.NewIdent(name), Sel: ast.NewIdent(fieldSet(field))}, Args: []ast.Expr{&ast.BinaryExpr{X: get, Op: op, Y: n.Rhs[0]}}}
+											// Taking the field address evaluates the receiver once and
+											// lets Go perform the compound operation directly.
+											address := &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldRef(field))}}
+											n.Lhs[0] = &ast.StarExpr{X: address}
 											changed = true
-											body := &ast.BlockStmt{List: []ast.Stmt{&ast.AssignStmt{Lhs: []ast.Expr{ast.NewIdent(name)}, Tok: token.DEFINE, Rhs: []ast.Expr{selector.X}}, &ast.ExprStmt{X: set}}}
-											return &ast.ExprStmt{X: &ast.CallExpr{Fun: &ast.FuncLit{Type: &ast.FuncType{Params: &ast.FieldList{}}, Body: body}}}
+											return n
 										}
 										changed = true
 										return &ast.ExprStmt{X: &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldSet(field))}, Args: n.Rhs}}
@@ -137,8 +116,9 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							case *ast.SelectorExpr:
 								object = info.Uses[fun.Sel]
 							}
-							if fn, ok := object.(*types.Func); ok && fn.Pkg() != nil && !strings.HasPrefix(fn.Pkg().Path(), generatedModule) {
-								if signature, ok := info.TypeOf(n.Fun).(*types.Signature); ok && signature.Results().Len() > 0 {
+							fn, isFunction := object.(*types.Func)
+							if nativeValues[object] || (isFunction && fn.Pkg() != nil && !strings.HasPrefix(fn.Pkg().Path(), generatedModule)) {
+								if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok && signature.Results().Len() > 0 {
 									last := signature.Results().Len() - 1
 									if types.Identical(signature.Results().At(last).Type(), types.Universe.Lookup("error").Type()) {
 										p.Wrapped[n] = true

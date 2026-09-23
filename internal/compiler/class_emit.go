@@ -18,6 +18,7 @@ func (p *program) emitClass(c *classDecl) error {
 	for _, field := range c.allFields() {
 		typ := p.typeText(field.Type, field.Owner, c.File, c.Namespace)
 		fmt.Fprintf(&out, "%s() %s\n%s(value %s)\n", fieldGet(field), typ, fieldSet(field), typ)
+		fmt.Fprintf(&out, "%s() *%s\n", fieldRef(field), typ)
 	}
 	for _, m := range c.allMethods() {
 		fmt.Fprintf(&out, "GhiM_%s(%s)%s\n", m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace))
@@ -36,6 +37,7 @@ func (p *program) emitClass(c *classDecl) error {
 			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace)
 			fmt.Fprintf(&out, "func (this *ghiData_%s) %s() %s { return this.F_%s_%s }\n", c.Name, fieldGet(f), typ, f.Owner.key(), f.Name)
 			fmt.Fprintf(&out, "func (this *ghiData_%s) %s(value %s) { this.F_%s_%s = value }\n", c.Name, fieldSet(f), typ, f.Owner.key(), f.Name)
+			fmt.Fprintf(&out, "func (this *ghiData_%s) %s() *%s { return &this.F_%s_%s }\n", c.Name, fieldRef(f), typ, f.Owner.key(), f.Name)
 		}
 		for _, m := range c.allMethods() {
 			ret := ""

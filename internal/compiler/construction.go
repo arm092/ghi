@@ -40,6 +40,10 @@ func (c *constructorCheck) reject(node ast.Node, message string) {
 func (c *constructorCheck) complete(node ast.Node, state initializedFields) {
 	for name := range c.required {
 		if !state[name] {
+			if name == "@parent" {
+				c.reject(node, "parent constructor must run on every normal exit")
+				continue
+			}
 			c.reject(node, "nonnullable field "+name+" is not initialized on every normal exit")
 		}
 	}
@@ -88,6 +92,15 @@ func (p *program) validateConstruction() error {
 					continue
 				}
 				check := &constructorCheck{program: p, class: class, required: map[string]bool{}}
+				if class.Parent != nil {
+					for _, stmt := range class.Constructor.Node.Body.List {
+						if expr, ok := stmt.(*ast.ExprStmt); ok {
+							if _, ok := callNamed(expr.X, "parent"); ok {
+								check.required["@parent"] = true
+							}
+						}
+					}
+				}
 				for _, field := range class.Fields {
 					if p.classNamed(expressionText(field.Type), file, ns) != nil {
 						check.required[field.Name] = true

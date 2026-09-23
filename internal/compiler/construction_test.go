@@ -46,3 +46,15 @@ func TestConstructorControlFlowCannotSkipRequiredFields(t *testing.T) {
 		})
 	}
 }
+
+func TestParentConstructorCannotBeSkipped(t *testing.T) {
+	_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": `namespace main
+class User {}
+class Base { public user User;constructor(){this.user=User()} }
+class Child extends Base {constructor(skip bool){if skip{return};parent()}}
+func main(){_=Child(true)}
+`})})
+	if err == nil {
+		t.Fatal("early return bypassed parent initialization")
+	}
+}

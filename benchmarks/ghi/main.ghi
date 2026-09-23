@@ -1,0 +1,25 @@
+namespace main
+
+import fmt "go:fmt"
+import os "go:os"
+import strconv "go:strconv"
+import time "go:time"
+
+class Counter {
+    value int64
+    public func add(delta int64) { this.value += delta }
+    public func total() int64 { return this.value }
+}
+
+func main() {
+    count := strconv.Atoi(os.Args[1])
+    start := time.Now()
+    var numeric int64
+    for i := 0; i < count; i++ { numeric += int64(i & 255) }
+    numericNS := time.Since(start).Nanoseconds()
+    counter := Counter()
+    start = time.Now()
+    for i := 0; i < count; i++ { counter.add(int64(i & 255)) }
+    objectNS := time.Since(start).Nanoseconds()
+    fmt.Printf("%d %d %d %d\n", numericNS, objectNS, numeric, counter.total())
+}

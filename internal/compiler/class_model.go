@@ -106,6 +106,7 @@ func (c *classDecl) key() string {
 }
 func fieldGet(f *fieldDecl) string    { return "GhiGet_" + f.Owner.key() + "_" + f.Name }
 func fieldSet(f *fieldDecl) string    { return "GhiSet_" + f.Owner.key() + "_" + f.Name }
+func fieldRef(f *fieldDecl) string    { return "GhiRef_" + f.Owner.key() + "_" + f.Name }
 func bodyName(f *functionDecl) string { return "GhiBody_" + f.Owner.Name + "_" + f.Name }
 
 func (p *program) importAlias(from, to *sourceFile, path, suggested string) string {

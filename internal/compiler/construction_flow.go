@@ -62,6 +62,11 @@ func (c *constructorCheck) step(stmt ast.Stmt, state initializedFields) []constr
 			}
 		}
 	case *ast.ExprStmt:
+		if _, ok := callNamed(s.X, "parent"); ok {
+			c.read(s.X, state)
+			state["@parent"] = true
+			return normal()
+		}
 		if call, ok := callNamed(s.X, "GhiTry"); ok {
 			return c.tryPaths(call, state)
 		}

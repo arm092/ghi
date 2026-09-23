@@ -16,7 +16,7 @@ func (p *program) validateNamedResults(typ *ast.FuncType, body *ast.BlockStmt, i
 	}
 	for _, field := range typ.Results.List {
 		for _, name := range field.Names {
-			if object := info.Defs[name]; object != nil && p.classType(object.Type()) != nil {
+			if object := info.Defs[name]; object != nil && p.needsInitialization(object.Type()) {
 				required[object] = true
 			}
 		}

@@ -17,7 +17,39 @@ func (p *program) classType(typ types.Type) *classDecl {
 	}
 	for _, ns := range p.Ordered {
 		if namespacePath(ns) == named.Obj().Pkg().Path() {
-			return p.classes()[ns.Name+"."+named.Obj().Name()]
+			if class := p.classes()[ns.Name+"."+named.Obj().Name()]; class != nil {
+				return class
+			}
+			return p.definedClass(named.Obj().Name(), ns, map[string]bool{})
+		}
+	}
+	return nil
+}
+
+func (p *program) definedClass(name string, ns *namespace, seen map[string]bool) *classDecl {
+	key := ns.Name + "." + name
+	if seen[key] {
+		return nil
+	}
+	seen[key] = true
+	for _, file := range ns.Files {
+		for _, decl := range file.Tree.Decls {
+			group, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range group.Specs {
+				definition, ok := spec.(*ast.TypeSpec)
+				if !ok || definition.Name.Name != name {
+					continue
+				}
+				if class := p.classNamed(expressionText(definition.Type), file, ns); class != nil {
+					return class
+				}
+				if id, ok := definition.Type.(*ast.Ident); ok {
+					return p.definedClass(id.Name, ns, seen)
+				}
+			}
 		}
 	}
 	return nil
@@ -84,7 +116,7 @@ func (p *program) boxNullable(info *types.Info) bool {
 							}
 						}
 					case *ast.CallExpr:
-						if signature, ok := info.TypeOf(n.Fun).(*types.Signature); ok {
+						if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok {
 							for i, value := range n.Args {
 								if i >= signature.Params().Len() {
 									break

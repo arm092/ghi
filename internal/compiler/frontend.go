@@ -201,7 +201,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 		if t.Kind != token.IDENT {
 			continue
 		}
-		for _, prefix := range []string{"GhiGet_", "GhiSet_", "GhiM_", "GhiBody_", "GhiNew_", "GhiInit_", "GhiIs_", "GhiTry", "GhiThrow", "ghiData_", "ghi_"} {
+		for _, prefix := range []string{"GhiGet_", "GhiSet_", "GhiRef_", "GhiM_", "GhiBody_", "GhiNew_", "GhiInit_", "GhiIs_", "GhiTry", "GhiThrow", "ghiData_", "ghi_"} {
 			if strings.HasPrefix(t.Text, prefix) {
 				return nil, nil, fmt.Errorf("%s:%d: identifier %s is reserved for the compiler", filename, t.Line, t.Text)
 			}

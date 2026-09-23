@@ -69,6 +69,21 @@ func main(){
 	}
 }
 
+func TestImportedFunctionAliasesPreserveErrorBridge(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+import os "go:os"
+func main(){
+ read:=os.ReadFile
+ alias:=read
+ try{_=alias("missing-no-file.ghi")}catch err GoError {fmt.Println("caught")}
+}
+`})
+	if got != "caught\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
 func TestExceptionTypesAndReturnCoverage(t *testing.T) {
 	for name, body := range map[string]string{
 		"throw primitive":       `func main(){ throw 42 }`,

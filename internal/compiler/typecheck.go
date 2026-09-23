@@ -22,6 +22,14 @@ type exportLoader struct {
 	exports map[string]string
 }
 
+func functionSignature(typ types.Type) (*types.Signature, bool) {
+	if typ == nil {
+		return nil, false
+	}
+	signature, ok := typ.Underlying().(*types.Signature)
+	return signature, ok
+}
+
 func (loader *exportLoader) open(path string) (io.ReadCloser, error) {
 	if file := loader.exports[path]; file != "" {
 		return os.Open(file)
