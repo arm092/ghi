@@ -34,6 +34,8 @@ type program struct {
 	Wrapped             map[*ast.CallExpr]bool
 	Helpers             map[int]bool
 	CheckedDereferences map[*ast.StarExpr]bool
+	LoweredReceives     map[*ast.UnaryExpr]bool
+	ReceiveID           int
 }
 
 func loadProject(root string) (*program, error) {

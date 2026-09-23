@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strconv"
 )
 
 type initializedFields map[string]bool
@@ -102,7 +103,7 @@ func (p *program) validateConstruction() error {
 					}
 				}
 				for _, field := range class.Fields {
-					if p.classNamed(expressionText(field.Type), file, ns) != nil {
+					if p.sourceNeedsInitialization(field.Type, file, ns, map[string]bool{}) {
 						check.required[field.Name] = true
 					}
 				}
@@ -118,4 +119,64 @@ func (p *program) validateConstruction() error {
 		}
 	}
 	return nil
+}
+
+func (p *program) sourceNeedsInitialization(expr ast.Expr, file *sourceFile, ns *namespace, seen map[string]bool) bool {
+	if p.classNamed(expressionText(expr), file, ns) != nil {
+		return true
+	}
+	switch typ := expr.(type) {
+	case *ast.ParenExpr:
+		return p.sourceNeedsInitialization(typ.X, file, ns, seen)
+	case *ast.ArrayType:
+		if typ.Len == nil {
+			return false
+		}
+		if literal, ok := typ.Len.(*ast.BasicLit); ok && literal.Value == "0" {
+			return false
+		}
+		return p.sourceNeedsInitialization(typ.Elt, file, ns, seen)
+	case *ast.StructType:
+		for _, field := range typ.Fields.List {
+			if p.sourceNeedsInitialization(field.Type, file, ns, seen) {
+				return true
+			}
+		}
+	case *ast.Ident:
+		key := ns.Name + "." + typ.Name
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		for _, source := range ns.Files {
+			for _, decl := range source.Tree.Decls {
+				if group, ok := decl.(*ast.GenDecl); ok {
+					for _, spec := range group.Specs {
+						if definition, ok := spec.(*ast.TypeSpec); ok && definition.Name.Name == typ.Name {
+							return p.sourceNeedsInitialization(definition.Type, source, ns, seen)
+						}
+					}
+				}
+			}
+		}
+	case *ast.SelectorExpr:
+		if alias, ok := typ.X.(*ast.Ident); ok {
+			for _, spec := range file.Tree.Imports {
+				path, _ := strconv.Unquote(spec.Path.Value)
+				for _, target := range p.Ordered {
+					if namespacePath(target) != path {
+						continue
+					}
+					name := target.GoName
+					if spec.Name != nil {
+						name = spec.Name.Name
+					}
+					if name == alias.Name {
+						return p.sourceNeedsInitialization(ast.NewIdent(typ.Sel.Name), target.Files[0], target, seen)
+					}
+				}
+			}
+		}
+	}
+	return false
 }

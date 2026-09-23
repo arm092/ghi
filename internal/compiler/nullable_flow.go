@@ -287,6 +287,11 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 	case *ast.SendStmt:
 		f.expression(s.Chan, proof)
 		f.expression(s.Value, proof)
+		if typ := f.info.TypeOf(s.Chan); typ != nil {
+			if channel, ok := typ.Underlying().(*types.Chan); ok {
+				s.Value = f.require(s.Value, channel.Elem(), proof)
+			}
+		}
 	case *ast.GoStmt:
 		f.expression(s.Call, proof)
 	case *ast.DeferStmt:

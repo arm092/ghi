@@ -86,6 +86,12 @@ func (p *program) boxNullable(info *types.Info) bool {
 			visit = func(root ast.Node, results *ast.FieldList) {
 				ast.Inspect(root, func(node ast.Node) bool {
 					switch n := node.(type) {
+					case *ast.SendStmt:
+						if typ := info.TypeOf(n.Chan); typ != nil {
+							if channel, ok := typ.Underlying().(*types.Chan); ok {
+								n.Value = box(n.Value, channel.Elem())
+							}
+						}
 					case *ast.BinaryExpr:
 						if n.Op == token.EQL || n.Op == token.NEQ {
 							n.X = box(n.X, info.TypeOf(n.Y))

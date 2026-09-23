@@ -24,6 +24,10 @@ class GoError extends Exception {
 
 const runtimeCode = `package runtime
 func Some[T any](value T) *T { return &value }
+func Received[T any](value T,ok bool)*T{if !ok{return nil};return &value}
+func Receive[T any](channel <-chan T)*T{value,ok:=<-channel;return Received(value,ok)}
+func ReceiveOK[T any](channel <-chan T)(*T,bool){value,ok:=<-channel;return Received(value,ok),ok}
+func Assert[T any](value any)(*T,bool){result,ok:=value.(T);return Received(result,ok),ok}
 func MapGet[K comparable,V any](values map[K]V,key K)*V {value,ok:=values[key];if !ok{return nil};return &value}
 func MapGetOK[K comparable,V any](values map[K]V,key K)(*V,bool) {value,ok:=values[key];if !ok{return nil,false};return &value,true}
 type indexInteger interface {~int|~int8|~int16|~int32|~int64|~uint|~uint8|~uint16|~uint32|~uint64|~uintptr}

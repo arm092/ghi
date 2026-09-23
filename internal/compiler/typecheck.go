@@ -162,6 +162,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		for _, ns := range p.Ordered {
 			checker.check(ns)
 		}
+		if p.lowerZeroResults(info) {
+			continue
+		}
 		if p.lowerClassMaps(info) {
 			continue
 		}

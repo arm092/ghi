@@ -83,10 +83,13 @@ func TestNullableUnsafeMemberAccessRejected(t *testing.T) {
 
 func TestNonnullableNilRejected(t *testing.T) {
 	for name, source := range map[string]string{
-		"channel send":        `func main(){ch:=make(chan User,1);ch<-nil}`,
-		"named function type": `type Consumer func(User);func main(){var f Consumer=func(u User){};f(nil)}`,
-		"defined class type":  `type Other User;func main(){var x Other;var user User=x;_=user}`,
-		"named aggregate":     `func f()(x struct{user User}){return};func main(){_=f()}`,
+		"channel send":           `func main(){ch:=make(chan User,1);ch<-nil}`,
+		"named function type":    `type Consumer func(User);func main(){var f Consumer=func(u User){};f(nil)}`,
+		"defined nil conversion": `type Other User;func main(){x:=Other(nil);_=x}`,
+		"defined nil default":    `type Other User;func unused(x Other=nil){};func main(){}`,
+
+		"defined class type": `type Other User;func main(){var x Other;var user User=x;_=user}`,
+		"named aggregate":    `func f()(x struct{user User}){return};func main(){_=f()}`,
 
 		"declaration":           `func main(){var u User = nil; _=u}`,
 		"assignment":            `func main(){u:=User();u=nil;_=u}`,

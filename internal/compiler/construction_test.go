@@ -58,3 +58,14 @@ func main(){_=Child(true)}
 		t.Fatal("early return bypassed parent initialization")
 	}
 }
+
+func TestRequiredAggregateAndDefinedTypeFields(t *testing.T) {
+	for name, field := range map[string]string{"defined": "Other", "aggregate": "struct { user User }", "array": "[1]User"} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\nclass User {}\ntype Other User\nclass Holder {public value " + field + "}\nfunc main(){_=Holder()}"})})
+			if err == nil {
+				t.Fatal("required field escaped initialization through an aggregate or defined type")
+			}
+		})
+	}
+}

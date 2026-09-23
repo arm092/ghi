@@ -81,6 +81,11 @@ func (p *program) validateNonNull(info *types.Info) error {
 					}
 				}
 			case *ast.CallExpr:
+				if info.Types[n.Fun].IsType() {
+					for _, arg := range n.Args {
+						check(arg, info.TypeOf(n.Fun))
+					}
+				}
 				if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok {
 					for i, value := range n.Args {
 						index := i
@@ -139,7 +144,7 @@ func (p *program) validateNonNull(info *types.Info) error {
 						offset = 1
 					}
 					param := fn.Node.Type.Params.List[index+offset]
-					if p.classNamed(expressionText(param.Type), file, ns) != nil && nilSyntax(value) {
+					if p.sourceNeedsInitialization(param.Type, file, ns, map[string]bool{}) && nilSyntax(value) {
 						reject(fn.Node, "nil default requires a nullable parameter type")
 					}
 				}
