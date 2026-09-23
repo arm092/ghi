@@ -41,8 +41,24 @@ func (p *program) validateNonNull(info *types.Info) error {
 						check(n.Value, channel.Elem())
 					}
 				}
+			case *ast.SelectorExpr:
+				if p.optionalAggregate(info.TypeOf(n.X)) {
+					reject(n, "nullable member access requires a stable nil check")
+				}
+			case *ast.IndexExpr:
+				if p.optionalAggregate(info.TypeOf(n.X)) {
+					reject(n, "nullable index access requires a stable nil check")
+				}
+			case *ast.SliceExpr:
+				if p.optionalAggregate(info.TypeOf(n.X)) {
+					reject(n, "nullable slice access requires a stable nil check")
+				}
+			case *ast.RangeStmt:
+				if p.optionalAggregate(info.TypeOf(n.X)) {
+					reject(n, "nullable iteration requires a stable nil check")
+				}
 			case *ast.StarExpr:
-				if info.Types[n].IsValue() && p.classType(info.TypeOf(n)) != nil && !p.CheckedDereferences[n] {
+				if info.Types[n].IsValue() && p.needsInitialization(info.TypeOf(n)) && !p.CheckedDereferences[n] {
 					reject(n, "nullable dereference requires a stable nil check")
 				}
 			case *ast.FuncDecl:
@@ -166,4 +182,12 @@ func nilSyntax(expr ast.Expr) bool {
 	}
 	id, ok := expr.(*ast.Ident)
 	return ok && id.Name == "nil"
+}
+
+func (p *program) optionalAggregate(typ types.Type) bool {
+	if typ == nil {
+		return false
+	}
+	ptr, ok := types.Unalias(typ).(*types.Pointer)
+	return ok && p.needsInitialization(ptr.Elem())
 }

@@ -47,7 +47,7 @@ func (f *nullableFlow) markChecked(star *ast.StarExpr) {
 }
 
 func (f *nullableFlow) require(expr ast.Expr, expected types.Type, proof nullProof) ast.Expr {
-	if f.program.classType(expected) == nil || !f.optional(expr) || !proof[f.object(expr)] {
+	if !f.program.needsInitialization(expected) || !f.optional(expr) || !proof[f.object(expr)] {
 		return expr
 	}
 	ptr := types.Unalias(f.info.TypeOf(expr)).(*types.Pointer)
@@ -71,7 +71,7 @@ func (f *nullableFlow) optional(expr ast.Expr) bool {
 		return false
 	}
 	ptr, ok := types.Unalias(typ).(*types.Pointer)
-	return ok && f.program.classType(ptr.Elem()) != nil
+	return ok && f.program.needsInitialization(ptr.Elem())
 }
 func (f *nullableFlow) assume(expr ast.Expr, truth bool, proof nullProof) nullProof {
 	result := proof.clone()
@@ -161,6 +161,10 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 		f.expression(e.X, proof)
 	case *ast.IndexExpr:
 		f.expression(e.X, proof)
+		if f.optional(e.X) && proof[f.object(e.X)] {
+			e.X = f.checked(e.X)
+			f.changed = true
+		}
 		f.expression(e.Index, proof)
 	case *ast.IndexListExpr:
 		f.expression(e.X, proof)
@@ -169,6 +173,10 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 		}
 	case *ast.SliceExpr:
 		f.expression(e.X, proof)
+		if f.optional(e.X) && proof[f.object(e.X)] {
+			e.X = f.checked(e.X)
+			f.changed = true
+		}
 		f.expression(e.Low, proof)
 		f.expression(e.High, proof)
 		f.expression(e.Max, proof)
@@ -280,6 +288,10 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 		f.statement(s.Post, body)
 	case *ast.RangeStmt:
 		f.expression(s.X, proof)
+		if f.optional(s.X) && proof[f.object(s.X)] {
+			s.X = f.checked(s.X)
+			f.changed = true
+		}
 		f.invalidateWrites(s, proof)
 		f.block(s.Body, proof.clone())
 	case *ast.IncDecStmt:

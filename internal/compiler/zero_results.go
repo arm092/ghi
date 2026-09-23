@@ -18,7 +18,7 @@ func (p *program) classReceive(expr ast.Expr, info *types.Info) (*ast.UnaryExpr,
 		return nil, false
 	}
 	channel, ok := typ.Underlying().(*types.Chan)
-	return receive, ok && p.classType(channel.Elem()) != nil
+	return receive, ok && p.needsInitialization(channel.Elem())
 }
 
 func (p *program) lowerZeroResults(info *types.Info) bool {
@@ -89,7 +89,7 @@ func (p *program) lowerZeroResults(info *types.Info) bool {
 							return &ast.CallExpr{Fun: helper(name), Args: []ast.Expr{receive.X}}
 						}
 					}
-					if assertion, ok := node.(*ast.TypeAssertExpr); ok && pairs[assertion] && p.classType(info.TypeOf(assertion.Type)) != nil {
+					if assertion, ok := node.(*ast.TypeAssertExpr); ok && pairs[assertion] && p.needsInitialization(info.TypeOf(assertion.Type)) {
 						// Catch lowering already tests the assertion before exposing its variable.
 						if id, ok := assertion.X.(*ast.Ident); ok && id.Name == "ghi_caught" {
 							return node

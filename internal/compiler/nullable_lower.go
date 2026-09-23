@@ -72,13 +72,18 @@ func (p *program) boxNullable(info *types.Info) bool {
 				if !ok {
 					return value
 				}
-				target := p.classType(ptr.Elem())
+				target := ptr.Elem()
 				actual := info.TypeOf(value)
-				if target == nil || p.classType(actual) == nil || !types.AssignableTo(actual, ptr.Elem()) {
+				if !p.needsInitialization(target) || !p.needsInitialization(actual) || !types.AssignableTo(actual, target) {
 					return value
 				}
 				fun, _ := parser.ParseExpr(p.runtimeSymbol("Some", file, ns))
-				typ, _ := parser.ParseExpr(p.classSymbol(target, target.Name, file, ns))
+				typ, _ := parser.ParseExpr(types.TypeString(target, func(pkg *types.Package) string {
+					if pkg.Path() == namespacePath(ns) {
+						return ""
+					}
+					return p.importAlias(nil, file, pkg.Path(), pkg.Name())
+				}))
 				changed = true
 				return &ast.CallExpr{Fun: &ast.IndexExpr{X: fun, Index: typ}, Args: []ast.Expr{value}}
 			}

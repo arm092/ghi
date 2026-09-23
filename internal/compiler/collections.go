@@ -82,7 +82,7 @@ func (p *program) lowerClassMaps(info *types.Info) bool {
 						return node
 					}
 					mapping, ok := typ.Underlying().(*types.Map)
-					if !ok || p.classType(mapping.Elem()) == nil {
+					if !ok || !p.needsInitialization(mapping.Elem()) {
 						return node
 					}
 					name := "MapGet"
