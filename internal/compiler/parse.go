@@ -13,6 +13,11 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	// The declaration grammar starts with a namespace rather than a Go package.
 	// Go's scanner preserves comments, literals and automatic semicolon rules.
 	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
+	var nullableErr error
+	data, nullableErr = normalizeNullable(filename, data)
+	if nullableErr != nil {
+		return "", nil, nil, nullableErr
+	}
 	scanSet := token.NewFileSet()
 	file := scanSet.AddFile(filename, -1, len(data))
 	var s scanner.Scanner

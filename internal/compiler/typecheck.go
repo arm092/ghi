@@ -151,6 +151,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		for _, ns := range p.Ordered {
 			checker.check(ns)
 		}
+		if p.boxNullable(info) {
+			continue
+		}
 		changed, err := p.rewrite(info)
 		if err != nil {
 			return err

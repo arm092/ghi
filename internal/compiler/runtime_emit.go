@@ -23,6 +23,7 @@ class GoError extends Exception {
 `
 
 const runtimeCode = `package runtime
+func Some[T any](value T) *T { return &value }
 type raised struct { value Exception }
 func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
 func Raise(value Exception) any { return raised{value} }
