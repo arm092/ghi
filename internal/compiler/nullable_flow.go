@@ -34,6 +34,18 @@ type nullableFlow struct {
 	results  *ast.FieldList
 }
 
+func (f *nullableFlow) checked(expr ast.Expr) *ast.StarExpr {
+	star := &ast.StarExpr{X: expr}
+	f.markChecked(star)
+	return star
+}
+func (f *nullableFlow) markChecked(star *ast.StarExpr) {
+	if f.program.CheckedDereferences == nil {
+		f.program.CheckedDereferences = map[*ast.StarExpr]bool{}
+	}
+	f.program.CheckedDereferences[star] = true
+}
+
 func (f *nullableFlow) require(expr ast.Expr, expected types.Type, proof nullProof) ast.Expr {
 	if f.program.classType(expected) == nil || !f.optional(expr) || !proof[f.object(expr)] {
 		return expr
@@ -43,7 +55,7 @@ func (f *nullableFlow) require(expr ast.Expr, expected types.Type, proof nullPro
 		return expr
 	}
 	f.changed = true
-	return &ast.StarExpr{X: expr}
+	return f.checked(expr)
 }
 
 func (f *nullableFlow) object(expr ast.Expr) types.Object {
@@ -117,7 +129,7 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 	case *ast.SelectorExpr:
 		f.expression(e.X, proof)
 		if f.optional(e.X) && proof[f.object(e.X)] {
-			e.X = &ast.StarExpr{X: e.X}
+			e.X = f.checked(e.X)
 			f.changed = true
 		}
 	case *ast.BinaryExpr:
@@ -143,6 +155,9 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 	case *ast.UnaryExpr:
 		f.expression(e.X, proof)
 	case *ast.StarExpr:
+		if f.optional(e.X) && proof[f.object(e.X)] {
+			f.markChecked(e)
+		}
 		f.expression(e.X, proof)
 	case *ast.IndexExpr:
 		f.expression(e.X, proof)

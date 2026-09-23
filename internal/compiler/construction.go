@@ -53,6 +53,9 @@ func thisField(expr ast.Expr) (string, bool) {
 	return s.Sel.Name, ok && id.Name == "this"
 }
 func (c *constructorCheck) read(expr ast.Expr, state initializedFields) {
+	if expr == nil {
+		return
+	}
 	ast.Inspect(expr, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.SelectorExpr:

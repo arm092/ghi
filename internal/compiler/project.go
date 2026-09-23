@@ -26,13 +26,14 @@ type namespace struct {
 }
 
 type program struct {
-	Root       string
-	Fset       *token.FileSet
-	Namespaces map[string]*namespace
-	Ordered    []*namespace
-	Runtime    *namespace
-	Wrapped    map[*ast.CallExpr]bool
-	Helpers    map[int]bool
+	Root                string
+	Fset                *token.FileSet
+	Namespaces          map[string]*namespace
+	Ordered             []*namespace
+	Runtime             *namespace
+	Wrapped             map[*ast.CallExpr]bool
+	Helpers             map[int]bool
+	CheckedDereferences map[*ast.StarExpr]bool
 }
 
 func loadProject(root string) (*program, error) {

@@ -47,15 +47,17 @@ func checked(user User?) User {
  return user
 }
 func accept(user User) string {return user.name}
+func named(flag bool) (user User) {if flag {user=User("yes")}else{user=User("no")};return}
 func main() {
  var user User? = User("Ada")
  if user != nil { user.name = "Arman"; fmt.Println(user.name, user.label()) }
  fmt.Println(user != nil && user.name == "Arman", user == nil || user.label() == "Arman")
  fmt.Println(label(user), label(nil))
- if user != nil {var local User = user; local = user; fmt.Println(accept(user), checked(user).name, local.name)}
+ if user != nil {var local User = user; local = user; fmt.Println(accept(user), checked(user).name, local.name); direct:=*user;fmt.Println(direct.name)}
+ fmt.Println(named(true).name, named(false).name)
 }
 `})
-	if got != "Arman Arman\ntrue true\nArman missing\nArman Arman Arman\n" {
+	if got != "Arman Arman\ntrue true\nArman missing\nArman Arman Arman\nArman\nyes no\n" {
 		t.Fatalf("output %q", got)
 	}
 }
@@ -81,15 +83,19 @@ func TestNullableUnsafeMemberAccessRejected(t *testing.T) {
 
 func TestNonnullableNilRejected(t *testing.T) {
 	for name, source := range map[string]string{
-		"declaration":          `func main(){var u User = nil; _=u}`,
-		"assignment":           `func main(){u:=User();u=nil;_=u}`,
-		"argument":             `func accept(u User){};func main(){accept(nil)}`,
-		"return":               `func get() User{return nil};func main(){_=get()}`,
-		"field":                `class Holder {public user User;constructor(){this.user=nil}};func main(){_=Holder()}`,
-		"uninitialized local":  `func main(){var u User;_=u}`,
-		"uninitialized global": `var u User;func main(){_=u}`,
-		"unused default":       `func accept(u User = nil){};func main(){}`,
-		"closure return":       `func main(){f:=func()User{return nil};_=f()}`,
+		"declaration":           `func main(){var u User = nil; _=u}`,
+		"assignment":            `func main(){u:=User();u=nil;_=u}`,
+		"argument":              `func accept(u User){};func main(){accept(nil)}`,
+		"return":                `func get() User{return nil};func main(){_=get()}`,
+		"field":                 `class Holder {public user User;constructor(){this.user=nil}};func main(){_=Holder()}`,
+		"uninitialized local":   `func main(){var u User;_=u}`,
+		"uninitialized global":  `var u User;func main(){_=u}`,
+		"unused default":        `func accept(u User = nil){};func main(){}`,
+		"closure return":        `func main(){f:=func()User{return nil};_=f()}`,
+		"named return":          `func get()(user User){return};func main(){_=get()}`,
+		"named read":            `func get()(user User){return user};func main(){_=get()}`,
+		"named one branch":      `func get(flag bool)(user User){if flag{user=User()};return};func main(){_=get(false)}`,
+		"unchecked dereference": `func main(){var user User?;value:=*user;_=value}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\nclass User {}\n" + source})})

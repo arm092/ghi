@@ -34,12 +34,24 @@ func (p *program) validateNonNull(info *types.Info) error {
 				return false
 			}
 			switch n := node.(type) {
+			case *ast.StarExpr:
+				if info.Types[n].IsValue() && p.classType(info.TypeOf(n)) != nil && !p.CheckedDereferences[n] {
+					reject(n, "nullable dereference requires a stable nil check")
+				}
 			case *ast.FuncDecl:
 				if n.Body != nil {
+					if err := p.validateNamedResults(n.Type, n.Body, info); err != nil {
+						failure = err
+						return false
+					}
 					visit(n.Body, n.Type.Results)
 				}
 				return false
 			case *ast.FuncLit:
+				if err := p.validateNamedResults(n.Type, n.Body, info); err != nil {
+					failure = err
+					return false
+				}
 				visit(n.Body, n.Type.Results)
 				return false
 			case *ast.ValueSpec:
