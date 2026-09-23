@@ -24,6 +24,14 @@ class GoError extends Exception {
 
 const runtimeCode = `package runtime
 func Some[T any](value T) *T { return &value }
+func MapGet[K comparable,V any](values map[K]V,key K)*V {value,ok:=values[key];if !ok{return nil};return &value}
+func MapGetOK[K comparable,V any](values map[K]V,key K)(*V,bool) {value,ok:=values[key];if !ok{return nil,false};return &value,true}
+func Slice[S ~[]E,E any](values S,low,high,max int,hasHigh,hasMax bool) S {
+ if !hasHigh {high=len(values)}
+ if !hasMax {max=len(values)}
+ if max>len(values) {panic("slice extends beyond initialized elements")}
+ return values[low:high:max]
+}
 type raised struct { value Exception }
 func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
 func Raise(value Exception) any { return raised{value} }

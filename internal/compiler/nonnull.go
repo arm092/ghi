@@ -33,6 +33,7 @@ func (p *program) validateNonNull(info *types.Info) error {
 			if failure != nil {
 				return false
 			}
+			p.checkCollection(node, info, check, reject)
 			switch n := node.(type) {
 			case *ast.StarExpr:
 				if info.Types[n].IsValue() && p.classType(info.TypeOf(n)) != nil && !p.CheckedDereferences[n] {
@@ -60,7 +61,7 @@ func (p *program) validateNonNull(info *types.Info) error {
 					if object == nil {
 						continue
 					}
-					if len(n.Values) == 0 && p.classType(object.Type()) != nil && !strings.HasPrefix(name.Name, "ghi_") {
+					if len(n.Values) == 0 && p.needsInitialization(object.Type()) && !strings.HasPrefix(name.Name, "ghi_") {
 						reject(name, "nonnullable variable "+name.Name+" requires an initializer")
 					}
 					if len(n.Values) == len(n.Names) {
