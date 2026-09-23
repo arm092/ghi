@@ -64,8 +64,36 @@ func main(){
  fmt.Println(users[0].name,array[1].name,item.user.name,len(users[:]))
  func(){defer func(){fmt.Println(recover()!=nil)}();_=users[:2]}()
 }
+
 `})
 	if got != "Ada two Arman 1\ntrue\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestNullableCollectionLiteralsAndReferenceEquality(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+class User { public name string;constructor(name string){this.name=name} }
+func main(){
+ object:=User("Ada")
+ values:=[]User?{object,nil}
+ mapping:=map[string]User?{"present":object,"absent":nil}
+ aggregate:=struct{value User?}{value:object}
+ var left User?=object
+ var right User?=object
+ var different User?=User("Ada")
+ var empty User?
+ fmt.Println(left==right,left!=different,empty==nil,values[0]==mapping["present"],aggregate.value==left)
+ snapshot:=values[0]
+ if snapshot!=nil{fmt.Println(snapshot.name)}
+ initialized:=[]User{object}
+ var low uint8=0
+ var high uint64=1
+ fmt.Println(len(initialized[low:high]))
+}
+`})
+	if got != "true true true true true\nAda\n1\n" {
 		t.Fatalf("output %q", got)
 	}
 }

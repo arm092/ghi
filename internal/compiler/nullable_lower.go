@@ -3,6 +3,7 @@ package compiler
 import (
 	"go/ast"
 	"go/parser"
+	"go/token"
 	"go/types"
 )
 
@@ -53,6 +54,13 @@ func (p *program) boxNullable(info *types.Info) bool {
 			visit = func(root ast.Node, results *ast.FieldList) {
 				ast.Inspect(root, func(node ast.Node) bool {
 					switch n := node.(type) {
+					case *ast.BinaryExpr:
+						if n.Op == token.EQL || n.Op == token.NEQ {
+							n.X = box(n.X, info.TypeOf(n.Y))
+							n.Y = box(n.Y, info.TypeOf(n.X))
+						}
+					case *ast.CompositeLit:
+						p.convertLiteral(n, info, box)
 					case *ast.FuncDecl:
 						if n.Body != nil {
 							visit(n.Body, n.Type.Results)
@@ -112,4 +120,53 @@ func (p *program) boxNullable(info *types.Info) bool {
 		}
 	}
 	return changed
+}
+
+func (p *program) convertLiteral(lit *ast.CompositeLit, info *types.Info, convert func(ast.Expr, types.Type) ast.Expr) {
+	typ := info.TypeOf(lit)
+	if typ == nil {
+		return
+	}
+	for index, entry := range lit.Elts {
+		var expected types.Type
+		value := entry
+		pair, keyed := entry.(*ast.KeyValueExpr)
+		if keyed {
+			value = pair.Value
+		}
+		switch t := typ.Underlying().(type) {
+		case *types.Array:
+			expected = t.Elem()
+		case *types.Slice:
+			expected = t.Elem()
+		case *types.Map:
+			expected = t.Elem()
+			if keyed {
+				pair.Key = convert(pair.Key, t.Key())
+			}
+		case *types.Struct:
+			field := index
+			if keyed {
+				field = -1
+				if id, ok := pair.Key.(*ast.Ident); ok {
+					for i := 0; i < t.NumFields(); i++ {
+						if t.Field(i).Name() == id.Name {
+							field = i
+							break
+						}
+					}
+				}
+			}
+			if field >= 0 && field < t.NumFields() {
+				expected = t.Field(field).Type()
+			}
+		}
+		if expected != nil {
+			if keyed {
+				pair.Value = convert(value, expected)
+			} else {
+				lit.Elts[index] = convert(value, expected)
+			}
+		}
+	}
 }

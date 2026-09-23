@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/parser"
+	"go/token"
 	"go/types"
 )
 
@@ -39,6 +40,19 @@ func (p *program) lowerClassMaps(info *types.Info) bool {
 			})
 			for _, decl := range append([]ast.Decl(nil), file.Tree.Decls...) {
 				walkNode(decl, func(node ast.Node) ast.Node {
+					if binary, ok := node.(*ast.BinaryExpr); ok && (binary.Op == token.EQL || binary.Op == token.NEQ) {
+						left, lok := info.TypeOf(binary.X).(*types.Pointer)
+						right, rok := info.TypeOf(binary.Y).(*types.Pointer)
+						if lok && rok && p.classType(left.Elem()) != nil && p.classType(right.Elem()) != nil && (types.AssignableTo(left.Elem(), right.Elem()) || types.AssignableTo(right.Elem(), left.Elem())) {
+							fun, _ := parser.ParseExpr(p.runtimeSymbol("Equal", file, ns))
+							call := &ast.CallExpr{Fun: fun, Args: []ast.Expr{binary.X, binary.Y}}
+							changed = true
+							if binary.Op == token.NEQ {
+								return &ast.UnaryExpr{Op: token.NOT, X: call}
+							}
+							return call
+						}
+					}
 					if slice, ok := node.(*ast.SliceExpr); ok {
 						typ := info.TypeOf(slice.X)
 						if typ != nil {

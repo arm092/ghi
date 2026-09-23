@@ -26,11 +26,18 @@ const runtimeCode = `package runtime
 func Some[T any](value T) *T { return &value }
 func MapGet[K comparable,V any](values map[K]V,key K)*V {value,ok:=values[key];if !ok{return nil};return &value}
 func MapGetOK[K comparable,V any](values map[K]V,key K)(*V,bool) {value,ok:=values[key];if !ok{return nil,false};return &value,true}
-func Slice[S ~[]E,E any](values S,low,high,max int,hasHigh,hasMax bool) S {
- if !hasHigh {high=len(values)}
- if !hasMax {max=len(values)}
- if max>len(values) {panic("slice extends beyond initialized elements")}
- return values[low:high:max]
+type indexInteger interface {~int|~int8|~int16|~int32|~int64|~uint|~uint8|~uint16|~uint32|~uint64|~uintptr}
+func Slice[S ~[]E,E any,L indexInteger,H indexInteger,M indexInteger](values S,low L,high H,max M,hasHigh,hasMax bool) S {
+ length:=uint64(len(values))
+ if low<0 || uint64(low)>length || (hasHigh && (high<0 || uint64(high)>length)) || (hasMax && (max<0 || uint64(max)>length)) {panic("slice extends beyond initialized elements")}
+ end,capacity:=len(values),len(values)
+ if hasHigh {end=int(high)}
+ if hasMax {capacity=int(max)}
+ return values[int(low):end:capacity]
+}
+func Equal[L any,R any](left *L,right *R)bool {
+ if left==nil || right==nil{return left==nil && right==nil}
+ return any(*left)==any(*right)
 }
 type raised struct { value Exception }
 func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
