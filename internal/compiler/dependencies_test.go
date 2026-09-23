@@ -105,6 +105,9 @@ func TestDependencyDownloadVerifiesProjectChecksum(t *testing.T) {
 	defer server.Close()
 	t.Setenv("GOPROXY", server.URL)
 	t.Setenv("GOSUMDB", "off")
+	// Go normally makes extracted modules read-only; keep this disposable test
+	// cache writable so testing.TempDir can remove it on Unix hosts.
+	t.Setenv("GOFLAGS", "-modcacherw")
 	t.Setenv("GOMODCACHE", t.TempDir())
 	root := project(t, map[string]string{
 		"go.mod":   "module example.test/app\n\ngo 1.26.0\n\nrequire example.test/library v1.0.0\n",

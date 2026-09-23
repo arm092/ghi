@@ -80,87 +80,6 @@ func (c *constructorCheck) read(expr ast.Expr, state initializedFields) {
 		return true
 	})
 }
-func (c *constructorCheck) block(body *ast.BlockStmt, state initializedFields) (initializedFields, bool) {
-	for _, stmt := range body.List {
-		var live bool
-		state, live = c.statement(stmt, state)
-		if !live {
-			return state, false
-		}
-	}
-	return state, true
-}
-func (c *constructorCheck) statement(stmt ast.Stmt, state initializedFields) (initializedFields, bool) {
-	switch s := stmt.(type) {
-	case *ast.AssignStmt:
-		for _, value := range s.Rhs {
-			c.read(value, state)
-		}
-		for _, lhs := range s.Lhs {
-			if name, ok := thisField(lhs); ok && s.Tok == token.ASSIGN {
-				state[name] = true
-			} else {
-				c.read(lhs, state)
-			}
-		}
-	case *ast.ExprStmt:
-		if _, ok := callNamed(s.X, "GhiThrow"); ok {
-			c.read(s.X, state)
-			return state, false
-		}
-		c.read(s.X, state)
-	case *ast.ReturnStmt:
-		for _, value := range s.Results {
-			c.read(value, state)
-		}
-		c.complete(s, state)
-		return state, false
-	case *ast.IfStmt:
-		state, _ = c.statement(s.Init, state)
-		c.read(s.Cond, state)
-		yes, yesLive := c.block(s.Body, state.clone())
-		no, noLive := c.statement(s.Else, state.clone())
-		if !yesLive {
-			return no, noLive
-		}
-		if !noLive {
-			return yes, true
-		}
-		return intersectFields(yes, no), true
-	case *ast.BlockStmt:
-		return c.block(s, state)
-	case *ast.ForStmt:
-		state, _ = c.statement(s.Init, state)
-		c.read(s.Cond, state)
-		body, _ := c.block(s.Body, state.clone())
-		c.statement(s.Post, body)
-	case *ast.RangeStmt:
-		c.read(s.X, state)
-		c.block(s.Body, state.clone())
-	case *ast.DeclStmt:
-		if decl, ok := s.Decl.(*ast.GenDecl); ok {
-			for _, spec := range decl.Specs {
-				if value, ok := spec.(*ast.ValueSpec); ok {
-					for _, expr := range value.Values {
-						c.read(expr, state)
-					}
-				}
-			}
-		}
-	default:
-		if stmt != nil {
-			ast.Inspect(stmt, func(node ast.Node) bool {
-				if expr, ok := node.(ast.Expr); ok {
-					c.read(expr, state)
-					return false
-				}
-				return true
-			})
-		}
-	}
-	return state, true
-}
-
 func (p *program) validateConstruction() error {
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
@@ -174,9 +93,10 @@ func (p *program) validateConstruction() error {
 						check.required[field.Name] = true
 					}
 				}
-				state, live := check.block(class.Constructor.Node.Body, initializedFields{})
-				if live {
-					check.complete(class.Constructor.Node, state)
+				for _, exit := range check.paths(class.Constructor.Node.Body.List, []constructorExit{{state: initializedFields{}}}) {
+					if exit.flow == token.ILLEGAL || exit.flow == token.RETURN {
+						check.complete(class.Constructor.Node, exit.state)
+					}
 				}
 				if check.err != nil {
 					return check.err

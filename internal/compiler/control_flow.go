@@ -51,10 +51,22 @@ func (p *program) lowerControl() error {
 				continue
 			}
 			functions := []*ast.FuncDecl{}
+			globals := &controlFlow{program: p, file: file, ns: ns, nextCode: 2, nested: map[*ast.FuncLit]bool{}}
 			for _, decl := range file.Tree.Decls {
 				if fn, ok := decl.(*ast.FuncDecl); ok {
 					functions = append(functions, fn)
+				} else if declaration, ok := decl.(*ast.GenDecl); ok {
+					for _, spec := range declaration.Specs {
+						if value, ok := spec.(*ast.ValueSpec); ok {
+							for i, expr := range value.Values {
+								value.Values[i] = globals.expressions(expr)
+							}
+						}
+					}
 				}
+			}
+			if globals.err != nil {
+				return globals.err
 			}
 			for _, class := range file.Unit.Classes {
 				for _, m := range class.Methods {
@@ -130,6 +142,18 @@ func (c *controlFlow) block(statements []ast.Stmt, depth int, targets []flowTarg
 	}
 	return output
 }
+
+func (c *controlFlow) simple(statement ast.Stmt, depth int, targets []flowTarget) ast.Stmt {
+	if statement == nil {
+		return nil
+	}
+	list := c.statement(statement, depth, targets, "")
+	if len(list) != 1 {
+		c.err = fmt.Errorf("statement header requires a simple statement")
+		return statement
+	}
+	return list[0]
+}
 func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTarget, label string) []ast.Stmt {
 	if statement == nil {
 		return nil
@@ -189,27 +213,35 @@ func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTar
 	case *ast.BlockStmt:
 		s.List = c.block(s.List, depth, targets)
 	case *ast.IfStmt:
+		s.Init = c.simple(s.Init, depth, targets)
 		s.Cond = c.expressions(s.Cond)
 		s.Body.List = c.block(s.Body.List, depth, targets)
 		if s.Else != nil {
 			s.Else = c.statement(s.Else, depth, targets, "")[0]
 		}
 	case *ast.ForStmt:
+		s.Init = c.simple(s.Init, depth, targets)
+		s.Post = c.simple(s.Post, depth, targets)
 		s.Cond = c.expressions(s.Cond)
 		target := flowTarget{label, depth, c.nextCode, c.nextCode + 1}
 		c.nextCode += 2
 		s.Body.List = c.block(s.Body.List, depth, append(targets, target))
 	case *ast.RangeStmt:
+		s.Key = c.expressions(s.Key)
+		s.Value = c.expressions(s.Value)
 		s.X = c.expressions(s.X)
 		target := flowTarget{label, depth, c.nextCode, c.nextCode + 1}
 		c.nextCode += 2
 		s.Body.List = c.block(s.Body.List, depth, append(targets, target))
 	case *ast.SwitchStmt:
+		s.Init = c.simple(s.Init, depth, targets)
 		s.Tag = c.expressions(s.Tag)
 		target := flowTarget{label: label, depth: depth, breakCode: c.nextCode}
 		c.nextCode++
 		s.Body.List = c.block(s.Body.List, depth, append(targets, target))
 	case *ast.TypeSwitchStmt:
+		s.Init = c.simple(s.Init, depth, targets)
+		s.Assign = c.simple(s.Assign, depth, targets)
 		target := flowTarget{label: label, depth: depth, breakCode: c.nextCode}
 		c.nextCode++
 		s.Body.List = c.block(s.Body.List, depth, append(targets, target))
@@ -218,8 +250,12 @@ func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTar
 		c.nextCode++
 		s.Body.List = c.block(s.Body.List, depth, append(targets, target))
 	case *ast.CaseClause:
+		for i, expr := range s.List {
+			s.List[i] = c.expressions(expr)
+		}
 		s.Body = c.block(s.Body, depth, targets)
 	case *ast.CommClause:
+		s.Comm = c.simple(s.Comm, depth, targets)
 		s.Body = c.block(s.Body, depth, targets)
 	case *ast.LabeledStmt:
 		lowered := c.statement(s.Stmt, depth, targets, s.Label.Name)
@@ -229,6 +265,9 @@ func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTar
 			s.Stmt = &ast.BlockStmt{List: lowered}
 		}
 	case *ast.AssignStmt:
+		for i, value := range s.Lhs {
+			s.Lhs[i] = c.expressions(value)
+		}
 		for i, value := range s.Rhs {
 			s.Rhs[i] = c.expressions(value)
 		}
@@ -246,6 +285,11 @@ func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTar
 		s.Call = c.expressions(s.Call).(*ast.CallExpr)
 	case *ast.GoStmt:
 		s.Call = c.expressions(s.Call).(*ast.CallExpr)
+	case *ast.SendStmt:
+		s.Chan = c.expressions(s.Chan)
+		s.Value = c.expressions(s.Value)
+	case *ast.IncDecStmt:
+		s.X = c.expressions(s.X)
 	}
 	return []ast.Stmt{statement}
 }

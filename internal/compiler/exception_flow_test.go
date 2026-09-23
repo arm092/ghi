@@ -50,6 +50,25 @@ func main() {
 	}
 }
 
+func TestExceptionsInGlobalCallbacksAndStatementHeaders(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+var global=func()int{try{return 7}finally{}}
+func main(){
+ if value:=func()int{try{return 1}finally{}}();value==1{fmt.Println(value)}
+ for i:=func()int{try{return 0}finally{}}();i<2;i=func()int{try{return i+1}finally{}}(){fmt.Println(i)}
+ switch value:=func()int{try{return 3}finally{}}();value {case 3:fmt.Println(value)}
+ channel:=make(chan int,1)
+ channel<-func()int{try{return 4}finally{}}()
+ select {case value:=<-func()chan int{try{return channel}finally{}}():fmt.Println(value)}
+ fmt.Println(global())
+}
+`})
+	if got != "1\n0\n1\n3\n4\n7\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
 func TestExceptionTypesAndReturnCoverage(t *testing.T) {
 	for name, body := range map[string]string{
 		"throw primitive":       `func main(){ throw 42 }`,
