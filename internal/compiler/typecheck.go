@@ -105,6 +105,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 	if err := p.prepareClasses(); err != nil {
 		return err
 	}
+	if err := p.validateConstruction(); err != nil {
+		return err
+	}
 	if err := p.lowerControl(); err != nil {
 		return err
 	}
@@ -162,7 +165,10 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			return err
 		}
 		if !changed {
-			return checker.first
+			if checker.first != nil {
+				return checker.first
+			}
+			return p.validateNonNull(info)
 		}
 	}
 	return fmt.Errorf("compiler lowering did not converge")

@@ -31,6 +31,19 @@ type nullableFlow struct {
 	unstable map[types.Object]bool
 	scope    *types.Scope
 	changed  bool
+	results  *ast.FieldList
+}
+
+func (f *nullableFlow) require(expr ast.Expr, expected types.Type, proof nullProof) ast.Expr {
+	if f.program.classType(expected) == nil || !f.optional(expr) || !proof[f.object(expr)] {
+		return expr
+	}
+	ptr := types.Unalias(f.info.TypeOf(expr)).(*types.Pointer)
+	if !types.AssignableTo(ptr.Elem(), expected) {
+		return expr
+	}
+	f.changed = true
+	return &ast.StarExpr{X: expr}
 }
 
 func (f *nullableFlow) object(expr ast.Expr) types.Object {
@@ -119,8 +132,11 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 		f.expression(e.Y, right)
 	case *ast.CallExpr:
 		f.expression(e.Fun, proof)
-		for _, arg := range e.Args {
+		for i, arg := range e.Args {
 			f.expression(arg, proof)
+			if signature, ok := f.info.TypeOf(e.Fun).(*types.Signature); ok && i < signature.Params().Len() && !(signature.Variadic() && i == signature.Params().Len()-1) {
+				e.Args[i] = f.require(arg, signature.Params().At(i).Type(), proof)
+			}
 		}
 	case *ast.ParenExpr:
 		f.expression(e.X, proof)
@@ -187,8 +203,11 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 	case *ast.ExprStmt:
 		f.expression(s.X, proof)
 	case *ast.AssignStmt:
-		for _, value := range s.Rhs {
+		for i, value := range s.Rhs {
 			f.expression(value, proof)
+			if len(s.Rhs) == len(s.Lhs) {
+				s.Rhs[i] = f.require(value, f.info.TypeOf(s.Lhs[i]), proof)
+			}
 		}
 		for _, lhs := range s.Lhs {
 			f.expression(lhs, proof)
@@ -198,8 +217,13 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 		if decl, ok := s.Decl.(*ast.GenDecl); ok {
 			for _, spec := range decl.Specs {
 				if v, ok := spec.(*ast.ValueSpec); ok {
-					for _, value := range v.Values {
+					for i, value := range v.Values {
 						f.expression(value, proof)
+						if len(v.Values) == len(v.Names) {
+							if object := f.info.Defs[v.Names[i]]; object != nil {
+								v.Values[i] = f.require(value, object.Type(), proof)
+							}
+						}
 					}
 				}
 			}
@@ -207,6 +231,19 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 	case *ast.ReturnStmt:
 		for _, value := range s.Results {
 			f.expression(value, proof)
+		}
+		if f.results != nil {
+			index := 0
+			for _, field := range f.results.List {
+				count := len(field.Names)
+				if count == 0 {
+					count = 1
+				}
+				for j := 0; j < count && index < len(s.Results); j++ {
+					s.Results[index] = f.require(s.Results[index], f.info.TypeOf(field.Type), proof)
+					index++
+				}
+			}
 		}
 	case *ast.IfStmt:
 		proof = f.statement(s.Init, proof)
@@ -271,7 +308,7 @@ func (p *program) narrowFunction(typ *ast.FuncType, body *ast.BlockStmt, info *t
 	if body == nil {
 		return false
 	}
-	f := &nullableFlow{program: p, info: info, scope: info.Scopes[typ], unstable: map[types.Object]bool{}}
+	f := &nullableFlow{program: p, info: info, scope: info.Scopes[typ], results: typ.Results, unstable: map[types.Object]bool{}}
 	ast.Inspect(body, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.FuncLit:
