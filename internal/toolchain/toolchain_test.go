@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"go/version"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,16 @@ import (
 	"runtime"
 	"testing"
 )
+
+func TestToolchainMustMatchCompilerExportFormat(t *testing.T) {
+	minor := version.Lang(runtime.Version())
+	if !supportedVersion(minor + ".3") {
+		t.Fatal("compiler's own stable Go branch rejected")
+	}
+	if supportedVersion("go9.99.0") {
+		t.Fatal("future Go export format accepted")
+	}
+}
 
 func zipData(t *testing.T, name string, data []byte) []byte {
 	t.Helper()

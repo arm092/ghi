@@ -45,7 +45,11 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	defer os.RemoveAll(workspace)
-	if err := p.generate(workspace); err != nil {
+	goPath, err := (toolchain.Manager{Log: options.Log}).Ensure(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := p.generate(ctx, workspace, goPath); err != nil {
 		return Result{}, err
 	}
 	output := options.Output
@@ -75,10 +79,6 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	defer os.Remove(staging)
-	goPath, err := (toolchain.Manager{Log: options.Log}).Ensure(ctx)
-	if err != nil {
-		return Result{}, err
-	}
 	command := exec.CommandContext(ctx, goPath, "build", "-o", staging, ".")
 	command.Dir = workspace
 	command.Env = toolchain.Env()

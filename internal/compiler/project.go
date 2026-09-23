@@ -14,6 +14,7 @@ import (
 type sourceFile struct {
 	Path string
 	Tree *ast.File
+	Unit *unit
 }
 
 type namespace struct {
@@ -54,7 +55,7 @@ func loadProject(root string) (*program, error) {
 		if err != nil {
 			return err
 		}
-		name, tree, err := parseFile(p.Fset, path, data)
+		name, tree, unit, err := parseFile(p.Fset, path, data)
 		if err != nil {
 			return err
 		}
@@ -72,7 +73,12 @@ func loadProject(root string) (*program, error) {
 			p.Namespaces[name] = ns
 			p.Ordered = append(p.Ordered, ns)
 		}
-		ns.Files = append(ns.Files, &sourceFile{Path: path, Tree: tree})
+		source := &sourceFile{Path: path, Tree: tree, Unit: unit}
+		for _, class := range unit.Classes {
+			class.File = source
+			class.Namespace = ns
+		}
+		ns.Files = append(ns.Files, source)
 		return nil
 	})
 	if err != nil {

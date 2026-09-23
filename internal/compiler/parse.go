@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.File, error) {
+func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.File, *unit, error) {
 	// The declaration grammar starts with a namespace rather than a Go package.
 	// Go's scanner preserves comments, literals and automatic semicolon rules.
 	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
@@ -24,14 +24,14 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	}, 0)
 	pos, tok, lit := s.Scan()
 	if tok != token.IDENT || lit != "namespace" {
-		return "", nil, fmt.Errorf("%s: expected namespace declaration", scanSet.Position(pos))
+		return "", nil, nil, fmt.Errorf("%s: expected namespace declaration", scanSet.Position(pos))
 	}
 	start := file.Offset(pos)
 	var parts []string
 	for {
 		pos, tok, lit = s.Scan()
 		if tok != token.IDENT {
-			return "", nil, fmt.Errorf("%s: expected namespace identifier", scanSet.Position(pos))
+			return "", nil, nil, fmt.Errorf("%s: expected namespace identifier", scanSet.Position(pos))
 		}
 		parts = append(parts, lit)
 		pos, tok, _ = s.Scan()
@@ -40,17 +40,28 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 		}
 	}
 	if scanErr != nil {
-		return "", nil, scanErr
+		return "", nil, nil, scanErr
 	}
 	if tok != token.SEMICOLON && tok != token.EOF {
-		return "", nil, fmt.Errorf("%s: expected end of namespace declaration", scanSet.Position(pos))
+		return "", nil, nil, fmt.Errorf("%s: expected end of namespace declaration", scanSet.Position(pos))
 	}
 	name := strings.Join(parts, ".")
 	end := file.Offset(pos)
 	transformed := string(data[:start]) + "package " + parts[len(parts)-1] + string(data[end:])
-	tree, err := parser.ParseFile(fset, filename, transformed, parser.ParseComments|parser.AllErrors)
+	normalized, unit, err := extractExtensions(fset, filename, []byte(transformed))
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	return name, tree, nil
+	tree, err := parser.ParseFile(fset, filename, normalized, parser.ParseComments|parser.AllErrors)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	for _, decl := range tree.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			if meta := unit.Functions[fn.Name.Name]; meta != nil {
+				meta.Node = fn
+			}
+		}
+	}
+	return name, tree, unit, nil
 }

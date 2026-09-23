@@ -2,9 +2,9 @@ package compiler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"go/printer"
-	"go/token"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -67,11 +67,14 @@ func (p *program) resolveImports() error {
 	return nil
 }
 
-func (p *program) generate(dir string) error {
+func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	if err := p.resolveImports(); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+generatedModule+"\n\ngo 1.26.0\n"), 0644); err != nil {
+		return err
+	}
+	if err := p.lower(ctx, goPath, dir); err != nil {
 		return err
 	}
 	for _, ns := range p.Ordered {
@@ -82,19 +85,13 @@ func (p *program) generate(dir string) error {
 		if err := os.MkdirAll(target, 0755); err != nil {
 			return err
 		}
-		for _, file := range ns.Files {
+		for index, file := range ns.Files {
 			var buf bytes.Buffer
 			config := printer.Config{Mode: printer.SourcePos | printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 			if err := config.Fprint(&buf, p.Fset, file.Tree); err != nil {
 				return err
 			}
-			name := strings.TrimSuffix(filepath.Base(file.Path), ".ghi") + ".go"
-			if strings.HasSuffix(name, "_test.go") {
-				return fmt.Errorf("%s: source filenames ending in _test.ghi are reserved", file.Path)
-			}
-			if !token.IsIdentifier(strings.TrimSuffix(name, ".go")) {
-				return fmt.Errorf("%s: source filename must be an identifier", file.Path)
-			}
+			name := fmt.Sprintf("ghi_source_%d.go", index)
 			if err := os.WriteFile(filepath.Join(target, name), buf.Bytes(), 0644); err != nil {
 				return err
 			}

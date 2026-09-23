@@ -21,6 +21,18 @@ import (
 
 const MinimumVersion = "go1.26.0"
 
+// The in-process Go type importer must read export data from the same Go
+// language branch as the compiler binary. New Go branches can change its format.
+func languageVersion() string {
+	if v := version.Lang(runtime.Version()); v != "" {
+		return v
+	}
+	return version.Lang(MinimumVersion)
+}
+func supportedVersion(v string) bool {
+	return version.IsValid(v) && version.Compare(v, MinimumVersion) >= 0 && version.Lang(v) == languageVersion()
+}
+
 type Archive struct {
 	Filename string `json:"filename"`
 	OS       string `json:"os"`
@@ -68,7 +80,7 @@ func compatible(ctx context.Context, path string) bool {
 		return false
 	}
 	words := strings.Fields(string(out))
-	return len(words) >= 4 && words[0] == "go" && words[1] == "version" && version.IsValid(words[2]) && version.Compare(words[2], MinimumVersion) >= 0 && words[3] == runtime.GOOS+"/"+runtime.GOARCH
+	return len(words) >= 4 && words[0] == "go" && words[1] == "version" && supportedVersion(words[2]) && words[3] == runtime.GOOS+"/"+runtime.GOARCH
 }
 
 func (m Manager) Ensure(ctx context.Context) (string, error) {
@@ -79,7 +91,7 @@ func (m Manager) Ensure(ctx context.Context) (string, error) {
 				return "", err
 			}
 			if !compatible(ctx, absolute) {
-				return "", fmt.Errorf("GHI_GO does not identify a compatible Go executable (need %s or newer)", MinimumVersion)
+				return "", fmt.Errorf("GHI_GO does not identify a compatible Go executable (need %s.x to match this compiler)", languageVersion())
 			}
 			return absolute, nil
 		}
@@ -95,7 +107,7 @@ func (m Manager) Ensure(ctx context.Context) (string, error) {
 		m.CacheDir = filepath.Join(cache, "ghi", "toolchains", runtime.GOOS+"-"+runtime.GOARCH)
 	}
 	if m.MetadataURL == "" {
-		m.MetadataURL = "https://go.dev/dl/?mode=json"
+		m.MetadataURL = "https://go.dev/dl/?mode=json&include=all"
 	}
 	if m.DownloadURL == "" {
 		m.DownloadURL = "https://go.dev/dl/"
@@ -126,7 +138,7 @@ func (m Manager) Ensure(ctx context.Context) (string, error) {
 		return "", err
 	}
 	var releases []Release
-	err = json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&releases)
+	err = json.NewDecoder(io.LimitReader(response.Body, 32<<20)).Decode(&releases)
 	response.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("read Go release metadata: %w", err)
@@ -135,7 +147,7 @@ func (m Manager) Ensure(ctx context.Context) (string, error) {
 	var selected *Archive
 	releaseVersion := ""
 	for _, release := range releases {
-		if !release.Stable || !version.IsValid(release.Version) || version.Compare(release.Version, MinimumVersion) < 0 {
+		if !release.Stable || !supportedVersion(release.Version) {
 			continue
 		}
 		for _, archive := range release.Files {

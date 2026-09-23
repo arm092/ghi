@@ -91,3 +91,14 @@ func TestInvalidNamespaces(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceFilenamesDoNotBecomeGoBuildConstraints(t *testing.T) {
+	got := runProgram(t, map[string]string{
+		"main.ghi":           "namespace main\nfunc main(){ println(value()) }",
+		"helpers-darwin.ghi": "namespace main\nfunc value() int { return number() }",
+		"feature_darwin.ghi": "namespace main\nfunc number() int { return 42 }",
+	})
+	if got != "42\n" {
+		t.Fatalf("output %q", got)
+	}
+}

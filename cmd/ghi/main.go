@@ -37,7 +37,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
 		return 0
 	}
 	if args[0] == "version" {
@@ -86,6 +86,7 @@ func run(args []string) int {
 		return 0
 	}
 	command := exec.CommandContext(ctx, result.Executable, programArgs...)
+	command.Dir = dir
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := command.Run(); err != nil {
 		if exit, ok := err.(*exec.ExitError); ok {
