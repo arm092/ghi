@@ -1,0 +1,311 @@
+package compiler
+
+import (
+	"go/ast"
+	"go/token"
+	"go/types"
+)
+
+type nullProof map[types.Object]bool
+
+func (proof nullProof) clone() nullProof {
+	result := nullProof{}
+	for object, value := range proof {
+		result[object] = value
+	}
+	return result
+}
+func mergeProof(a, b nullProof) nullProof {
+	result := nullProof{}
+	for object := range a {
+		if b[object] {
+			result[object] = true
+		}
+	}
+	return result
+}
+
+type nullableFlow struct {
+	program  *program
+	info     *types.Info
+	unstable map[types.Object]bool
+	scope    *types.Scope
+	changed  bool
+}
+
+func (f *nullableFlow) object(expr ast.Expr) types.Object {
+	id, ok := expr.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	return f.info.ObjectOf(id)
+}
+func (f *nullableFlow) optional(expr ast.Expr) bool {
+	typ := f.info.TypeOf(expr)
+	if typ == nil {
+		return false
+	}
+	ptr, ok := types.Unalias(typ).(*types.Pointer)
+	return ok && f.program.classType(ptr.Elem()) != nil
+}
+func (f *nullableFlow) assume(expr ast.Expr, truth bool, proof nullProof) nullProof {
+	result := proof.clone()
+	switch e := expr.(type) {
+	case *ast.ParenExpr:
+		return f.assume(e.X, truth, proof)
+	case *ast.UnaryExpr:
+		if e.Op == token.NOT {
+			return f.assume(e.X, !truth, proof)
+		}
+	case *ast.BinaryExpr:
+		if e.Op == token.LAND && truth {
+			return f.assume(e.Y, true, f.assume(e.X, true, proof))
+		}
+		if e.Op == token.LOR && !truth {
+			return f.assume(e.Y, false, f.assume(e.X, false, proof))
+		}
+		if e.Op == token.EQL || e.Op == token.NEQ {
+			candidate := e.X
+			nilValue := e.Y
+			if id, ok := e.X.(*ast.Ident); ok && id.Name == "nil" {
+				candidate = e.Y
+				nilValue = e.X
+			}
+			id, ok := nilValue.(*ast.Ident)
+			object := f.object(candidate)
+			if ok && id.Name == "nil" && object != nil && f.optional(candidate) && !f.unstable[object] {
+				local := false
+				for scope := object.Parent(); scope != nil; scope = scope.Parent() {
+					if scope == f.scope {
+						local = true
+						break
+					}
+				}
+				if !local {
+					return result
+				}
+				// Package variables can be changed by any call, including a callback.
+				if object.Pkg() != nil && object.Parent() == object.Pkg().Scope() {
+					return result
+				}
+				if truth == (e.Op == token.NEQ) {
+					result[object] = true
+				} else {
+					delete(result, object)
+				}
+			}
+		}
+	}
+	return result
+}
+
+func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
+	switch e := expr.(type) {
+	case *ast.SelectorExpr:
+		f.expression(e.X, proof)
+		if f.optional(e.X) && proof[f.object(e.X)] {
+			e.X = &ast.StarExpr{X: e.X}
+			f.changed = true
+		}
+	case *ast.BinaryExpr:
+		f.expression(e.X, proof)
+		right := proof
+		if e.Op == token.LAND {
+			right = f.assume(e.X, true, proof)
+		}
+		if e.Op == token.LOR {
+			right = f.assume(e.X, false, proof)
+		}
+		f.expression(e.Y, right)
+	case *ast.CallExpr:
+		f.expression(e.Fun, proof)
+		for _, arg := range e.Args {
+			f.expression(arg, proof)
+		}
+	case *ast.ParenExpr:
+		f.expression(e.X, proof)
+	case *ast.UnaryExpr:
+		f.expression(e.X, proof)
+	case *ast.StarExpr:
+		f.expression(e.X, proof)
+	case *ast.IndexExpr:
+		f.expression(e.X, proof)
+		f.expression(e.Index, proof)
+	case *ast.IndexListExpr:
+		f.expression(e.X, proof)
+		for _, index := range e.Indices {
+			f.expression(index, proof)
+		}
+	case *ast.SliceExpr:
+		f.expression(e.X, proof)
+		f.expression(e.Low, proof)
+		f.expression(e.High, proof)
+		f.expression(e.Max, proof)
+	case *ast.TypeAssertExpr:
+		f.expression(e.X, proof)
+	case *ast.CompositeLit:
+		for _, value := range e.Elts {
+			f.expression(value, proof)
+		}
+	case *ast.KeyValueExpr:
+		f.expression(e.Key, proof)
+		f.expression(e.Value, proof)
+	case *ast.FuncLit:
+		if f.program.narrowFunction(e.Type, e.Body, f.info) {
+			f.changed = true
+		}
+	}
+}
+
+func (f *nullableFlow) block(body *ast.BlockStmt, proof nullProof) nullProof {
+	if body == nil {
+		return proof
+	}
+	for _, statement := range body.List {
+		proof = f.statement(statement, proof)
+	}
+	return proof
+}
+func (f *nullableFlow) invalidateWrites(node ast.Node, proof nullProof) {
+	ast.Inspect(node, func(n ast.Node) bool {
+		switch s := n.(type) {
+		case *ast.AssignStmt:
+			for _, lhs := range s.Lhs {
+				delete(proof, f.object(lhs))
+			}
+		case *ast.RangeStmt:
+			delete(proof, f.object(s.Key))
+			delete(proof, f.object(s.Value))
+		}
+		return true
+	})
+}
+func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof {
+	switch s := statement.(type) {
+	case *ast.BlockStmt:
+		return f.block(s, proof)
+	case *ast.ExprStmt:
+		f.expression(s.X, proof)
+	case *ast.AssignStmt:
+		for _, value := range s.Rhs {
+			f.expression(value, proof)
+		}
+		for _, lhs := range s.Lhs {
+			f.expression(lhs, proof)
+			delete(proof, f.object(lhs))
+		}
+	case *ast.DeclStmt:
+		if decl, ok := s.Decl.(*ast.GenDecl); ok {
+			for _, spec := range decl.Specs {
+				if v, ok := spec.(*ast.ValueSpec); ok {
+					for _, value := range v.Values {
+						f.expression(value, proof)
+					}
+				}
+			}
+		}
+	case *ast.ReturnStmt:
+		for _, value := range s.Results {
+			f.expression(value, proof)
+		}
+	case *ast.IfStmt:
+		proof = f.statement(s.Init, proof)
+		f.expression(s.Cond, proof)
+		yes := f.block(s.Body, f.assume(s.Cond, true, proof))
+		no := f.statement(s.Else, f.assume(s.Cond, false, proof))
+		if blockTerminates(s.Body.List) {
+			return no
+		}
+		if other, ok := s.Else.(*ast.BlockStmt); ok && blockTerminates(other.List) {
+			return yes
+		}
+		return mergeProof(yes, no)
+	case *ast.ForStmt:
+		proof = f.statement(s.Init, proof)
+		f.invalidateWrites(s, proof)
+		f.expression(s.Cond, proof)
+		body := f.block(s.Body, f.assume(s.Cond, true, proof))
+		f.statement(s.Post, body)
+	case *ast.RangeStmt:
+		f.expression(s.X, proof)
+		f.invalidateWrites(s, proof)
+		f.block(s.Body, proof.clone())
+	case *ast.IncDecStmt:
+		f.expression(s.X, proof)
+	case *ast.SendStmt:
+		f.expression(s.Chan, proof)
+		f.expression(s.Value, proof)
+	case *ast.GoStmt:
+		f.expression(s.Call, proof)
+	case *ast.DeferStmt:
+		f.expression(s.Call, proof)
+	case *ast.SwitchStmt:
+		proof = f.statement(s.Init, proof)
+		f.expression(s.Tag, proof)
+		f.invalidateWrites(s, proof)
+		f.block(s.Body, proof.clone())
+	case *ast.TypeSwitchStmt:
+		proof = f.statement(s.Init, proof)
+		f.statement(s.Assign, proof)
+		f.invalidateWrites(s, proof)
+		f.block(s.Body, proof.clone())
+	case *ast.SelectStmt:
+		f.invalidateWrites(s, proof)
+		f.block(s.Body, proof.clone())
+	case *ast.CaseClause:
+		for _, expr := range s.List {
+			f.expression(expr, proof)
+		}
+		f.block(&ast.BlockStmt{List: s.Body}, proof.clone())
+	case *ast.CommClause:
+		f.statement(s.Comm, proof)
+		f.block(&ast.BlockStmt{List: s.Body}, proof.clone())
+	case *ast.LabeledStmt:
+		// A jump can bypass a dominating nil check. Re-establish proof after labels.
+		return f.statement(s.Stmt, nullProof{})
+	}
+	return proof
+}
+
+func (p *program) narrowFunction(typ *ast.FuncType, body *ast.BlockStmt, info *types.Info) bool {
+	if body == nil {
+		return false
+	}
+	f := &nullableFlow{program: p, info: info, scope: info.Scopes[typ], unstable: map[types.Object]bool{}}
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.FuncLit:
+			ast.Inspect(n.Body, func(child ast.Node) bool {
+				if id, ok := child.(*ast.Ident); ok {
+					f.unstable[info.ObjectOf(id)] = true
+				}
+				return true
+			})
+			return false
+		case *ast.UnaryExpr:
+			if n.Op == token.AND {
+				f.unstable[f.object(n.X)] = true
+			}
+		}
+		return true
+	})
+	f.block(body, nullProof{})
+	return f.changed
+}
+
+func (p *program) narrowNullable(info *types.Info) bool {
+	changed := false
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			if file.Unit.Native {
+				continue
+			}
+			for _, decl := range file.Tree.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && p.narrowFunction(fn.Type, fn.Body, info) {
+					changed = true
+				}
+			}
+		}
+	}
+	return changed
+}

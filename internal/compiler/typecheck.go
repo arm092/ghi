@@ -146,10 +146,13 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		info := &types.Info{Types: map[ast.Expr]types.TypeAndValue{}, Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
+		info := &types.Info{Scopes: map[ast.Node]*types.Scope{}, Types: map[ast.Expr]types.TypeAndValue{}, Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
 		checker := &packageChecker{program: p, external: external, packages: map[string]*types.Package{}, info: info}
 		for _, ns := range p.Ordered {
 			checker.check(ns)
+		}
+		if p.narrowNullable(info) {
+			continue
 		}
 		if p.boxNullable(info) {
 			continue
