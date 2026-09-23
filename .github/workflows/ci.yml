@@ -35,13 +35,45 @@ jobs:
           "$hash  ghi.exe" | Set-Content install/ghi.sha256
           ./install/install.ps1 -InstallDir "$env:RUNNER_TEMP/ghi-installed" -NoPath
           & "$env:RUNNER_TEMP/ghi-installed/ghi.exe" run ./examples/hello
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $failureTarget = "$env:RUNNER_TEMP/ghi-failed-install"
+          New-Item -ItemType Directory -Path $failureTarget -Force | Out-Null
+          Set-Content "$failureTarget/ghi.exe" 'previous executable'
+          $env:GHI_GO = "$env:RUNNER_TEMP/missing-go.exe"
+          $rejected = $false
+          try { ./install/install.ps1 -InstallDir $failureTarget -NoPath } catch { $rejected = $true }
+          if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable') { throw 'Failed setup must preserve the previous executable.' }
+          # Remove every Go executable directory, then install into a fresh user cache.
+          $env:Path = (($env:Path -split ';') | Where-Object { $_ -and !(Test-Path -LiteralPath (Join-Path $_ 'go.exe')) }) -join ';'
+          $env:GHI_GO = ''
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP/ghi-fresh-user"
+          if (Get-Command go -ErrorAction SilentlyContinue) { throw 'Go must be absent from PATH for this check.' }
+          ./install/install.ps1 -InstallDir "$env:RUNNER_TEMP/ghi-with-managed-go" -NoPath
+          & "$env:RUNNER_TEMP/ghi-with-managed-go/ghi.exe" run ./examples/objects
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test macOS installer
         if: runner.os == 'macOS'
         run: |
           go build -o install/ghi ./cmd/ghi
           (cd install && shasum -a 256 ghi > ghi.sha256)
-          GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-installed" sh install/install.sh
+          GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-installed" sh install/install.sh
           "$RUNNER_TEMP/ghi-installed/ghi" run ./examples/hello
+          mkdir -p "$RUNNER_TEMP/ghi-failed-install"
+          printf 'previous executable\n' > "$RUNNER_TEMP/ghi-failed-install/ghi"
+          if GHI_GO="$RUNNER_TEMP/missing-go" GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-failed-install" sh install/install.sh; then exit 1; fi
+          test "$(cat "$RUNNER_TEMP/ghi-failed-install/ghi")" = 'previous executable'
+          export HOME="$RUNNER_TEMP/ghi-fresh-home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export SHELL=/bin/zsh
+          export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+          unset GHI_GO
+          mkdir -p "$HOME"
+          if command -v go; then echo 'Go must be absent from PATH for this check.'; exit 1; fi
+          GHI_INSTALL_DIR="$HOME/compiler bin" sh install/install.sh
+          GHI_INSTALL_DIR="$HOME/compiler bin" sh install/install.sh
+          /bin/zsh -ic 'command -v ghi; ghi version'
+          /bin/zsh -ic 'ghi run ./examples/objects'
+          test "$(grep -Fc '# Ghi compiler' "$HOME/.zshrc")" = 1
 
   package:
     needs: test

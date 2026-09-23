@@ -15,11 +15,11 @@ if ($expected -notmatch '^[a-fA-F0-9]{64}$' -or $actual -ne $expected) {
     throw 'Ghi executable checksum mismatch.'
 }
 $targetDirectory = [IO.Path]::GetFullPath($InstallDir)
+& $binary setup
+if ($LASTEXITCODE -ne 0) { throw 'Go setup failed. The installed Ghi executable has not been replaced. Retry this installer when setup is available.' }
 New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
 $target = Join-Path $targetDirectory 'ghi.exe'
 Copy-Item -LiteralPath $binary -Destination $target -Force
-& $target setup
-if ($LASTEXITCODE -ne 0) { throw 'Ghi was copied, but Go setup failed. Run ghi setup to retry.' }
 if (!$NoPath) {
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $entries = @($userPath -split ';' | Where-Object { $_ })
