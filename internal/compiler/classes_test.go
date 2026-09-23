@@ -48,6 +48,8 @@ func TestClassRulesRejectInvalidPrograms(t *testing.T) {
 		"missing parent arguments": `class Parent { constructor(n int) {} }; class Child extends Parent { constructor() {} }; func main(){}`,
 		"interface missing method": `interface Named { func name() string }; class Item implements Named {}; func main(){}`,
 		"overload":                 `class Item { func f() {}; func f(n int) {} }; func main(){}`,
+		"private interface":        `interface Named { private func name() string }; func main(){}`,
+		"protected interface":      `interface Named { protected func name() string }; func main(){}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\n" + body})})
@@ -58,6 +60,36 @@ func TestClassRulesRejectInvalidPrograms(t *testing.T) {
 				t.Fatalf("class syntax not implemented: %v", err)
 			}
 		})
+	}
+}
+
+func TestOverrideResultNamesAreNotPartOfSignature(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+interface Named { func name() (label string) }
+class Parent { public func name() (result string) { return "parent" } }
+class Child extends Parent implements Named {
+ public override func name() string { return "child" }
+}
+func main() { var p Parent = Child(); fmt.Println(p.name()) }
+`})
+	if got != "child\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestNamespaceIdentityCannotCollide(t *testing.T) {
+	_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{
+		"main.ghi": `namespace main
+import one "a.b"
+import two "a_b"
+func main() { var wrong one.Item = two.Item(); _ = wrong }
+`,
+		"one/item.ghi": "namespace a.b\nclass Item {}",
+		"two/item.ghi": "namespace a_b\nclass Item {}",
+	})})
+	if err == nil {
+		t.Fatal("unrelated nominal classes accepted as the same type")
 	}
 }
 

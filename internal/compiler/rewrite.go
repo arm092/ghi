@@ -113,7 +113,8 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 											get := &ast.CallExpr{Fun: &ast.SelectorExpr{X: ast.NewIdent(name), Sel: ast.NewIdent(fieldGet(field))}}
 											set := &ast.CallExpr{Fun: &ast.SelectorExpr{X: ast.NewIdent(name), Sel: ast.NewIdent(fieldSet(field))}, Args: []ast.Expr{&ast.BinaryExpr{X: get, Op: op, Y: n.Rhs[0]}}}
 											changed = true
-											return &ast.BlockStmt{List: []ast.Stmt{&ast.AssignStmt{Lhs: []ast.Expr{ast.NewIdent(name)}, Tok: token.DEFINE, Rhs: []ast.Expr{selector.X}}, &ast.ExprStmt{X: set}}}
+											body := &ast.BlockStmt{List: []ast.Stmt{&ast.AssignStmt{Lhs: []ast.Expr{ast.NewIdent(name)}, Tok: token.DEFINE, Rhs: []ast.Expr{selector.X}}, &ast.ExprStmt{X: set}}}
+											return &ast.ExprStmt{X: &ast.CallExpr{Fun: &ast.FuncLit{Type: &ast.FuncType{Params: &ast.FieldList{}}, Body: body}}}
 										}
 										changed = true
 										return &ast.ExprStmt{X: &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldSet(field))}, Args: n.Rhs}}

@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -101,7 +102,7 @@ func (c *classDecl) allMethods() []*functionDecl {
 	return result
 }
 func (c *classDecl) key() string {
-	return strings.ReplaceAll(c.Namespace.Name, ".", "_") + "_" + c.Name
+	return hex.EncodeToString([]byte(c.Namespace.Name)) + "_" + c.Name
 }
 func fieldGet(f *fieldDecl) string    { return "GhiGet_" + f.Owner.key() + "_" + f.Name }
 func fieldSet(f *fieldDecl) string    { return "GhiSet_" + f.Owner.key() + "_" + f.Name }
@@ -211,7 +212,19 @@ func (p *program) signature(f *functionDecl, where *classDecl) string {
 			parts = append(parts, p.typeText(param.Type, f.Owner, where.File, where.Namespace))
 		}
 	}
-	return strings.Join(parts, ",") + "->" + p.results(f, where.File, where.Namespace)
+	var results []string
+	if f.Node.Type.Results != nil {
+		for _, field := range f.Node.Type.Results.List {
+			count := len(field.Names)
+			if count == 0 {
+				count = 1
+			}
+			for i := 0; i < count; i++ {
+				results = append(results, p.typeText(field.Type, f.Owner, where.File, where.Namespace))
+			}
+		}
+	}
+	return strings.Join(parts, ",") + "->" + strings.Join(results, ",")
 }
 func visibilityRank(value string) int {
 	switch value {

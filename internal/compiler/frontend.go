@@ -302,6 +302,9 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			i++
 		}
 		first := tokens[i]
+		if class.Interface && (visibility != "public" || override) {
+			return fmt.Errorf("%s:%d: interface methods must be public and cannot override", filename, first.Line)
+		}
 		if first.Kind == token.FUNC || first.Text == "constructor" {
 			name := "constructor"
 			if first.Kind == token.FUNC {

@@ -33,9 +33,14 @@ import fmt "go:fmt"
 var calls int
 class Counter { public value int }
 func pick(c Counter) Counter { calls++; return c }
-func main() { c:=Counter(); pick(c).value += 2; pick(c).value++; fmt.Println(c.value,calls) }
+func main() {
+ c:=Counter(); pick(c).value += 2; pick(c).value++
+ for ; c.value < 5; pick(c).value++ {}
+ for ; c.value < 9; pick(c).value += 2 {}
+ fmt.Println(c.value,calls)
+}
 `})
-	if got != "3 2\n" {
+	if got != "9 6\n" {
 		t.Fatalf("output %q", got)
 	}
 }
