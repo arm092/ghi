@@ -26,7 +26,7 @@ func (loader *exportLoader) open(path string) (io.ReadCloser, error) {
 	if file := loader.exports[path]; file != "" {
 		return os.Open(file)
 	}
-	command := exec.CommandContext(loader.ctx, loader.goPath, "list", "-deps", "-export", "-json", path)
+	command := exec.CommandContext(loader.ctx, loader.goPath, "list", "-mod=readonly", "-deps", "-export", "-json", path)
 	command.Dir = loader.dir
 	command.Env = toolchain.Env()
 	output, err := command.Output()

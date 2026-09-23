@@ -74,7 +74,7 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	if err := p.resolveImports(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+generatedModule+"\n\ngo 1.26.0\n"), 0644); err != nil {
+	if err := p.stageDependencies(ctx, dir, goPath); err != nil {
 		return err
 	}
 	if err := p.lower(ctx, goPath, dir); err != nil {

@@ -79,7 +79,7 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	defer os.Remove(staging)
-	command := exec.CommandContext(ctx, goPath, "build", "-o", staging, ".")
+	command := exec.CommandContext(ctx, goPath, "build", "-mod=readonly", "-o", staging, ".")
 	command.Dir = workspace
 	command.Env = toolchain.Env()
 	log, err := command.CombinedOutput()
