@@ -1,0 +1,119 @@
+package compiler
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"path/filepath"
+	"strings"
+)
+
+const runtimeNamespace = "ghi.runtime"
+
+const runtimeClasses = `namespace ghi.runtime
+class Exception {
+ public message string
+ constructor(message string = "") { this.message = message }
+ public func Error() string { return this.message }
+}
+class GoError extends Exception {
+ public cause error
+ constructor(cause error) { parent(cause.Error()); this.cause = cause }
+}
+`
+
+const runtimeCode = `package runtime
+type raised struct { value Exception }
+func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
+func Raise(value Exception) any { return raised{value} }
+func Throw(value Exception) { panic(raised{value}) }
+func Try(body func(), handler func(Exception), finalizer func()) {
+ if finalizer != nil { defer finalizer() }
+ if handler != nil {
+  defer func() {
+   value:=recover()
+   if value == nil { return }
+   if exception,ok:=value.(raised);ok { handler(exception.value) } else { panic(value) }
+  }()
+ }
+ body()
+}
+func Check(err error) { if err != nil { Throw(GhiNew_GoError(err)) } }
+`
+
+func (p *program) addRuntime() error {
+	if p.Namespaces[runtimeNamespace] != nil {
+		return fmt.Errorf("namespace %s is reserved", runtimeNamespace)
+	}
+	filename := filepath.Join(p.Root, ".ghi-runtime.ghi")
+	_, tree, unit, err := parseFile(p.Fset, filename, []byte(runtimeClasses))
+	if err != nil {
+		return err
+	}
+	ns := &namespace{Name: runtimeNamespace, Dir: filepath.Join(p.Root, ".ghi-runtime"), GoName: "runtime"}
+	file := &sourceFile{Path: filename, Tree: tree, Unit: unit}
+	for _, c := range unit.Classes {
+		c.Namespace = ns
+		c.File = file
+	}
+	native, err := parser.ParseFile(p.Fset, filename+".native", runtimeCode, parser.AllErrors|parser.SkipObjectResolution)
+	if err != nil {
+		return err
+	}
+	ns.Files = []*sourceFile{file, {Path: filename + ".native", Tree: native, Unit: &unitDataNative}}
+	p.Namespaces[ns.Name] = ns
+	p.Ordered = append(p.Ordered, ns)
+	p.Runtime = ns
+	p.Wrapped = map[*ast.CallExpr]bool{}
+	p.Helpers = map[int]bool{}
+	for _, other := range p.Ordered {
+		if other == ns {
+			continue
+		}
+		content := fmt.Sprintf("package %s\nimport ghi_runtime \"go:%s/ghi/runtime\"\ntype Exception = ghi_runtime.Exception\ntype GoError = ghi_runtime.GoError\n", other.GoName, generatedModule)
+		tree, err := parser.ParseFile(p.Fset, filename+".aliases", content, parser.AllErrors|parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		other.Files = append(other.Files, &sourceFile{Path: filename + ".aliases", Tree: tree, Unit: &unitDataNative})
+	}
+	return nil
+}
+
+var unitDataNative = unit{Native: true, Functions: map[string]*functionDecl{}}
+
+func (p *program) runtimeSymbol(name string, file *sourceFile, ns *namespace) string {
+	if ns == p.Runtime {
+		return name
+	}
+	alias := p.importAlias(nil, file, namespacePath(p.Runtime), "runtime")
+	return alias + "." + name
+}
+
+func (p *program) ensureErrorHelper(count int) string {
+	if count == 0 {
+		return "Check"
+	}
+	name := fmt.Sprintf("Must%d", count)
+	if p.Helpers[count] {
+		return name
+	}
+	p.Helpers[count] = true
+	var generics, params, results, values []string
+	for i := 0; i < count; i++ {
+		typ := fmt.Sprintf("T%d", i)
+		value := fmt.Sprintf("v%d", i)
+		generics = append(generics, typ+" any")
+		params = append(params, value+" "+typ)
+		results = append(results, typ)
+		values = append(values, value)
+	}
+	params = append(params, "err error")
+	source := fmt.Sprintf("package runtime\nfunc %s[%s](%s)(%s){Check(err);return %s}", name, strings.Join(generics, ","), strings.Join(params, ","), strings.Join(results, ","), strings.Join(values, ","))
+	tree, err := parser.ParseFile(p.Fset, "ghi-runtime-helper", source, parser.SkipObjectResolution)
+	if err != nil {
+		panic(err)
+	}
+	p.Runtime.Files[1].Tree.Decls = append(p.Runtime.Files[1].Tree.Decls, tree.Decls...)
+	return name
+}

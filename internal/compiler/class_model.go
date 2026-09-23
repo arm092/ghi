@@ -28,6 +28,9 @@ func (p *program) classNamed(name string, file *sourceFile, ns *namespace) *clas
 	}
 	alias, local, ok := strings.Cut(name, ".")
 	if !ok {
+		if name == "Exception" || name == "GoError" {
+			return classes[runtimeNamespace+"."+name]
+		}
 		return nil
 	}
 	for _, spec := range file.Tree.Imports {

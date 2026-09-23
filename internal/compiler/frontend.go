@@ -43,6 +43,7 @@ type classDecl struct {
 	Interfaces     []*classDecl
 }
 type unit struct {
+	Native    bool
 	Classes   []*classDecl
 	Functions map[string]*functionDecl
 }
@@ -166,7 +167,11 @@ func parseFunction(fset *token.FileSet, filename, name, parameters, tail string,
 	if err != nil {
 		return nil, err
 	}
-	text := fmt.Sprintf("package parsed\n//line %s:%d\nfunc %s(%s)%s", filename, line, name, params, tail)
+	normalized, err := normalizeExceptions(filename, []byte(tail))
+	if err != nil {
+		return nil, err
+	}
+	text := fmt.Sprintf("package parsed\n//line %s:%d\nfunc %s(%s)%s", filename, line, name, params, normalized)
 	tree, err := parser.ParseFile(fset, filename, text, parser.AllErrors)
 	if err != nil {
 		return nil, err
@@ -196,7 +201,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 		if t.Kind != token.IDENT {
 			continue
 		}
-		for _, prefix := range []string{"GhiGet_", "GhiSet_", "GhiM_", "GhiBody_", "GhiNew_", "GhiInit_", "GhiIs_", "ghiData_", "ghi_dependency_", "ghi_receiver_"} {
+		for _, prefix := range []string{"GhiGet_", "GhiSet_", "GhiM_", "GhiBody_", "GhiNew_", "GhiInit_", "GhiIs_", "GhiTry", "GhiThrow", "ghiData_", "ghi_"} {
 			if strings.HasPrefix(t.Text, prefix) {
 				return nil, nil, fmt.Errorf("%s:%d: identifier %s is reserved for the compiler", filename, t.Line, t.Text)
 			}

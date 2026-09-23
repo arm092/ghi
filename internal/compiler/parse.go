@@ -52,6 +52,10 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	if err != nil {
 		return "", nil, nil, err
 	}
+	normalized, err = normalizeExceptions(filename, normalized)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	tree, err := parser.ParseFile(fset, filename, normalized, parser.ParseComments|parser.AllErrors)
 	if err != nil {
 		return "", nil, nil, err

@@ -1,0 +1,41 @@
+namespace main
+
+import fmt "go:fmt"
+import net "go:net"
+import http "go:net/http"
+import os "go:os"
+
+class GreetingService {
+    prefix string
+
+    constructor(prefix string = "Hello") {
+        this.prefix = prefix
+    }
+
+    public func greet(name string) string {
+        if name == "" {
+            throw Exception("name is required")
+        }
+        return this.prefix + ", " + name + "!"
+    }
+}
+
+func main() {
+    service := GreetingService()
+    mux := http.NewServeMux()
+    mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+        try {
+            fmt.Fprintln(w, service.greet(r.URL.Query().Get("name")))
+        } catch err Exception {
+            http.Error(w, err.message, http.StatusBadRequest)
+        }
+    })
+
+    address := "127.0.0.1:8080"
+    if len(os.Args) > 1 {
+        address = os.Args[1]
+    }
+    listener := net.Listen("tcp", address)
+    fmt.Println(listener.Addr().String())
+    http.Serve(listener, mux)
+}

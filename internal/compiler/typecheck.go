@@ -105,6 +105,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 	if err := p.prepareClasses(); err != nil {
 		return err
 	}
+	if err := p.lowerControl(); err != nil {
+		return err
+	}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
 			for _, c := range file.Unit.Classes {
