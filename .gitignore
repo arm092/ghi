@@ -1,0 +1,9 @@
+.work/
+bin/
+.ghi/
+*.exe
+*.test
+*.md
+dist/
+install/ghi
+install/ghi.sha256
