@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "am.ghi"
-version = "0.1.0-preview.6"
+version = "0.1.0-preview.7"
 
 repositories {
     mavenCentral()

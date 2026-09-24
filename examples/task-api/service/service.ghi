@@ -12,7 +12,7 @@ class Service {
 	public func Add(title string) store.Task {
 		title = strings.TrimSpace(title)
 		if title == "" || utf8.RuneCountInString(title) > 200 {
-			throw ValidationError("title must contain between 1 and 200 characters")
+			throw new ValidationError("title must contain between 1 and 200 characters")
 		}
 		return this.repository.Add(title)
 	}

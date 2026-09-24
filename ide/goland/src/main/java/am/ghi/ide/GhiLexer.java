@@ -13,7 +13,7 @@ public final class GhiLexer extends LexerBase {
     private static IElementType type(String name) { return new IElementType(name,GhiLanguage.INSTANCE); }
     private static final Set<String> KEYWORDS=Set.of(
         "namespace","import","class","interface","extends","implements","constructor","override",
-        "public","private","protected","this","parent","try","catch","finally","throw",
+        "new","public","private","protected","this","parent","try","catch","finally","throw",
         "break","case","chan","const","continue","default","defer","else","fallthrough","for",
         "func","go","goto","if","map","range","return","select","struct","switch","type","var",
         "nil","true","false");

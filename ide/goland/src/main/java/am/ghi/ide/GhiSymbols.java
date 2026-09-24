@@ -20,7 +20,7 @@ final class GhiSymbols {
         Symbol(String name,String kind,int offset,PsiFile file,Scope scope) {
             this.name=name;this.kind=kind;this.offset=offset;this.file=file;this.scope=scope;
         }
-        PsiElement psi() { return PsiTreeUtil.getParentOfType(file.findElementAt(offset),GhiIdentifier.class,false); }
+        PsiElement psi() { if(offset<0)return null;return PsiTreeUtil.getParentOfType(file.findElementAt(offset),GhiIdentifier.class,false); }
     }
     static final class Source {
         PsiFile file; String namespace=""; List<Token> tokens=new ArrayList<>();
@@ -128,7 +128,7 @@ final class GhiSymbols {
     private static int find(List<Token> ts,int start,String text,Set<String> stop){for(int i=start;i<ts.size();i++){if(is(ts,i,text))return i;if(stop.contains(ts.get(i).text))break;}return -1;}
     private static int findOnLine(List<Token> ts,int start,String value,String text){for(int i=start;i<ts.size();i++){if(i>0&&lineBreak(text,ts.get(i-1).end,ts.get(i).start))break;if(is(ts,i,value))return i;if(is(ts,i,"}"))break;}return -1;}
     static int matching(List<Token> ts,int start,String open,String close){int depth=0;for(int i=start;i<ts.size();i++){if(is(ts,i,open))depth++;if(is(ts,i,close)&&--depth==0)return i;}return -1;}
-    private static String typeAt(List<Token> ts,int index){while(is(ts,index,"?")||is(ts,index,"*"))index++;return index<ts.size()&&ts.get(index).identifier?qualified(ts,index):"";}
+    private static String typeAt(List<Token> ts,int index){while(is(ts,index,"new")||is(ts,index,"?")||is(ts,index,"*"))index++;return index<ts.size()&&ts.get(index).identifier?qualified(ts,index):"";}
     private static String qualified(List<Token> ts,int index){StringBuilder name=new StringBuilder();while(index<ts.size()&&ts.get(index).identifier){name.append(ts.get(index++).text);if(!is(ts,index,".")||index+1>=ts.size()||!ts.get(index+1).identifier)break;name.append('.');index++;}return name.toString();}
     private static String visibility(List<Token> ts,int index){for(int i=index-1;i>=Math.max(0,index-3);i--){String word=ts.get(i).text;if(Set.of("public","private","protected").contains(word))return word;if(!word.equals("override"))break;}return "private";}
     private boolean sameNamespace(PsiFile first,PsiFile second){return sources.get(first).namespace.equals(sources.get(second).namespace);}
@@ -158,7 +158,7 @@ final class GhiSymbols {
     }
     private Symbol receiver(Source s,int index,Set<Integer> visited){
         if(index<0)return null;
-        if(is(s.tokens,index,")")){int depth=1;for(int i=index-1;i>=0;i--){if(is(s.tokens,i,")"))depth++;if(is(s.tokens,i,"(")&&--depth==0){Symbol call=resolveToken(s,i-1,visited);return call==null?null:asType(call,s.file);}}return null;}
+        if(is(s.tokens,index,")")){int depth=1;for(int i=index-1;i>=0;i--){if(is(s.tokens,i,")"))depth++;if(is(s.tokens,i,"(")&&--depth==0){Symbol call=resolveToken(s,calleeIndex(s.tokens,i-1),visited);return call==null?null:asType(call,s.file);}}return null;}
         return resolveToken(s,index,visited);
     }
     private Symbol imported(Source s,Symbol alias,String name){
@@ -182,25 +182,61 @@ final class GhiSymbols {
     List<Symbol> complete(PsiFile file,int offset){
         Source s=sources.get(file);int index=0;while(index<s.tokens.size()&&s.tokens.get(index).end<=offset)index++;
         int dot=is(s.tokens,index-1,".")?index-1:is(s.tokens,index-2,".")?index-2:-1;
+        boolean construction=constructionContext(s,index);
         LinkedHashMap<String,Symbol> result=new LinkedHashMap<>();
         if(dot>=0){Symbol receiver=receiver(s,dot-1,new HashSet<>());if(receiver==null)return List.of();
             if(receiver.kind.equals("import")){
                 if(receiver.importNamespace.startsWith("go:"))return List.of();
                 for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!symbol.kind.equals("import")&&sources.get(symbol.file).namespace.equals(receiver.importNamespace))result.putIfAbsent(symbol.name,symbol);
-                return new ArrayList<>(result.values());
+                return completionValues(result,construction,file);
             }
             Symbol cls=asType(receiver,file);Set<Symbol> visited=new HashSet<>();Symbol current=enclosingClass(s.scope(offset));
             while(cls!=null&&visited.add(cls)){for(Symbol symbol:symbols)if(symbol.scope==cls.body&&!symbol.kind.equals("constructor")
                 &&(!symbol.visibility.equals("private")||cls==current)&&(!symbol.visibility.equals("protected")||inherits(current,cls,new HashSet<>())))result.putIfAbsent(symbol.name,symbol);cls=type(cls.base,cls.file);}
         }else{
+
             for(Scope scope=s.scope(offset);scope!=null;scope=scope.parent)for(Symbol symbol:symbols)if(symbol.file==file&&symbol.scope==scope&&(!symbol.kind.equals("local")||symbol.offset<offset))result.putIfAbsent(symbol.name,symbol);
             for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!symbol.kind.equals("import")&&sameNamespace(file,symbol.file))result.putIfAbsent(symbol.name,symbol);
+            for(String name:List.of("Exception","GoError","StackFrame"))result.putIfAbsent(name,builtin(name,file));
         }
-        return new ArrayList<>(result.values());
+        return completionValues(result,construction,file);
     }
-    record Call(Symbol symbol,int open,int parameter) {}
+    private static int calleeIndex(List<Token> tokens,int index){
+        if(is(tokens,index,"]")){
+            int depth=1;
+            for(int i=index-1;i>=0;i--){if(is(tokens,i,"]"))depth++;if(is(tokens,i,"[")&&--depth==0)return i-1;}
+        }
+        return index;
+    }
+    private static boolean constructionContext(Source source,int index){
+        var tokens=source.tokens;
+        if(index>=tokens.size()||!tokens.get(index).identifier)index--;
+        while(index>=0){
+            if(is(tokens,index,"new"))return true;
+            if(!tokens.get(index).identifier&&!is(tokens,index,"."))return false;
+            index--;
+        }
+        return false;
+    }
+    private static Symbol builtin(String name,PsiFile file){
+        List<String> parameters=switch(name){
+            case "Exception"->List.of("message string = \"\"","code int = 0");
+            case "GoError"->List.of("cause error","code int = 0");
+            case "StackFrame"->List.of("functionName string","file string","line int");
+            default->null;
+        };
+        if(parameters==null)return null;
+        Symbol symbol=new Symbol(name,"class",-1,file,null);symbol.parameters=parameters;return symbol;
+    }
+    private static List<Symbol> completionValues(LinkedHashMap<String,Symbol> values,boolean construction,PsiFile file){
+        if(construction)values.values().removeIf(symbol->!symbol.kind.equals("class")&&!symbol.kind.equals("import"));
+        return new ArrayList<>(values.values());
+    }    record Call(Symbol symbol,int open,int parameter) {}
     Call callAt(PsiFile file,int offset){Source s=sources.get(file);Deque<Integer> stack=new ArrayDeque<>();for(int i=0;i<s.tokens.size()&&s.tokens.get(i).start<offset;i++){if(is(s.tokens,i,"("))stack.push(i);else if(is(s.tokens,i,")")&&!stack.isEmpty())stack.pop();}
-        if(stack.isEmpty())return null;int open=stack.peek();Symbol callable=resolveToken(s,open-1,new HashSet<>());if(callable==null)return null;
+        if(stack.isEmpty())return null;int open=stack.peek();int callee=calleeIndex(s.tokens,open-1);
+        Symbol callable=resolveToken(s,callee,new HashSet<>());
+        if(callable==null && callee>=0 && !is(s.tokens,callee-1,"."))callable=builtin(s.tokens.get(callee).text,file);
+        if(callable==null)return null;
         if(callable.kind.equals("class")){Symbol ctor=member(callable,"constructor",new HashSet<>());if(ctor!=null)callable=ctor;}
         int parameter=0,depth=0;for(int i=open+1;i<s.tokens.size()&&s.tokens.get(i).start<offset;i++){String token=s.tokens.get(i).text;if(Set.of("(","[","{").contains(token))depth++;if(Set.of(")","]","}").contains(token))depth--;if(token.equals(",")&&depth==0)parameter++;}
         return new Call(callable,s.tokens.get(open).start,parameter);

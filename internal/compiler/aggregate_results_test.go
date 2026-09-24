@@ -33,15 +33,15 @@ class User {public func name()string{return "user"}}
 type Record struct {user User}
 func consume(value Record){fmt.Println(value.user.name())}
 func main(){
- values:=map[string]Record{"present":{user:User()}}
+ values:=map[string]Record{"present":{user:new User()}}
  value:=values["present"];if value!=nil{consume(value)}
  missing:=values["missing"];fmt.Println(missing==nil)
- channel:=make(chan Record,1);channel<-Record{user:User()};close(channel)
+ channel:=make(chan Record,1);channel<-Record{user:new User()};close(channel)
  received:=<-channel;if received!=nil{fmt.Println(received.user.name())}
  select{case empty,ok:=<-channel:fmt.Println(empty==nil,ok)}
- var source any=Record{user:User()};cast,ok:=source.(Record)
+ var source any=Record{user:new User()};cast,ok:=source.(Record)
  if ok && cast!=nil{consume(cast)}
- arrays:=map[string][1]User{"present":{User()}}
+ arrays:=map[string][1]User{"present":{new User()}}
  array:=arrays["present"];if array!=nil{fmt.Println(array[0].name()); _=array[:]; for _,user:=range array{_=user.name()}}
 }
 `})

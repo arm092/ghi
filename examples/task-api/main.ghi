@@ -13,9 +13,9 @@ func main() {
 	if path == "" { path = "tasks.db" }
 	address := os.Getenv("GHI_TASK_ADDR")
 	if address == "" { address = "127.0.0.1:8080" }
-	database := store.Store(path)
+	database := new store.Store(path)
 	defer database.Close()
-	handler := httpapi.Handler(service.Service(database))
+	handler := new httpapi.Handler(new service.Service(database))
 	server := & http.Server { Addr: address, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, Handler: http.HandlerFunc(func (w http.ResponseWriter, r * http.Request) { handler.Serve(w, r) }) }
 	fmt.Println("Task API listening on", address)
 	server.ListenAndServe()

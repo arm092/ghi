@@ -17,7 +17,7 @@ func main() {
     var numeric int64
     for i := 0; i < count; i++ { numeric += int64(i & 255) }
     numericNS := time.Since(start).Nanoseconds()
-    counter := Counter()
+    counter := new Counter()
     start = time.Now()
     for i := 0; i < count; i++ { counter.add(int64(i & 255)) }
     objectNS := time.Since(start).Nanoseconds()

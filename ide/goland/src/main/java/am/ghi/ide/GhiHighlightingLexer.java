@@ -63,6 +63,11 @@ public final class GhiHighlightingLexer extends LexerBase {
                     if(body<words.size())classMembers.set(body+1,close[body]<0?words.size():close[body]);
                 }
             }
+            if(t.equals("new") && id(i+1)){
+                int name=i+1;
+                while(text(name+1).equals(".") && id(name+2)){color(name,NAMESPACE);name+=2;}
+                color(name,TYPE);
+            }
             if(t.equals("namespace"))for(int j=i+1;j<words.size() && !newline(j-1,j) && !text(j).equals(";");j++)if(id(j))color(j,NAMESPACE);
             if(t.equals("import") && id(i+1)){namespaces.add(text(i+1));color(i+1,NAMESPACE);}
             if(t.equals("const") && id(i+1)){constants.add(text(i+1));color(i+1,CONSTANT);}

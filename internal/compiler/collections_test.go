@@ -12,12 +12,12 @@ class User {public name string;constructor(name string){this.name=name}}
 var calls int
 func key()string{calls++;return "one"}
 func main(){
- users:=map[string]User{"one":User("Ada")}
+ users:=map[string]User{"one":new User("Ada")}
  user:=users[key()]
  if user!=nil {fmt.Println(user.name)}
  missing,ok:=users["missing"]
  fmt.Println(missing==nil,ok,calls)
- users["two"]=User("Arman")
+ users["two"]=new User("Arman")
  second,found:=users["two"]
  if found && second!=nil {fmt.Println(second.name)}
 }
@@ -33,11 +33,11 @@ func TestCollectionZeroValuesCannotCreateNonnullObjects(t *testing.T) {
 		"slice make":     `items:=make([]User,1);_=items`,
 		"slice nil":      `items:=[]User{nil};_=items`,
 		"array zero":     `var items [1]User;_=items`,
-		"array hole":     `items:=[2]User{User()};_=items`,
-		"slice hole":     `items:=[]User{2:User()};_=items`,
+		"array hole":     `items:=[2]User{new User()};_=items`,
+		"slice hole":     `items:=[]User{2:new User()};_=items`,
 		"map nil":        `items:=map[string]User{"x":nil};_=items`,
 		"append nil":     `items:=[]User{};items=append(items,nil);_=items`,
-		"clear slice":    `items:=[]User{User()};clear(items)`,
+		"clear slice":    `items:=[]User{new User()};clear(items)`,
 		"struct zero":    `var item struct{user User};_=item`,
 		"struct omitted": `item:=struct{user User}{};_=item`,
 		"new struct":     `item:=new(struct{user User});_=item`,
@@ -58,9 +58,9 @@ import fmt "go:fmt"
 class User {public name string;constructor(name string){this.name=name}}
 func main(){
  users:=make([]User,0,8)
- users=append(users,User("Ada"))
- array:=[2]User{User("one"),User("two")}
- item:=struct{user User}{user:User("Arman")}
+ users=append(users,new User("Ada"))
+ array:=[2]User{new User("one"),new User("two")}
+ item:=struct{user User}{user:new User("Arman")}
  fmt.Println(users[0].name,array[1].name,item.user.name,len(users[:]))
  func(){defer func(){fmt.Println(recover()!=nil)}();_=users[:2]}()
 }
@@ -76,13 +76,13 @@ func TestNullableCollectionLiteralsAndReferenceEquality(t *testing.T) {
 import fmt "go:fmt"
 class User { public name string;constructor(name string){this.name=name} }
 func main(){
- object:=User("Ada")
+ object:=new User("Ada")
  values:=[]?User{object,nil}
  mapping:=map[string]?User{"present":object,"absent":nil}
  aggregate:=struct{value ?User}{value:object}
  var left ?User=object
  var right ?User=object
- var different ?User=User("Ada")
+ var different ?User=new User("Ada")
  var empty ?User
  fmt.Println(left==right,left!=different,empty==nil,values[0]==mapping["present"],aggregate.value==left)
  snapshot:=values[0]

@@ -8,7 +8,7 @@ func TestDefaultsAcrossFilesInterfacesAndImplicitParent(t *testing.T) {
 import fmt "go:fmt"
 import models "models"
 class Child extends models.Parent {}
-func main() { var p models.Named = Child(); fmt.Println(p.label(), message()) }
+func main() { var p models.Named = new Child(); fmt.Println(p.label(), message()) }
 `,
 		"message.ghi": `namespace main
 func message(value string = "default") string { return value }
@@ -34,7 +34,7 @@ var calls int
 class Counter { public value int }
 func pick(c Counter) Counter { calls++; return c }
 func main() {
- c:=Counter(); pick(c).value += 2; pick(c).value++
+ c:=new Counter(); pick(c).value += 2; pick(c).value++
  for ; c.value < 5; pick(c).value++ {}
  for ; c.value < 9; pick(c).value += 2 {}
  fmt.Println(c.value,calls)

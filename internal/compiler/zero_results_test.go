@@ -11,8 +11,8 @@ import fmt "go:fmt"
 class User {public name string;constructor(name string){this.name=name}}
 func main(){
  channel:=make(chan User,2)
- channel<-User("first")
- channel<-User("second")
+ channel<-new User("first")
+ channel<-new User("second")
  close(channel)
  first:=<-channel
  if first!=nil{fmt.Println(first.name)}
@@ -21,15 +21,15 @@ func main(){
  empty,open:=<-channel
  fmt.Println(empty==nil,open)
  select{case selected,ready:=<-channel:fmt.Println(selected==nil,ready)}
- values:=make(chan User,1);values<-User("selected")
+ values:=make(chan User,1);values<-new User("selected")
  select{case selected:=<-values:if selected!=nil{fmt.Println(selected.name)}}
- var object any=User("asserted")
+ var object any=new User("asserted")
  cast,matched:=object.(User)
  if matched && cast!=nil{fmt.Println(cast.name)}
  object="other"
  failed,matched:=object.(User)
  fmt.Println(failed==nil,matched)
- optional:=make(chan ?User,1);optional<-User("optional")
+ optional:=make(chan ?User,1);optional<-new User("optional")
  item:=<-optional
  if item!=nil{channel2:=make(chan User,1);channel2<-item;result:=<-channel2;if result!=nil{fmt.Println(result.name)}}
 }

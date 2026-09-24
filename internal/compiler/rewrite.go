@@ -136,8 +136,14 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 					case *ast.CallExpr:
-						text := expressionText(n.Fun)
+						target, explicitNew := unwrapConstruction(n.Fun)
+						n.Fun = target
 						base, typeArguments := genericBase(n.Fun)
+						text := expressionText(n.Fun)
+						if explicitNew && p.classNamed(text, file, ns) == nil {
+							reject("new requires a Ghi class, got " + text)
+							return node
+						}
 						baseText := expressionText(base)
 						if text == "GhiThrow" {
 							fun, _ := parser.ParseExpr(p.runtimeSymbol("Raise", file, ns))

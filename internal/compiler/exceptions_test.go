@@ -15,7 +15,7 @@ class Missing extends Exception {
 }
 func value() int {
  try {
-  throw Missing("gone")
+  throw new Missing("gone")
  } catch err Missing {
   fmt.Println(err.message)
   return 7
@@ -101,9 +101,9 @@ import strings "go:strings"
 class Missing extends Exception {
  constructor(message string, code int = 0) { parent(message,code) }
 }
-func origin() { throw Missing("gone",404) }
+func origin() { throw new Missing("gone",404) }
 func main() {
- plain:=Exception("default")
+ plain:=new Exception("default")
  fmt.Println(plain.code,plain.typeName,plain.message,len(plain.stackTrace))
  try {
   try { origin() } catch err Exception {

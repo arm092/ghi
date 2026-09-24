@@ -30,7 +30,7 @@ func (p *program) classNamed(name string, file *sourceFile, ns *namespace) *clas
 	}
 	alias, local, ok := strings.Cut(name, ".")
 	if !ok {
-		if name == "Exception" || name == "GoError" {
+		if name == "Exception" || name == "GoError" || name == "StackFrame" {
 			return classes[runtimeNamespace+"."+name]
 		}
 		return nil

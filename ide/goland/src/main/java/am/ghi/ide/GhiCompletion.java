@@ -9,6 +9,8 @@ public final class GhiCompletion extends CompletionContributor {
         @Override protected void addCompletions(@NotNull CompletionParameters parameters,@NotNull ProcessingContext context,@NotNull CompletionResultSet result){
             var file=parameters.getPosition().getContainingFile();
             if(parameters.getPosition().getNode().getElementType()==GhiLexer.STRING||parameters.getPosition().getNode().getElementType()==GhiLexer.COMMENT)return;
+            String preceding=file.getText().substring(0,parameters.getPosition().getTextOffset()).stripTrailing();
+            if(!preceding.endsWith(".")&&!preceding.matches("(?s).*\\bnew")&&!parameters.getPosition().getText().isEmpty() && "new".startsWith(parameters.getPosition().getText().replace("IntellijIdeaRulezzz", "")))result.addElement(LookupElementBuilder.create("new").bold());
             for(var symbol:GhiSymbols.forFile(file).complete(file,parameters.getOffset())){
                 var item=LookupElementBuilder.create(symbol.name).withTypeText(symbol.kind+(symbol.type.isEmpty()?"":" "+symbol.type),true).withIcon(GhiIcons.FILE);
                 if(symbol.kind.equals("func"))item=item.withTailText("("+String.join(", ",symbol.parameters)+")",true);

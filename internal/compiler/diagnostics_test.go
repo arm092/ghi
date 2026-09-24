@@ -13,7 +13,7 @@ func TestDiagnosticLocationsThroughExceptions(t *testing.T) {
 		`namespace main
 func main(){
  try {
-  throw Exception("failed")
+  throw new Exception("failed")
  } catch e Exception {
   println(missing)
  }
@@ -31,13 +31,14 @@ func main(){
 class User {
  public func value() {
   try {
-   throw Exception("bad")
+   throw new Exception("bad")
   } catch e Exception {
    println(missing)
   }
  }
 }
-func main(){User().value()}`,
+
+func main(){new User().value()}`,
 	} {
 		line := strings.Count(source[:strings.Index(source, "missing")], "\n") + 1
 		dir := project(t, map[string]string{"main.ghi": source})
@@ -48,14 +49,27 @@ func main(){User().value()}`,
 	}
 }
 
+func TestConstructionPreservesDiagnosticColumns(t *testing.T) {
+	for _, construction := range []string{`new User()`, `new /* constructor */ User()`} {
+		line := `func main(){_=` + construction + `;println(missing)}`
+		source := "namespace main\nclass User {}\n" + line + "\n"
+		dir := project(t, map[string]string{"main.ghi": source})
+		err := Check(context.Background(), Options{Dir: dir})
+		position := fmt.Sprintf("main.ghi:3:%d:", strings.Index(line, "missing")+1)
+		if err == nil || !strings.Contains(err.Error(), position) {
+			t.Fatalf("expected %s, got %v", position, err)
+		}
+	}
+}
+
 func TestRuntimeDiagnosticUsesGhiFrames(t *testing.T) {
 	source := `namespace main
 class Worker {
  public func execute() {
-  throw Exception("failure from worker") // explain failure
+  throw new Exception("failure from worker") // explain failure
  }
 }
-func main(){Worker().execute()}
+func main(){new Worker().execute()}
 `
 	dir := project(t, map[string]string{"main.ghi": source})
 	result, err := Build(context.Background(), Options{Dir: dir})

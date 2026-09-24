@@ -209,6 +209,14 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 			}
 		}
 	}
+	source, err = normalizeNew(filename, source, tokens)
+	if err != nil {
+		return nil, nil, err
+	}
+	tokens, err = lexSource(filename, source)
+	if err != nil {
+		return nil, nil, err
+	}
 	data := append([]byte(nil), source...)
 	u := &unit{Functions: map[string]*functionDecl{}}
 	depth := 0

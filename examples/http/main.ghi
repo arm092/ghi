@@ -14,14 +14,14 @@ class GreetingService {
 
     public func greet(name string) string {
         if name == "" {
-            throw Exception("name is required")
+            throw new Exception("name is required")
         }
         return this.prefix + ", " + name + "!"
     }
 }
 
 func main() {
-    service := GreetingService()
+    service := new GreetingService()
     mux := http.NewServeMux()
     mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
         try {

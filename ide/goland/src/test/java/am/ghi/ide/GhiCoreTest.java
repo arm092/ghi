@@ -25,6 +25,16 @@ public class GhiCoreTest {
         assertEquals(List.of("1","2"),tokens.stream().filter(t->t.type()==GhiLexer.NUMBER).map(Token::text).toList());
         assertFalse(tokens.stream().anyMatch(t->t.type()==TokenType.BAD_CHARACTER));
     }
+    @Test public void explicitConstructionNames(){
+        String source="throw new errors.Exception[Code](\"bad\", 1); value := new User()";
+        assertEquals(2,lex(source).stream().filter(token->token.text().equals("new")&&token.type()==GhiLexer.KEYWORD).count());
+        var lexer=new GhiHighlightingLexer();lexer.start(source);var roles=new HashMap<Integer,IElementType>();
+        while(lexer.getTokenType()!=null){roles.put(lexer.getTokenStart(),lexer.getTokenType());lexer.advance();}
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.indexOf("Exception")));
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.indexOf("User")));
+        assertEquals(GhiHighlightingLexer.NAMESPACE,roles.get(source.indexOf("errors")));
+        assertEquals(GhiLexer.KEYWORD,roles.get(source.indexOf("new")));
+    }
     @Test public void supplementaryUnicodeIdentifiers(){
         var tokens=lex("𐐀 := 1; _ = 𐐀");
         assertFalse(tokens.stream().anyMatch(t->t.type()==TokenType.BAD_CHARACTER));

@@ -148,7 +148,7 @@ func main() {
 
 func TestGoroutineUserFailureRetainsSourceFrame(t *testing.T) {
 	for name, source := range map[string]string{
-		"user exception": "namespace main\nimport time \"go:time\"\nfunc worker() {\n throw Exception(\"worker failure\")\n}\nfunc main(){go worker();time.Sleep(time.Second)}\n",
+		"user exception": "namespace main\nimport time \"go:time\"\nfunc worker() {\n throw new Exception(\"worker failure\")\n}\nfunc main(){go worker();time.Sleep(time.Second)}\n",
 		"builtin panic":  "namespace main\nimport time \"go:time\"\nfunc main(){\n go panic(\"worker failure\")\n time.Sleep(time.Second)\n}\n",
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -97,17 +97,20 @@ class Item extends Base implements Labelled {
  public override func label() string { return parent.label()+"!" }
 }
 func main() {
- item:=Item()
+ item:=new /* constructor comment */ Item()
  var optional ?Item = item
  if optional != nil { fmt.Println(optional.label()) }
  values:=[]int{1,2,3}
  for i:=0;i<len(values);i++ { fmt.Println(-values[i]) }
- try { throw Exception("failure") } catch err Exception { fmt.Println(err.message) } finally { fmt.Println("done") }
+ try { throw new Exception("failure") } catch err Exception { fmt.Println(err.message) } finally { fmt.Println("done") }
 }
 `
 	formatted, err := FormatSource("main.ghi", []byte(source))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Contains(formatted, []byte("/* constructor comment */")) {
+		t.Fatal("formatter removed constructor comment")
 	}
 	before := runProgram(t, map[string]string{"main.ghi": source})
 	after := runProgram(t, map[string]string{"main.ghi": string(formatted)})

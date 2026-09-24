@@ -12,9 +12,9 @@ import httpapi "app.httpapi"
 
 func TestHTTPAndPersistence(t * testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.db")
-	database := store.Store(path)
+	database := new store.Store(path)
 	defer database.Close()
-	handler := httpapi.Handler(service.Service(database))
+	handler := new httpapi.Handler(new service.Service(database))
 	server := httptest.NewServer(http.HandlerFunc(func (w http.ResponseWriter, r * http.Request) { handler.Serve(w, r) }))
 	defer server.Close()
 	client := server.Client()
@@ -32,16 +32,16 @@ func TestHTTPAndPersistence(t * testing.T) {
 	if len(tasks) != 1 || tasks[0].ID != created.ID { t.Fatalf("created task missing: tasks=%#v created=%#v", tasks, created) }
 	server.Close()
 	database.Close()
-	reopened := store.Store(path)
+	reopened := new store.Store(path)
 	defer reopened.Close()
 	tasks = reopened.List()
 	if len(tasks) != 1 || tasks[0].Title != "Ship Ghi" { t.Fatal("task did not survive database reopen") }
 }
 
 func TestValidationAndSafeSQL(t * testing.T) {
-	database := store.Store(filepath.Join(t.TempDir(), "validation.db"))
+	database := new store.Store(filepath.Join(t.TempDir(), "validation.db"))
 	defer database.Close()
-	handler := httpapi.Handler(service.Service(database))
+	handler := new httpapi.Handler(new service.Service(database))
 	cases := [] struct { Body string; Status int } {
 		{ `{"Title":"   "}`, 422 },
 		{ `{"unexpected":true}`, 400 },

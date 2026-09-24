@@ -23,7 +23,7 @@ func nested() int {
 func main() {
  fmt.Println(override(),named(),nested())
  try {
-  try { throw Exception("first") } catch e Exception { throw Exception("second")
+  try { throw new Exception("first") } catch e Exception { throw new Exception("second")
   } finally { fmt.Println("rethrow cleanup") }
  } catch e Exception { fmt.Println(e.message) }
 }
@@ -88,7 +88,7 @@ func TestExceptionTypesAndReturnCoverage(t *testing.T) {
 	for name, body := range map[string]string{
 		"throw primitive":       `func main(){ throw 42 }`,
 		"missing return":        `func f() int { try {} finally {} }; func main(){}`,
-		"catch unrelated class": `class Item {}; func main(){try {throw Exception("x")} catch e Item {}}`,
+		"catch unrelated class": `class Item {}; func main(){try {throw new Exception("x")} catch e Item {}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\n" + body})})

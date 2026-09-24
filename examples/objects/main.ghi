@@ -40,7 +40,7 @@ func introduce(person Person) {
 }
 
 func main() {
-    developer := Developer("Arman")
+    developer := new Developer("Arman")
     developer.experience++
     introduce(developer)
     fmt.Println("Experience:", developer.experience)

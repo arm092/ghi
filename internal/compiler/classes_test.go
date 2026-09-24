@@ -29,11 +29,11 @@ class User extends Person implements Labelled {
 func describe(p Person) string { return p.greet() }
 func viaInterface(p Labelled) string { return p.label() }
 func main() {
-    user := User("Arman")
+    user := new User("Arman")
     alias := user
     alias.age = 21
     fmt.Println(describe(user), viaInterface(user), user.age)
-    fmt.Println(Person().label())
+    fmt.Println(new Person().label())
 }
 `})
 	if got != "hello Arman! Arman! 21\nanonymous\n" {
@@ -43,7 +43,7 @@ func main() {
 
 func TestClassRulesRejectInvalidPrograms(t *testing.T) {
 	for name, body := range map[string]string{
-		"private access":           `class Box { secret int }; func main(){ b:=Box(); println(b.secret) }`,
+		"private access":           `class Box { secret int }; func main(){ b:=new Box(); println(b.secret) }`,
 		"invalid override":         `class Box { public override func missing() {} }; func main(){}`,
 		"missing parent arguments": `class Parent { constructor(n int) {} }; class Child extends Parent { constructor() {} }; func main(){}`,
 		"interface missing method": `interface Named { func name() string }; class Item implements Named {}; func main(){}`,
@@ -63,6 +63,33 @@ func TestClassRulesRejectInvalidPrograms(t *testing.T) {
 	}
 }
 
+func TestConstructionSupportsOptionalNew(t *testing.T) {
+	for name, fixture := range map[string]struct{ source, diagnostic string }{
+		"function target":  {`func create()int{return 1};func main(){_=new create()}`, "new requires a Ghi class"},
+		"primitive target": {`func main(){_=new int()}`, "new requires a Ghi class"},
+		"interface target": {`interface Named {func name()string};func main(){_=new Named()}`, "cannot instantiate interface"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := Check(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\n" + fixture.source})})
+			if err == nil || !strings.Contains(err.Error(), fixture.diagnostic) {
+				t.Fatalf("wanted %q, got %v", fixture.diagnostic, err)
+			}
+		})
+	}
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+class User {public name string;constructor(name string="default"){this.name=name}}
+func main(){
+ value:=new(int)
+ *value=7
+ fmt.Println(new User().name,User().name,new User("Ada").name,User("Ada").name,*value,"new User()")
+}
+`})
+	if got != "default default Ada Ada 7 new User()\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
 func TestOverrideResultNamesAreNotPartOfSignature(t *testing.T) {
 	got := runProgram(t, map[string]string{"main.ghi": `namespace main
 import fmt "go:fmt"
@@ -71,7 +98,7 @@ class Parent { public func name() (result string) { return "parent" } }
 class Child extends Parent implements Named {
  public override func name() string { return "child" }
 }
-func main() { var p Parent = Child(); fmt.Println(p.name()) }
+func main() { var p Parent = new Child(); fmt.Println(p.name()) }
 `})
 	if got != "child\n" {
 		t.Fatalf("output %q", got)
@@ -83,7 +110,7 @@ func TestNamespaceIdentityCannotCollide(t *testing.T) {
 		"main.ghi": `namespace main
 import one "a.b"
 import two "a_b"
-func main() { var wrong one.Item = two.Item(); _ = wrong }
+func main() { var wrong one.Item = new two.Item(); _ = wrong }
 `,
 		"one/item.ghi": "namespace a.b\nclass Item {}",
 		"two/item.ghi": "namespace a_b\nclass Item {}",
@@ -100,7 +127,7 @@ import fmt "go:fmt"
 import users "app.users"
 import models "app.models"
 func render(p models.Person) string { return p.greet() }
-func main() { user:=users.User("Ada"); fmt.Println(render(user),user.friend().label()) }
+func main() { user:=new users.User("Ada"); fmt.Println(render(user),user.friend().label()) }
 `,
 		"models/person.ghi": `namespace app.models
 class Person {
@@ -108,7 +135,7 @@ class Person {
  constructor(name string = "friend") { this.name = name }
  public func label() string { return this.name }
  public func greet() string { return this.label() }
- public func friend() Person { return Person() }
+ public func friend() Person { return new Person() }
 }
 
 `,
