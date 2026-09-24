@@ -85,10 +85,11 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 			return nil, err
 		}
 		last := end
-		type handler struct{ name, typ, body string }
+		type handler struct{ name, typ, body, position string }
 		var handlers []handler
 		finally := ""
 		hasFinally := false
+		finallyPosition := ""
 		for {
 			next := last + 1
 			for next < len(tokens) && tokens[next].Kind == token.SEMICOLON {
@@ -98,6 +99,7 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 				break
 			}
 			kind := tokens[next].Text
+			headerPosition := location(tokens[next].Start)
 			next++
 			if hasFinally {
 				return nil, fmt.Errorf("%s:%d: finally must be last", filename, t.Line)
@@ -130,10 +132,11 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 				return nil, err
 			}
 			if kind == "catch" {
-				handlers = append(handlers, handler{name, typ, content})
+				handlers = append(handlers, handler{name, typ, content, headerPosition})
 			} else {
 				hasFinally = true
 				finally = content
+				finallyPosition = headerPosition
 			}
 			last = end
 		}
@@ -143,22 +146,22 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 		catcher := "nil"
 		if len(handlers) > 0 {
 			var text strings.Builder
-			text.WriteString("func(ghi_caught Exception) { ")
+			text.WriteString(handlers[0].position + "func(ghi_caught Exception) { ")
 			for index, h := range handlers {
 				if index > 0 {
 					text.WriteString(" else ")
 				}
-				fmt.Fprintf(&text, "if %s, ghi_matched := ghi_caught.(%s); ghi_matched { _ = %s; %s\n}", h.name, h.typ, h.name, h.body)
+				fmt.Fprintf(&text, "%sif %s, ghi_matched := ghi_caught.(%s); ghi_matched { _ = %s; %s%s}", h.position, h.name, h.typ, h.name, h.body, h.position)
 			}
 			text.WriteString(" else { GhiThrow(ghi_caught) } }")
 			catcher = text.String()
 		}
 		finalizer := "nil"
 		if hasFinally {
-			finalizer = "func(){" + finally + "\n}"
+			finalizer = finallyPosition + "func(){" + finally + finallyPosition + "}"
 		}
 		out.Write(source[cursor:t.Start])
-		fmt.Fprintf(&out, "GhiTry(func(){%s\n}, %s, %s)", body, catcher, finalizer)
+		fmt.Fprintf(&out, "GhiTry(func(){%s%s}, %s, %s,%s)", body, location(t.Start), catcher, finalizer, location(t.Start))
 		cursor = tokens[last].End
 		out.WriteString(location(cursor))
 		i = last

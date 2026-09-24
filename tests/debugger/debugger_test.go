@@ -60,7 +60,7 @@ func main() {
 			t.Fatalf("%s: %v", method, err)
 		}
 	}
-	for _, line := range []int{6, 13, 18} {
+	for _, line := range []int{6, 13, 17} {
 		call("CreateBreakpoint", map[string]any{"Breakpoint": map[string]any{"file": filepath.ToSlash(file), "line": line}}, &map[string]any{})
 	}
 	type location struct {
@@ -106,18 +106,8 @@ func main() {
 	if v := eval("answer"); v.Value != "12" {
 		t.Fatalf("local: %+v", v)
 	}
-	// The catch closure shares source lines with its outer setup. Resume past
-	// that setup stop until err is actually in the lexical scope.
-	var caught variable
-	for attempt := 0; attempt < 3; attempt++ {
-		resume("continue", 18)
-		var result struct{ Variable variable }
-		err := client.Call("RPCServer.Eval", map[string]any{"Scope": scope, "Expr": "err", "Cfg": cfg}, &result)
-		if err == nil {
-			caught = result.Variable
-			break
-		}
-	}
+	resume("continue", 17)
+	caught := eval("err")
 	if !hasValue(caught, "F_6768692e72756e74696d65_Exception_message", "debug exception") || !hasValue(caught, "F_6768692e72756e74696d65_Exception_code", "0") {
 		t.Fatalf("exception data: %+v", caught)
 	}
