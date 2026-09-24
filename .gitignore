@@ -4,6 +4,7 @@ bin/
 *.exe
 *.test
 *.md
+!/README.md
 dist/
 install/ghi
 install/ghi.sha256
