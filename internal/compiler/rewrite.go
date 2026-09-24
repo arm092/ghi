@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"strings"
 )
 
 func (p *program) expressionClass(expression ast.Expr, info *types.Info) *classDecl {
@@ -64,6 +63,41 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 					}
 					reject := func(message string) { failure = fmt.Errorf("%s: %s", p.Fset.Position(node.Pos()), message) }
 					switch n := node.(type) {
+					case *ast.DeferStmt, *ast.GoStmt:
+						var call *ast.CallExpr
+						switch statement := n.(type) {
+						case *ast.DeferStmt:
+							call = statement.Call
+						case *ast.GoStmt:
+							call = statement.Call
+						}
+						if !p.Wrapped[call] {
+							_, asynchronous := n.(*ast.GoStmt)
+							signature := nativeErrorSignature(call, info, nativeValues)
+							bridgeErrors := signature != nil
+							builtin := false
+							if asynchronous {
+								signature, builtin = scheduledSignature(call, info)
+								// Let ordinary call rewriting supply Ghi defaults first.
+								if signature != nil && !scheduledArgumentsReady(call, signature, info) {
+									signature = nil
+								}
+							}
+							if signature != nil {
+								replacement, err := p.captureScheduledCall(call, signature, file, ns, asynchronous, bridgeErrors, builtin)
+								if err != nil {
+									reject(err.Error())
+									return node
+								}
+								switch statement := n.(type) {
+								case *ast.DeferStmt:
+									statement.Call = replacement
+								case *ast.GoStmt:
+									statement.Call = replacement
+								}
+								changed = true
+							}
+						}
 					case *ast.IncDecStmt:
 						if selector, ok := n.X.(*ast.SelectorExpr); ok {
 							if c := p.expressionClass(selector.X, info); c != nil && c.field(selector.Sel.Name) != nil {
@@ -103,38 +137,27 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 						}
 					case *ast.CallExpr:
 						text := expressionText(n.Fun)
+						base, typeArguments := genericBase(n.Fun)
+						baseText := expressionText(base)
 						if text == "GhiThrow" {
 							fun, _ := parser.ParseExpr(p.runtimeSymbol("Raise", file, ns))
 							changed = true
 							return &ast.CallExpr{Fun: ast.NewIdent("panic"), Args: []ast.Expr{&ast.CallExpr{Fun: fun, Args: n.Args}}}
 						}
-						if info != nil && !p.Wrapped[n] {
-							var object types.Object
-							switch fun := n.Fun.(type) {
-							case *ast.Ident:
-								object = info.Uses[fun]
-							case *ast.SelectorExpr:
-								object = info.Uses[fun.Sel]
-							}
-							fn, isFunction := object.(*types.Func)
-							if nativeValues[object] || (isFunction && fn.Pkg() != nil && !strings.HasPrefix(fn.Pkg().Path(), generatedModule)) {
-								if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok && signature.Results().Len() > 0 {
-									last := signature.Results().Len() - 1
-									if types.Identical(signature.Results().At(last).Type(), types.Universe.Lookup("error").Type()) {
-										p.Wrapped[n] = true
-										name := p.ensureErrorHelper(last)
-										fun, _ := parser.ParseExpr(p.runtimeSymbol(name, file, ns))
-										changed = true
-										return &ast.CallExpr{Fun: fun, Args: []ast.Expr{n}}
-									}
-								}
+						if !p.Wrapped[n] {
+							if signature := nativeErrorSignature(n, info, nativeValues); signature != nil {
+								p.Wrapped[n] = true
+								name := p.ensureErrorHelper(signature.Results().Len() - 1)
+								fun, _ := parser.ParseExpr(p.runtimeSymbol(name, file, ns))
+								changed = true
+								return &ast.CallExpr{Fun: fun, Args: []ast.Expr{n}}
 							}
 						}
-						if fn := p.functionNamed(text, file, ns); fn != nil && fillDefaults(n, fn, 0) {
+						if fn := p.functionNamed(baseText, file, ns); fn != nil && fillDefaults(n, fn, 0) {
 							changed = true
 						}
 						for _, c := range p.classes() {
-							if !c.Interface && text == p.classSymbolIfImported(c, "GhiInit_"+c.Name, file, ns) && fillDefaults(n, c.Constructor, 1) {
+							if !c.Interface && baseText == p.classSymbolIfImported(c, "GhiInit_"+c.Name, file, ns) && fillDefaults(n, c.Constructor, 1) {
 								changed = true
 							}
 						}
@@ -143,7 +166,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								reject("cannot instantiate interface " + c.Name)
 								return node
 							}
-							n.Fun, _ = parser.ParseExpr(p.classSymbol(c, "GhiNew_"+c.Name, file, ns))
+							n.Fun, _ = parser.ParseExpr(p.classSymbol(c, "GhiNew_"+c.Name, file, ns) + typeArgumentsText(typeArguments))
 							fillDefaults(n, c.Constructor, 0)
 							changed = true
 							return node

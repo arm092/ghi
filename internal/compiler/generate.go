@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/printer"
 	"os"
 	"path/filepath"
@@ -33,6 +35,9 @@ func (p *program) resolveImports() error {
 					}
 					if imported.Name == "main" {
 						return fmt.Errorf("%s: importing the entry namespace main is not allowed", p.Fset.Position(spec.Pos()))
+					}
+					if p.TestNamespaces[imported.Name] && !p.TestNamespaces[ns.Name] {
+						return fmt.Errorf("%s: production namespaces cannot import test namespaces", p.Fset.Position(spec.Pos()))
 					}
 					ns.Imports = append(ns.Imports, path)
 					path = generatedModule + "/" + strings.ReplaceAll(imported.Name, ".", "/")
@@ -77,9 +82,19 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	if err := p.stageDependencies(ctx, dir, goPath); err != nil {
 		return err
 	}
+	origins := p.snapshotSources()
 	if err := p.lower(ctx, goPath, dir); err != nil {
 		return err
 	}
+	if ns := p.Namespaces["main"]; ns != nil {
+		for _, file := range ns.Files {
+			if fn := file.Unit.Functions["main"]; fn != nil && fn.Node != nil && fn.Node.Body != nil {
+				call, _ := parser.ParseExpr(p.runtimeSymbol("ReportPanic", file, ns) + "()")
+				fn.Node.Body.List = append([]ast.Stmt{&ast.DeferStmt{Call: call.(*ast.CallExpr)}}, fn.Node.Body.List...)
+			}
+		}
+	}
+	p.rebaseSources(origins)
 	for _, ns := range p.Ordered {
 		target := dir
 		if ns.Name != "main" {

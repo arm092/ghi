@@ -19,6 +19,10 @@ func (p *preparedProject) close() { os.RemoveAll(p.workspace) }
 
 // prepareProject is shared by check and build so both enforce the same rules.
 func prepareProject(ctx context.Context, options Options) (*preparedProject, error) {
+	return prepareProjectMode(ctx, options, false)
+}
+
+func prepareProjectMode(ctx context.Context, options Options, testing bool) (*preparedProject, error) {
 	root := options.Dir
 	if root == "" {
 		root = "."
@@ -34,7 +38,7 @@ func prepareProject(ctx context.Context, options Options) (*preparedProject, err
 	if !info.IsDir() {
 		return nil, fmt.Errorf("project path must be a directory: %s", root)
 	}
-	p, err := loadProject(root)
+	p, err := loadProjectMode(root, testing)
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +65,13 @@ func prepareProject(ctx context.Context, options Options) (*preparedProject, err
 	}
 	if err := p.generate(ctx, workspace, prepared.goPath); err != nil {
 		prepared.close()
-		return nil, err
+		return nil, p.sourceError(err)
 	}
-	if err := p.validateEntry(); err != nil {
-		prepared.close()
-		return nil, err
+	if !testing {
+		if err := p.validateEntry(); err != nil {
+			prepared.close()
+			return nil, err
+		}
 	}
 	return prepared, nil
 }

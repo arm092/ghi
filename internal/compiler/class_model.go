@@ -23,6 +23,7 @@ func (p *program) classes() map[string]*classDecl {
 }
 
 func (p *program) classNamed(name string, file *sourceFile, ns *namespace) *classDecl {
+	name = genericName(name)
 	classes := p.classes()
 	if c := classes[ns.Name+"."+name]; c != nil {
 		return c
@@ -152,6 +153,15 @@ func (p *program) typeText(typ ast.Expr, owner *classDecl, to *sourceFile, ns *n
 			}
 			return n
 		case *ast.Ident:
+			if owner.TypeParams != nil {
+				for _, field := range owner.TypeParams.List {
+					for _, name := range field.Names {
+						if name.Name == n.Name {
+							return n
+						}
+					}
+				}
+			}
 			if c := p.classes()[owner.Namespace.Name+"."+n.Name]; c != nil && c.Namespace != ns {
 				expression, _ := parser.ParseExpr(p.classSymbol(c, c.Name, to, ns))
 				return expression
@@ -265,9 +275,15 @@ func (p *program) prepareClasses() error {
 				}
 				seen[key] = true
 				if c.ParentName != "" {
+					if genericName(c.ParentName) != c.ParentName {
+						return fmt.Errorf("%s:%d: type arguments are not supported in class inheritance", file.Path, c.Line)
+					}
 					c.Parent = p.classNamed(c.ParentName, file, ns)
 					if c.Parent == nil || c.Parent.Interface {
 						return fmt.Errorf("class %s: unknown parent class %s", c.Name, c.ParentName)
+					}
+					if c.TypeParams != nil || c.Parent.TypeParams != nil {
+						return fmt.Errorf("%s:%d: generic class inheritance is not supported yet", file.Path, c.Line)
 					}
 				}
 				for _, name := range c.InterfaceNames {
@@ -313,7 +329,7 @@ func (p *program) prepareClasses() error {
 		for _, iface := range c.Interfaces {
 			for _, requirement := range iface.Methods {
 				method := c.method(requirement.Name)
-				if method == nil || method.Visibility != "public" || p.signature(method, c) != p.signature(requirement, c) {
+				if method == nil || method.Visibility != "public" || (iface.TypeParams == nil && p.signature(method, c) != p.signature(requirement, c)) {
 					return fmt.Errorf("class %s does not implement %s.%s", c.Name, iface.Name, requirement.Name)
 				}
 			}

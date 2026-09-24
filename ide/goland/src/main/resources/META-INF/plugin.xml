@@ -7,7 +7,7 @@
         Recognizes .ghi files, highlights syntax, supports comments and brace matching,
         and builds or runs projects in the IDE console with clickable compiler diagnostics.
         Configure the compiler and project directory under Languages &amp; Frameworks &gt; Ghi.
-        Requires the Ghi compiler. This preview does not provide semantic completion or debugging.
+        Requires the Ghi compiler. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Go symbol resolution and debugging are not included.
     ]]></description>
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.go</depends>
@@ -15,6 +15,11 @@
         <fileType name="Ghi" language="Ghi" implementationClass="am.ghi.ide.GhiFileType" fieldName="INSTANCE" extensions="ghi"/>
         <lang.parserDefinition language="Ghi" implementationClass="am.ghi.ide.GhiParserDefinition"/>
         <lang.syntaxHighlighterFactory language="Ghi" implementationClass="am.ghi.ide.GhiHighlighterFactory"/>
+        <completion.contributor language="Ghi" implementationClass="am.ghi.ide.GhiCompletion"/>
+        <lang.parameterInfo language="Ghi" implementationClass="am.ghi.ide.GhiParameterInfo"/>
+        <lang.findUsagesProvider language="Ghi" implementationClass="am.ghi.ide.GhiFindUsages"/>
+        <renamePsiElementProcessor implementation="am.ghi.ide.GhiRenameProcessor"/>
+        <externalAnnotator language="Ghi" implementationClass="am.ghi.ide.GhiExternalAnnotator"/>
         <lang.commenter language="Ghi" implementationClass="am.ghi.ide.GhiCommenter"/>
         <lang.braceMatcher language="Ghi" implementationClass="am.ghi.ide.GhiBraceMatcher"/>
         <colorSettingsPage implementation="am.ghi.ide.GhiColorSettingsPage"/>

@@ -11,6 +11,9 @@ func (p *program) classType(typ types.Type) *classDecl {
 	if typ == nil {
 		return nil
 	}
+	if parameter, ok := types.Unalias(typ).(*types.TypeParam); ok {
+		return p.classType(parameter.Constraint())
+	}
 	named, ok := types.Unalias(typ).(*types.Named)
 	if !ok || named.Obj().Pkg() == nil {
 		return nil

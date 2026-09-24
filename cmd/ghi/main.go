@@ -16,6 +16,12 @@ var version = "0.1.0-dev"
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "fmt" {
+		return runFormat(args[1:])
+	}
+	if len(args) > 0 && args[0] == "test" {
+		return runTests(args[1:])
+	}
 	if len(args) > 0 && args[0] == "setup" {
 		flags := flag.NewFlagSet("setup", flag.ContinueOnError)
 		managed := flags.Bool("managed", false, "install a managed Go toolchain even if Go is on PATH")
@@ -37,7 +43,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
 		return 0
 	}
 	if args[0] == "version" {

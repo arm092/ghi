@@ -110,6 +110,11 @@ func unparen(expr ast.Expr) ast.Expr {
 }
 
 func (p *program) needsInitialization(typ types.Type) bool {
+	if typ != nil {
+		if _, ok := types.Unalias(typ).(*types.TypeParam); ok {
+			return true
+		}
+	}
 	if typ == nil {
 		return false
 	}

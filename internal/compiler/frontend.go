@@ -31,6 +31,8 @@ type functionDecl struct {
 }
 type classDecl struct {
 	Name           string
+	Line           int
+	TypeParams     *ast.FieldList
 	ParentName     string
 	InterfaceNames []string
 	Interface      bool
@@ -167,7 +169,7 @@ func parseFunction(fset *token.FileSet, filename, name, parameters, tail string,
 	if err != nil {
 		return nil, err
 	}
-	normalized, err := normalizeExceptions(filename, []byte(tail))
+	normalized, err := normalizeExceptionsAt(filename, []byte(tail), line+strings.Count(parameters, "\n"))
 	if err != nil {
 		return nil, err
 	}
@@ -212,14 +214,27 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if depth == 0 && (t.Text == "class" || t.Kind == token.INTERFACE) {
-			class := &classDecl{Interface: t.Kind == token.INTERFACE}
+		if depth == 0 && (t.Text == "class" || (t.Kind == token.INTERFACE && i+1 < len(tokens) && tokens[i+1].Kind == token.IDENT)) {
+			class := &classDecl{Interface: t.Kind == token.INTERFACE, Line: t.Line}
 			i++
 			if tokens[i].Kind != token.IDENT {
 				return nil, nil, fmt.Errorf("%s:%d: expected class name", filename, t.Line)
 			}
 			class.Name = tokens[i].Text
 			i++
+			if tokens[i].Kind == token.LBRACK {
+				close, err := match(tokens, i, token.LBRACK, token.RBRACK)
+				if err != nil {
+					return nil, nil, err
+				}
+				declaration := "package parsed\ntype Parameters" + string(source[tokens[i].Start:tokens[close].End]) + " struct{}"
+				tree, err := parser.ParseFile(fset, filename, declaration, parser.AllErrors)
+				if err != nil {
+					return nil, nil, err
+				}
+				class.TypeParams = tree.Decls[0].(*ast.GenDecl).Specs[0].(*ast.TypeSpec).TypeParams
+				i = close + 1
+			}
 			for tokens[i].Kind != token.LBRACE {
 				keyword := tokens[i].Text
 				i++
@@ -235,7 +250,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 				case "extends":
 					class.ParentName = value
 				case "implements":
-					for _, name := range strings.Split(value, ",") {
+					for _, name := range splitTypeNames(value) {
 						class.InterfaceNames = append(class.InterfaceNames, strings.TrimSpace(name))
 					}
 				default:
@@ -258,17 +273,28 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 			u.Classes = append(u.Classes, class)
 			continue
 		}
-		if depth == 0 && t.Kind == token.FUNC && i+2 < len(tokens) && tokens[i+1].Kind == token.IDENT && tokens[i+2].Kind == token.LPAREN {
-			close, err := match(tokens, i+2, token.LPAREN, token.RPAREN)
+		if depth == 0 && t.Kind == token.FUNC && i+2 < len(tokens) && tokens[i+1].Kind == token.IDENT {
+			open := i + 2
+			if tokens[open].Kind == token.LBRACK {
+				close, err := match(tokens, open, token.LBRACK, token.RBRACK)
+				if err != nil {
+					return nil, nil, err
+				}
+				open = close + 1
+			}
+			if tokens[open].Kind != token.LPAREN {
+				continue
+			}
+			close, err := match(tokens, open, token.LPAREN, token.RPAREN)
 			if err != nil {
 				return nil, nil, err
 			}
-			text := string(source[tokens[i+2].End:tokens[close].Start])
+			text := string(source[tokens[open].End:tokens[close].Start])
 			normalized, defaults, err := normalizeParameters(text)
 			if err != nil {
 				return nil, nil, err
 			}
-			copy(data[tokens[i+2].End:tokens[close].Start], normalized)
+			copy(data[tokens[open].End:tokens[close].Start], normalized)
 			u.Functions[tokens[i+1].Text] = &functionDecl{Defaults: defaults}
 		}
 		switch t.Kind {

@@ -64,13 +64,17 @@ func main() {
 
 func TestNullableUnsafeMemberAccessRejected(t *testing.T) {
 	for name, body := range map[string]string{
-		"unchecked":         `var u ?User; println(u.name)`,
-		"wrong branch":      `var u ?User; if u == nil { println(u.name) }`,
-		"mutation":          `var u ?User = User(); if u != nil { u = nil; println(u.name) }`,
-		"branch leak":       `var u ?User; if u != nil { println(u.name) }; println(u.name)`,
-		"loop mutation":     `var u ?User = User(); if u != nil { for i:=0;i<2;i++ { println(u.name);u=nil } }`,
-		"captured mutation": `var u ?User = User(); reset:=func(){u=nil}; if u != nil { reset(); println(u.name) }`,
-		"address escape":    `var u ?User = User(); ptr:=&u; if u != nil { *ptr=nil; println(u.name) }`,
+		"unchecked":          `var u ?User; println(u.name)`,
+		"wrong branch":       `var u ?User; if u == nil { println(u.name) }`,
+		"mutation":           `var u ?User = User(); if u != nil { u = nil; println(u.name) }`,
+		"branch leak":        `var u ?User; if u != nil { println(u.name) }; println(u.name)`,
+		"loop mutation":      `var u ?User = User(); if u != nil { for i:=0;i<2;i++ { println(u.name);u=nil } }`,
+		"captured mutation":  `var u ?User = User(); reset:=func(){u=nil}; if u != nil { reset(); println(u.name) }`,
+		"address escape":     `var u ?User = User(); ptr:=&u; if u != nil { *ptr=nil; println(u.name) }`,
+		"switch fallthrough": `var u ?User; switch {case u==nil:fallthrough;case u!=nil:println(u.name)}`,
+		"switch alternative": `var u ?User; switch {case u!=nil,true:println(u.name)}`,
+		"switch mutation":    `var u ?User=User();switch {case u!=nil:u=nil;println(u.name)}`,
+		"switch default":     `var u ?User;switch {case u!=nil:default:println(u.name)}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\nclass User { public name string }\nfunc main(){" + body + "}"})})
@@ -91,19 +95,25 @@ func TestNonnullableNilRejected(t *testing.T) {
 		"defined class type": `type Other User;func main(){var x Other;var user User=x;_=user}`,
 		"named aggregate":    `func f()(x struct{user User}){return};func main(){_=f()}`,
 
-		"declaration":           `func main(){var u User = nil; _=u}`,
-		"assignment":            `func main(){u:=User();u=nil;_=u}`,
-		"argument":              `func accept(u User){};func main(){accept(nil)}`,
-		"return":                `func get() User{return nil};func main(){_=get()}`,
-		"field":                 `class Holder {public user User;constructor(){this.user=nil}};func main(){_=Holder()}`,
-		"uninitialized local":   `func main(){var u User;_=u}`,
-		"uninitialized global":  `var u User;func main(){_=u}`,
-		"unused default":        `func accept(u User = nil){};func main(){}`,
-		"closure return":        `func main(){f:=func()User{return nil};_=f()}`,
-		"named return":          `func get()(user User){return};func main(){_=get()}`,
-		"named read":            `func get()(user User){return user};func main(){_=get()}`,
-		"named one branch":      `func get(flag bool)(user User){if flag{user=User()};return};func main(){_=get(false)}`,
-		"unchecked dereference": `func main(){var user ?User;value:=*user;_=value}`,
+		"declaration":                  `func main(){var u User = nil; _=u}`,
+		"assignment":                   `func main(){u:=User();u=nil;_=u}`,
+		"argument":                     `func accept(u User){};func main(){accept(nil)}`,
+		"return":                       `func get() User{return nil};func main(){_=get()}`,
+		"field":                        `class Holder {public user User;constructor(){this.user=nil}};func main(){_=Holder()}`,
+		"uninitialized local":          `func main(){var u User;_=u}`,
+		"uninitialized global":         `var u User;func main(){_=u}`,
+		"unused default":               `func accept(u User = nil){};func main(){}`,
+		"closure return":               `func main(){f:=func()User{return nil};_=f()}`,
+		"named return":                 `func get()(user User){return};func main(){_=get()}`,
+		"named read":                   `func get()(user User){return user};func main(){_=get()}`,
+		"named one branch":             `func get(flag bool)(user User){if flag{user=User()};return};func main(){_=get(false)}`,
+		"named switch missing default": `func get(flag bool)(user User){switch flag{case true:user=User()};return};func main(){_=get(false)}`,
+		"named switch early break":     `func get(flag bool)(user User){switch {default:if flag{break};user=User()};return};func main(){_=get(true)}`,
+		"named finally conditional":    `func get(flag bool)(user User){try {} finally {if flag{user=User()}};return};func main(){_=get(false)}`,
+		"named catch partial":          `func get(flag bool)(user User){try {if flag{throw Exception()};user=User()}catch err Exception{_=err};return};func main(){_=get(true)}`,
+		"named finally read":           `func get()(user User){try {user=User()}finally{println(user)};return};func main(){_=get()}`,
+		"named goto bypass":            `func get()(user User){goto done;user=User();done:return};func main(){_=get()}`,
+		"unchecked dereference":        `func main(){var user ?User;value:=*user;_=value}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{"main.ghi": "namespace main\nclass User {}\n" + source})})
@@ -111,6 +121,46 @@ func TestNonnullableNilRejected(t *testing.T) {
 				t.Fatal("nil admitted to a nonnullable class")
 			}
 		})
+	}
+}
+
+func TestNamedResultsAcrossSwitchAndFinally(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+class User {public name string;constructor(name string){this.name=name}}
+func choose(n int)(user User){
+ switch n {
+ case 0: user=User("zero")
+ case 1: user=User("one");break
+ default: user=User("other")
+ }
+ return
+}
+func falling(n int)(user User){switch n{case 0:fallthrough;default:user=User("fall")};return}
+func final()(user User){try {} finally {user=User("final")};return}
+func returning()(user User){try {return} finally {user=User("return")}}
+func caught()(user User){try {throw Exception()}catch err Exception{user=User("caught")};return}
+func main(){fmt.Println(choose(0).name,choose(1).name,choose(2).name,falling(0).name,final().name,caught().name,returning().name)}
+`})
+	if got != "zero one other fall final caught return\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestNullableSwitchNarrowing(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+class User {public name string;constructor(name string){this.name=name}}
+func name(user ?User) string {
+ switch {case user==nil:return "missing";default:return user.name}
+}
+func checked(user ?User) string {
+ switch {case user!=nil: return user.name; default: return "none"}
+}
+func main(){fmt.Println(name(User("Ada")),name(nil),checked(User("Arman")),checked(nil))}
+`})
+	if got != "Ada missing Arman none\n" {
+		t.Fatalf("output %q", got)
 	}
 }
 

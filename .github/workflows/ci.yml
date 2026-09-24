@@ -24,6 +24,11 @@ jobs:
           cache: false
       - run: go test ./...
       - run: go vet ./...
+      - name: Verify Ghi developer tools and database API
+        run: |
+          go run ./cmd/ghi fmt --check ./examples/task-api
+          go run ./cmd/ghi check ./examples/task-api
+          go run ./cmd/ghi test -v ./examples/task-api
       - run: go run ./cmd/ghi run ./examples/hello
       - name: Test Windows installer
         if: runner.os == 'Windows'
@@ -31,18 +36,33 @@ jobs:
         run: |
           go build -o install/ghi.exe ./cmd/ghi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -o install/mojave.exe ./cmd/mojave
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash install/ghi.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  ghi.exe" | Set-Content install/ghi.sha256
+          $hash = (Get-FileHash install/mojave.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  mojave.exe" | Set-Content install/mojave.sha256
           ./install/install.ps1 -InstallDir "$env:RUNNER_TEMP/ghi-installed" -NoPath
           & "$env:RUNNER_TEMP/ghi-installed/ghi.exe" run ./examples/hello
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:RUNNER_TEMP/ghi-installed/mojave.exe" help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $failureTarget = "$env:RUNNER_TEMP/ghi-failed-install"
           New-Item -ItemType Directory -Path $failureTarget -Force | Out-Null
           Set-Content "$failureTarget/ghi.exe" 'previous executable'
+          Set-Content "$failureTarget/mojave.exe" 'previous package manager'
           $env:GHI_GO = "$env:RUNNER_TEMP/missing-go.exe"
           $rejected = $false
           try { ./install/install.ps1 -InstallDir $failureTarget -NoPath } catch { $rejected = $true }
           if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable') { throw 'Failed setup must preserve the previous executable.' }
+          if ((Get-Content "$failureTarget/mojave.exe" -Raw).Trim() -ne 'previous package manager') { throw 'Failed setup must preserve Mojave.' }
+          $env:GHI_GO = ''
+          Add-Content install/mojave.exe 'tampered'
+          $rejected = $false
+          try { ./install/install.ps1 -InstallDir $failureTarget -NoPath } catch { $rejected = $true }
+          if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable' -or (Get-Content "$failureTarget/mojave.exe" -Raw).Trim() -ne 'previous package manager') { throw 'Checksum failure must preserve both executables.' }
+          go build -o install/mojave.exe ./cmd/mojave
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Remove every Go executable directory, then install into a fresh user cache.
           $env:Path = (($env:Path -split ';') | Where-Object { $_ -and !(Test-Path -LiteralPath (Join-Path $_ 'go.exe')) }) -join ';'
           $env:GHI_GO = ''
@@ -55,13 +75,23 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           go build -o install/ghi ./cmd/ghi
+          go build -o install/mojave ./cmd/mojave
           (cd install && shasum -a 256 ghi > ghi.sha256)
+          (cd install && shasum -a 256 mojave > mojave.sha256)
           GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-installed" sh install/install.sh
           "$RUNNER_TEMP/ghi-installed/ghi" run ./examples/hello
+          "$RUNNER_TEMP/ghi-installed/mojave" help
           mkdir -p "$RUNNER_TEMP/ghi-failed-install"
           printf 'previous executable\n' > "$RUNNER_TEMP/ghi-failed-install/ghi"
+          printf 'previous package manager\n' > "$RUNNER_TEMP/ghi-failed-install/mojave"
           if GHI_GO="$RUNNER_TEMP/missing-go" GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-failed-install" sh install/install.sh; then exit 1; fi
           test "$(cat "$RUNNER_TEMP/ghi-failed-install/ghi")" = 'previous executable'
+          test "$(cat "$RUNNER_TEMP/ghi-failed-install/mojave")" = 'previous package manager'
+          printf 'tampered' >> install/mojave
+          if GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-failed-install" sh install/install.sh; then exit 1; fi
+          test "$(cat "$RUNNER_TEMP/ghi-failed-install/ghi")" = 'previous executable'
+          test "$(cat "$RUNNER_TEMP/ghi-failed-install/mojave")" = 'previous package manager'
+          go build -o install/mojave ./cmd/mojave
           export HOME="$RUNNER_TEMP/ghi-fresh-home"
           export XDG_CONFIG_HOME="$HOME/.config"
           export SHELL=/bin/zsh
@@ -72,6 +102,7 @@ jobs:
           GHI_INSTALL_DIR="$HOME/compiler bin" sh install/install.sh
           GHI_INSTALL_DIR="$HOME/compiler bin" sh install/install.sh
           /bin/zsh -ic 'command -v ghi; ghi version'
+          /bin/zsh -ic 'command -v mojave; mojave help'
           /bin/zsh -ic 'ghi run ./examples/objects'
           test "$(grep -Fc '# Ghi compiler' "$HOME/.zshrc")" = 1
 
@@ -110,4 +141,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi $TAG" --notes "Ghi compiler preview. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed."
+        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi $TAG" --notes "Ghi compiler and Mojave package manager preview. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed."

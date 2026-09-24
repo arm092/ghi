@@ -10,15 +10,27 @@ import (
 // ordinary Go AST blocks. The control-flow pass removes every marker before
 // type checking and restores Ghi return/break/continue semantics.
 func normalizeExceptions(filename string, source []byte) ([]byte, error) {
+	return normalizeExceptionsAt(filename, source, 1)
+}
+
+func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte, error) {
 	tokens, err := lexSource(filename, source)
 	if err != nil {
 		return nil, err
 	}
 	var out strings.Builder
 	cursor := 0
+	location := func(offset int) string {
+		prefix := string(source[:offset])
+		line := baseLine + strings.Count(prefix, "\n")
+		column := offset - strings.LastIndex(prefix, "\n")
+		return fmt.Sprintf("\n//line %s:%d:%d\n", filename, line, column)
+	}
 	normalizeBlock := func(begin, end int) (string, error) {
-		data, err := normalizeExceptions(filename, source[tokens[begin].End:tokens[end].Start])
-		return string(data), err
+		start := tokens[begin].End
+		line := baseLine + strings.Count(string(source[:start]), "\n")
+		data, err := normalizeExceptionsAt(filename, source[start:tokens[end].Start], line)
+		return location(start) + string(data), err
 	}
 	for i := 0; i < len(tokens); i++ {
 		if tokens[i].Kind != token.IDENT {
@@ -43,12 +55,14 @@ func normalizeExceptions(filename string, source []byte) ([]byte, error) {
 			if j >= len(tokens) {
 				return nil, fmt.Errorf("%s:%d: incomplete throw", filename, t.Line)
 			}
-			expression := strings.TrimSpace(string(source[t.End:tokens[j].Start]))
+			expressionEnd := tokens[j-1].End
+			expression := strings.TrimSpace(string(source[t.End:expressionEnd]))
 			if expression == "" {
 				return nil, fmt.Errorf("%s:%d: throw requires an exception", filename, t.Line)
 			}
 			out.Write(source[cursor:t.Start])
-			fmt.Fprintf(&out, "GhiThrow(%s)", expression)
+			leading := len(string(source[t.End:expressionEnd])) - len(strings.TrimLeft(string(source[t.End:expressionEnd]), " \t\r\n"))
+			fmt.Fprintf(&out, "GhiThrow(%s%s)%s%s", location(t.End+leading), expression, source[expressionEnd:tokens[j].Start], location(tokens[j].Start))
 			cursor = tokens[j].Start
 			i = j - 1
 		}
@@ -143,6 +157,7 @@ func normalizeExceptions(filename string, source []byte) ([]byte, error) {
 		out.Write(source[cursor:t.Start])
 		fmt.Fprintf(&out, "GhiTry(func(){%s\n}, %s, %s)", body, catcher, finalizer)
 		cursor = tokens[last].End
+		out.WriteString(location(cursor))
 		i = last
 	}
 	out.Write(source[cursor:])

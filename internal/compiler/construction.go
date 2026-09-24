@@ -103,7 +103,7 @@ func (p *program) validateConstruction() error {
 					}
 				}
 				for _, field := range class.Fields {
-					if p.sourceNeedsInitialization(field.Type, file, ns, map[string]bool{}) {
+					if p.sourceNeedsInitialization(field.Type, file, ns, map[string]bool{}) || class.mentionsTypeParameter(field.Type) {
 						check.required[field.Name] = true
 					}
 				}
@@ -126,6 +126,11 @@ func (p *program) sourceNeedsInitialization(expr ast.Expr, file *sourceFile, ns 
 		return true
 	}
 	switch typ := expr.(type) {
+	case *ast.IndexExpr, *ast.IndexListExpr:
+		// A parameterized named aggregate may contain nonnullable values even
+		// when its arguments are primitive (or themselves type parameters).
+		// Require explicit construction until source-level substitution is used.
+		return true
 	case *ast.ParenExpr:
 		return p.sourceNeedsInitialization(typ.X, file, ns, seen)
 	case *ast.ArrayType:

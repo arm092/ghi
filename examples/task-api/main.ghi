@@ -1,0 +1,22 @@
+namespace main
+
+import store "app.store"
+import service "app.service"
+import httpapi "app.httpapi"
+import http "go:net/http"
+import os "go:os"
+import fmt "go:fmt"
+import time "go:time"
+
+func main() {
+	path := os.Getenv("GHI_TASK_DB")
+	if path == "" { path = "tasks.db" }
+	address := os.Getenv("GHI_TASK_ADDR")
+	if address == "" { address = "127.0.0.1:8080" }
+	database := store.Store(path)
+	defer database.Close()
+	handler := httpapi.Handler(service.Service(database))
+	server := & http.Server { Addr: address, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, Handler: http.HandlerFunc(func (w http.ResponseWriter, r * http.Request) { handler.Serve(w, r) }) }
+	fmt.Println("Task API listening on", address)
+	server.ListenAndServe()
+}

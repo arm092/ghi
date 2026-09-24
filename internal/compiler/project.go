@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"ghi/internal/mojave"
 	"go/ast"
 	"go/token"
 	"io/fs"
@@ -36,21 +37,27 @@ type program struct {
 	CheckedDereferences map[*ast.StarExpr]bool
 	LoweredReceives     map[*ast.UnaryExpr]bool
 	ReceiveID           int
+	TestNamespaces      map[string]bool
 }
 
 func loadProject(root string) (*program, error) {
-	p := &program{Root: root, Fset: token.NewFileSet(), Namespaces: map[string]*namespace{}}
+	return loadProjectMode(root, false)
+}
+
+func loadProjectMode(root string, testing bool) (*program, error) {
+	p := &program{Root: root, Fset: token.NewFileSet(), Namespaces: map[string]*namespace{}, TestNamespaces: map[string]bool{}}
 	directories := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	scanRoot, packageNamespace := root, ""
+	visit := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			// Ghi application tests are isolated from production commands.
-			if path == filepath.Join(root, "tests") {
+			if (!testing || packageNamespace != "") && path == filepath.Join(scanRoot, "tests") {
 				return filepath.SkipDir
 			}
-			if path != root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "bin" || d.Name() == "vendor" || d.Name() == "node_modules") {
+			if path != scanRoot && (strings.HasPrefix(d.Name(), ".") || d.Name() == "bin" || d.Name() == "vendor" || d.Name() == "node_modules") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -68,6 +75,9 @@ func loadProject(root string) (*program, error) {
 		name, tree, unit, err := parseFile(p.Fset, path, data)
 		if err != nil {
 			return err
+		}
+		if packageNamespace != "" && name != packageNamespace && !strings.HasPrefix(name, packageNamespace+".") {
+			return fmt.Errorf("%s: package %s cannot declare namespace %s", path, packageNamespace, name)
 		}
 		dir := filepath.Dir(path)
 		if previous, ok := directories[dir]; ok && previous != name {
@@ -89,16 +99,34 @@ func loadProject(root string) (*program, error) {
 			class.Namespace = ns
 		}
 		ns.Files = append(ns.Files, source)
+		rel, _ := filepath.Rel(root, path)
+		if packageNamespace == "" && strings.HasPrefix(rel, "tests"+string(filepath.Separator)) {
+			if name == "main" {
+				return fmt.Errorf("%s: tests must use a test namespace, not main", path)
+			}
+			p.TestNamespaces[name] = true
+		}
 		return nil
-	})
+	}
+	err := filepath.WalkDir(root, visit)
 	if err != nil {
 		return nil, err
+	}
+	roots, err := mojave.SourceRoots(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, dependency := range roots {
+		scanRoot, packageNamespace = dependency.Path, dependency.Namespace
+		if err := filepath.WalkDir(scanRoot, visit); err != nil {
+			return nil, err
+		}
 	}
 	if len(p.Namespaces) == 0 {
 		return nil, fmt.Errorf("no .ghi source files found in %s", root)
 	}
 	main, ok := p.Namespaces["main"]
-	if !ok || main.Dir != root {
+	if !testing && (!ok || main.Dir != root) {
 		return nil, fmt.Errorf("project root must declare namespace main")
 	}
 	sort.Slice(p.Ordered, func(i, j int) bool { return p.Ordered[i].Name < p.Ordered[j].Name })

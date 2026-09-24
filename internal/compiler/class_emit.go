@@ -9,10 +9,12 @@ import (
 
 func (p *program) emitClass(c *classDecl) error {
 	var out strings.Builder
-	fmt.Fprintf(&out, "package %s\ntype %s interface {\n", c.Namespace.GoName, c.Name)
+	parameters, arguments := c.typeParameters(), c.typeArguments()
+	receiver := "ghiData_" + c.Name + arguments
+	fmt.Fprintf(&out, "package %s\ntype %s%s interface {\n", c.Namespace.GoName, c.Name, parameters)
 	if !c.Interface {
 		for a := c; a != nil; a = a.Parent {
-			fmt.Fprintf(&out, "GhiIs_%s()\n", a.key())
+			fmt.Fprintf(&out, "GhiIs_%s(%s)\n", a.key(), a.markerParameters())
 		}
 	}
 	for _, field := range c.allFields() {
@@ -24,20 +26,27 @@ func (p *program) emitClass(c *classDecl) error {
 		fmt.Fprintf(&out, "GhiM_%s(%s)%s\n", m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace))
 	}
 	out.WriteString("}\n")
+	if len(c.InterfaceNames) > 0 {
+		fmt.Fprintf(&out, "func ghiVerify_%s%s(value %s%s) {\n", c.Name, parameters, c.Name, arguments)
+		for _, name := range c.InterfaceNames {
+			fmt.Fprintf(&out, "var _ %s = value\n", name)
+		}
+		out.WriteString("}\n")
+	}
 	if !c.Interface {
-		fmt.Fprintf(&out, "type ghiData_%s struct {\n", c.Name)
+		fmt.Fprintf(&out, "type ghiData_%s%s struct {\n", c.Name, parameters)
 		for _, f := range c.allFields() {
 			fmt.Fprintf(&out, "F_%s_%s %s\n", f.Owner.key(), f.Name, p.typeText(f.Type, f.Owner, c.File, c.Namespace))
 		}
 		out.WriteString("}\n")
 		for a := c; a != nil; a = a.Parent {
-			fmt.Fprintf(&out, "func (this *ghiData_%s) GhiIs_%s() {}\n", c.Name, a.key())
+			fmt.Fprintf(&out, "func (this *%s) GhiIs_%s(%s) {}\n", receiver, a.key(), a.markerParameters())
 		}
 		for _, f := range c.allFields() {
 			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace)
-			fmt.Fprintf(&out, "func (this *ghiData_%s) %s() %s { return this.F_%s_%s }\n", c.Name, fieldGet(f), typ, f.Owner.key(), f.Name)
-			fmt.Fprintf(&out, "func (this *ghiData_%s) %s(value %s) { this.F_%s_%s = value }\n", c.Name, fieldSet(f), typ, f.Owner.key(), f.Name)
-			fmt.Fprintf(&out, "func (this *ghiData_%s) %s() *%s { return &this.F_%s_%s }\n", c.Name, fieldRef(f), typ, f.Owner.key(), f.Name)
+			fmt.Fprintf(&out, "func (this *%s) %s() %s { return this.F_%s_%s }\n", receiver, fieldGet(f), typ, f.Owner.key(), f.Name)
+			fmt.Fprintf(&out, "func (this *%s) %s(value %s) { this.F_%s_%s = value }\n", receiver, fieldSet(f), typ, f.Owner.key(), f.Name)
+			fmt.Fprintf(&out, "func (this *%s) %s() *%s { return &this.F_%s_%s }\n", receiver, fieldRef(f), typ, f.Owner.key(), f.Name)
 		}
 		for _, m := range c.allMethods() {
 			ret := ""
@@ -48,18 +57,24 @@ func (p *program) emitClass(c *classDecl) error {
 			if args != "" {
 				args = ", " + args
 			}
-			fmt.Fprintf(&out, "func (this *ghiData_%s) GhiM_%s(%s)%s { %s%s(this%s) }\n", c.Name, m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace), ret, p.classSymbol(m.Owner, bodyName(m), c.File, c.Namespace), args)
+			fmt.Fprintf(&out, "func (this *%s) GhiM_%s(%s)%s { %s%s%s(this%s) }\n", receiver, m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace), ret, p.classSymbol(m.Owner, bodyName(m), c.File, c.Namespace), m.Owner.typeArguments(), args)
 		}
 		ctor := c.Constructor
 		args := argumentNames(ctor)
 		if args != "" {
 			args = ", " + args
 		}
-		fmt.Fprintf(&out, "func GhiNew_%s(%s) %s { this := &ghiData_%s{}; GhiInit_%s(this%s); return this }\n", c.Name, p.parameters(ctor, c.File, c.Namespace), c.Name, c.Name, c.Name, args)
+		fmt.Fprintf(&out, "func GhiNew_%s%s(%s) %s%s { this := &%s{}; GhiInit_%s%s(this%s); return this }\n", c.Name, parameters, p.parameters(ctor, c.File, c.Namespace), c.Name, arguments, receiver, c.Name, arguments, args)
 	}
 	parsed, err := parser.ParseFile(p.Fset, c.File.Path+".generated", out.String(), parser.AllErrors|parser.SkipObjectResolution)
 	if err != nil {
 		return fmt.Errorf("generate class %s: %w", c.Name, err)
+	}
+	// Synthetic declarations belong to the source class, never a nonexistent
+	// .generated file. Real method bodies retain their own original positions.
+	generatedFile := p.Fset.File(parsed.Pos())
+	for _, offset := range generatedFile.Lines() {
+		generatedFile.AddLineColumnInfo(offset, c.File.Path, c.Line, 1)
 	}
 	c.File.Tree.Decls = append(c.File.Tree.Decls, parsed.Decls...)
 	if c.Interface {
@@ -73,7 +88,15 @@ func (p *program) emitClass(c *classDecl) error {
 			name = "GhiInit_" + c.Name
 		}
 		m.Node.Name = ast.NewIdent(name)
-		m.Node.Type.Params.List = append([]*ast.Field{{Names: []*ast.Ident{ast.NewIdent("this")}, Type: ast.NewIdent(c.Name)}}, m.Node.Type.Params.List...)
+		thisType, _ := parser.ParseExpr(c.Name + arguments)
+		if c.TypeParams != nil {
+			prototype, err := parser.ParseFile(p.Fset, c.File.Path, "package parsed\nfunc F"+parameters+"() {}", parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			m.Node.Type.TypeParams = prototype.Decls[0].(*ast.FuncDecl).Type.TypeParams
+		}
+		m.Node.Type.Params.List = append([]*ast.Field{{Names: []*ast.Ident{ast.NewIdent("this")}, Type: thisType}}, m.Node.Type.Params.List...)
 		c.File.Tree.Decls = append(c.File.Tree.Decls, m.Node)
 	}
 	return nil

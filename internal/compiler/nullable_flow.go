@@ -311,8 +311,8 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 	case *ast.SwitchStmt:
 		proof = f.statement(s.Init, proof)
 		f.expression(s.Tag, proof)
+		f.switchCases(s, proof)
 		f.invalidateWrites(s, proof)
-		f.block(s.Body, proof.clone())
 	case *ast.TypeSwitchStmt:
 		proof = f.statement(s.Init, proof)
 		f.statement(s.Assign, proof)
@@ -334,6 +334,60 @@ func (f *nullableFlow) statement(statement ast.Stmt, proof nullProof) nullProof 
 		return f.statement(s.Stmt, nullProof{})
 	}
 	return proof
+}
+
+// Each case starts from its own condition, never a proof learned in a sibling.
+// In an expressionless switch, failed earlier cases also narrow later cases.
+func (f *nullableFlow) switchCases(statement *ast.SwitchStmt, proof nullProof) {
+	remaining := proof.clone()
+	caseProofs := make(map[*ast.CaseClause]nullProof)
+	var defaultClause *ast.CaseClause
+	for _, stmt := range statement.Body.List {
+		clause := stmt.(*ast.CaseClause)
+		if clause.List == nil {
+			defaultClause = clause
+			continue
+		}
+		var matched nullProof
+		for _, condition := range clause.List {
+			f.expression(condition, remaining)
+			branch := remaining.clone()
+			if statement.Tag == nil {
+				branch = f.assume(condition, true, remaining)
+				remaining = f.assume(condition, false, remaining)
+			}
+			if matched == nil {
+				matched = branch
+			} else {
+				matched = mergeProof(matched, branch)
+			}
+		}
+		caseProofs[clause] = matched
+	}
+	if defaultClause != nil {
+		caseProofs[defaultClause] = remaining
+	}
+	fallthroughPossible := false
+	for _, stmt := range statement.Body.List {
+		clause := stmt.(*ast.CaseClause)
+		incoming := caseProofs[clause]
+		if fallthroughPossible {
+			// Fallthrough skips the next condition entirely. Until exit-specific
+			// proofs are tracked, carry no nullable assumptions across this edge.
+			incoming = nullProof{}
+		}
+		f.block(&ast.BlockStmt{List: clause.Body}, incoming.clone())
+		fallthroughPossible = false
+		ast.Inspect(&ast.BlockStmt{List: clause.Body}, func(node ast.Node) bool {
+			if _, ok := node.(*ast.FuncLit); ok {
+				return false
+			}
+			if branch, ok := node.(*ast.BranchStmt); ok && branch.Tok == token.FALLTHROUGH {
+				fallthroughPossible = true
+			}
+			return true
+		})
+	}
 }
 
 func (p *program) narrowFunction(typ *ast.FuncType, body *ast.BlockStmt, info *types.Info) bool {

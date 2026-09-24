@@ -160,7 +160,8 @@ func (p *program) validateNonNull(info *types.Info) error {
 						offset = 1
 					}
 					param := fn.Node.Type.Params.List[index+offset]
-					if p.sourceNeedsInitialization(param.Type, file, ns, map[string]bool{}) && nilSyntax(value) {
+					genericParameter := (&classDecl{TypeParams: fn.Node.Type.TypeParams}).mentionsTypeParameter(param.Type)
+					if (p.sourceNeedsInitialization(param.Type, file, ns, map[string]bool{}) || genericParameter) && nilSyntax(value) {
 						reject(fn.Node, "nil default requires a nullable parameter type")
 					}
 				}

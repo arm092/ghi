@@ -8,10 +8,21 @@ if [ ! -f "$bundle/ghi" ] || [ ! -f "$bundle/ghi.sha256" ]; then
     exit 1
 fi
 (cd "$bundle" && shasum -a 256 -c ghi.sha256)
+with_mojave=0
+# Preserve installation support for older compiler-only bundles.
+if [ -e "$bundle/mojave" ] || [ -e "$bundle/mojave.sha256" ]; then
+    if [ ! -f "$bundle/mojave" ] || [ ! -f "$bundle/mojave.sha256" ]; then
+        echo 'Extract the complete Ghi release archive before running this installer.' >&2
+        exit 1
+    fi
+    (cd "$bundle" && shasum -a 256 -c mojave.sha256)
+    with_mojave=1
+fi
 "$bundle/ghi" setup
 mkdir -p "$destination"
 destination=$(CDPATH= cd -- "$destination" && pwd)
 install -m 755 "$bundle/ghi" "$destination/ghi"
+if [ "$with_mojave" = 1 ]; then install -m 755 "$bundle/mojave" "$destination/mojave"; fi
 printf 'Ghi installed at %s/ghi\n' "$destination"
 if [ "${GHI_NO_PATH:-0}" != 1 ]; then
     config="${XDG_CONFIG_HOME:-$HOME/.config}/ghi"
@@ -43,4 +54,4 @@ ENV
         *) configure_profile "$HOME/.profile" ;;
     esac
 fi
-printf 'Open a new terminal, then run ghi version or ghi run <project-directory>.\n'
+printf 'Open a new terminal, then run ghi version, ghi run <project-directory>, or mojave help.\n'

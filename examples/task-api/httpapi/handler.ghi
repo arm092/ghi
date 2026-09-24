@@ -1,0 +1,59 @@
+namespace app.httpapi
+
+import service "app.service"
+import http "go:net/http"
+import json "go:encoding/json"
+import io "go:io"
+
+class Handler {
+	private tasks service.Service
+	constructor(tasks service.Service) { this.tasks = tasks }
+	public func Serve(w http.ResponseWriter, r * http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/tasks" { w.WriteHeader(404); json.NewEncoder(w).Encode(map[string] string { "error": "not found" }); return }
+		try {
+			switch r.Method {
+				case "GET":
+				json.NewEncoder(w).Encode(this.tasks.List())
+				case "POST":
+				var input struct { Title string }
+				r.Body = http.MaxBytesReader(w, r.Body, 4096)
+				try {
+					decoder := json.NewDecoder(r.Body)
+					decoder.DisallowUnknownFields()
+					decoder.Decode(& input)
+					var trailing any
+					more := true
+					try {
+						decoder.Decode(& trailing)
+					} catch err GoError {
+						if err.cause != io.EOF { throw err }
+						more = false
+					}
+					if more {
+						w.WriteHeader(400)
+						json.NewEncoder(w).Encode(map[string] string { "error": "expected a single JSON object" })
+						return
+					}
+				} catch err GoError {
+					w.WriteHeader(400)
+					json.NewEncoder(w).Encode(map[string] string { "error": "invalid JSON request" })
+					return
+				}
+				task := this.tasks.Add(input.Title)
+				w.WriteHeader(201)
+				json.NewEncoder(w).Encode(task)
+				default:
+				w.Header().Set("Allow", "GET, POST")
+				w.WriteHeader(405)
+				json.NewEncoder(w).Encode(map[string] string { "error": "method not allowed" })
+			}
+		} catch err service.ValidationError {
+			w.WriteHeader(422)
+			json.NewEncoder(w).Encode(map[string] string { "error": err.message })
+		} catch err GoError {
+			w.WriteHeader(500)
+			json.NewEncoder(w).Encode(map[string] string { "error": "storage operation failed" })
+		}
+	}
+}

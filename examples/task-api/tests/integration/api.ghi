@@ -1,0 +1,60 @@
+namespace tests.integration
+
+import testing "go:testing"
+import filepath "go:path/filepath"
+import httptest "go:net/http/httptest"
+import http "go:net/http"
+import strings "go:strings"
+import json "go:encoding/json"
+import store "app.store"
+import service "app.service"
+import httpapi "app.httpapi"
+
+func TestHTTPAndPersistence(t * testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.db")
+	database := store.Store(path)
+	defer database.Close()
+	handler := httpapi.Handler(service.Service(database))
+	server := httptest.NewServer(http.HandlerFunc(func (w http.ResponseWriter, r * http.Request) { handler.Serve(w, r) }))
+	defer server.Close()
+	client := server.Client()
+	response := client.Post(server.URL + "/tasks", "application/json", strings.NewReader(`{"Title":"Ship Ghi"}`))
+	if response.StatusCode != 201 { t.Fatalf("create status %d", response.StatusCode) }
+	var created store.Task
+	json.NewDecoder(response.Body).Decode(& created)
+	response.Body.Close()
+	if created.ID <= 0 || created.Title != "Ship Ghi" { t.Fatal("unexpected created task", created) }
+	response = client.Get(server.URL + "/tasks")
+	if response.StatusCode != 200 { t.Fatal("list failed") }
+	var tasks[] store.Task
+	json.NewDecoder(response.Body).Decode(& tasks)
+	response.Body.Close()
+	if len(tasks) != 1 || tasks[0].ID != created.ID { t.Fatalf("created task missing: tasks=%#v created=%#v", tasks, created) }
+	server.Close()
+	database.Close()
+	reopened := store.Store(path)
+	defer reopened.Close()
+	tasks = reopened.List()
+	if len(tasks) != 1 || tasks[0].Title != "Ship Ghi" { t.Fatal("task did not survive database reopen") }
+}
+
+func TestValidationAndSafeSQL(t * testing.T) {
+	database := store.Store(filepath.Join(t.TempDir(), "validation.db"))
+	defer database.Close()
+	handler := httpapi.Handler(service.Service(database))
+	cases := [] struct { Body string; Status int } {
+		{ `{"Title":"   "}`, 422 },
+		{ `{"unexpected":true}`, 400 },
+		{ `invalid`, 400 },
+		{ `{"Title":"first"} {"Title":"second"}`, 400 },
+		{ `{"Title":"'); DROP TABLE tasks; --"}`, 201 },
+	}
+	for _, test := range cases {
+		request := httptest.NewRequest("POST", "/tasks", strings.NewReader(test.Body))
+		response := httptest.NewRecorder()
+		handler.Serve(response, request)
+		if response.Code != test.Status { t.Fatalf("body %s: got %d want %d", test.Body, response.Code, test.Status) }
+	}
+	tasks := database.List()
+	if len(tasks) != 1 || tasks[0].Title != "'); DROP TABLE tasks; --" { t.Fatalf("validation or SQL binding failed: %#v", tasks) }
+}

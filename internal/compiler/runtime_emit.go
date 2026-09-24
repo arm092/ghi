@@ -23,6 +23,34 @@ class GoError extends Exception {
 `
 
 const runtimeCode = `package runtime
+import (
+ "go:fmt"
+ "go:os"
+ goruntime "go:runtime"
+ "go:strings"
+)
+// ReportPanic is installed at the application entry boundary. Runtime faults
+// remain fatal; it only renders their Ghi source frames before exiting.
+func ReportPanic() {
+ value:=recover()
+ if value==nil{return}
+ fmt.Fprintln(os.Stderr, "fatal:", value)
+ pcs:=make([]uintptr,64)
+ count:=goruntime.Callers(2,pcs)
+ frames:=goruntime.CallersFrames(pcs[:count])
+ for {
+  frame,more:=frames.Next()
+  name:=frame.Function
+  if strings.HasSuffix(frame.File,".ghi") && !strings.Contains(frame.File,".ghi-runtime") && !strings.Contains(name,"GhiM_") && !strings.Contains(name,"GhiNew_") && !strings.Contains(name,"GhiGet_") && !strings.Contains(name,"GhiSet_") && !strings.Contains(name,"GhiRef_") {
+   if at:=strings.LastIndex(name,".GhiBody_");at>=0 {name=name[:at+1]+strings.Replace(name[at+9:],"_",".",1)}
+   name=strings.ReplaceAll(name,"GhiInit_","constructor.")
+   name=strings.TrimPrefix(name,"ghi.generated/")
+   fmt.Fprintf(os.Stderr,"  at %s (%s:%d)\n",name,frame.File,frame.Line)
+  }
+  if !more {break}
+ }
+ os.Exit(2)
+}
 func Some[T any](value T) *T { return &value }
 func Received[T any](value T,ok bool)*T{if !ok{return nil};return &value}
 func Receive[T any](channel <-chan T)*T{value,ok:=<-channel;return Received(value,ok)}
