@@ -87,10 +87,10 @@ public class GhiIdeTest extends BasePlatformTestCase {
         assertTrue(GhiExternalAnnotator.parse(root.resolve("else.ghi")+":2:3: other",input).isEmpty());
     }    public void testImportedNamespaceAndIncompleteMemberCompletion(){
         var library=myFixture.addFileToProject("users/person.ghi","namespace app.users\nclass Person { public name string }\nfunc create() Person { return new Person() }\n");
-        var file=myFixture.configureByText("imports.ghi","namespace main\nimport users \"app.users\"\nfunc main(){ person := new users.Person(); person.<caret>\n");
+        var file=myFixture.configureByText("imports.ghi","namespace main\nimport app.users as users\nfunc main(){ person := new users.Person(); person.<caret>\n");
         var model=GhiSymbols.forFile(file);var target=model.resolve(file,file.getText().indexOf("Person"));assertNotNull(target);assertEquals(library,target.getContainingFile());
         assertEquals("name",model.complete(file,myFixture.getCaretOffset()).getFirst().name);
-        file=myFixture.configureByText("implicit.ghi","namespace main\nimport \"app.users\"\nfunc main(){ users.<caret> }\n");
+        file=myFixture.configureByText("implicit.ghi","namespace main\nimport app.users\nfunc main(){ users.<caret> }\n");
         var names=GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream().map(symbol->symbol.name).toList();
         assertTrue(names.toString(),names.contains("Person"));assertTrue(names.contains("create"));
     }
@@ -110,15 +110,15 @@ public class GhiIdeTest extends BasePlatformTestCase {
         assertEquals(java.util.List.of("name string","count int"),((GhiSymbols.Symbol)((Object[])items[0])[0]).parameters);
     }    public void testExplicitGenericConstructionHintsAndNavigation(){
         var library=myFixture.addFileToProject("models/box.ghi","namespace app.models\nclass Box[T any] { public value T\n constructor(value T, count int = 1){ this.value=value }\n}\nfunc build() {}\ninterface Reader {}\n");
-        var file=myFixture.configureByText("construct.ghi","namespace main\nimport models \"app.models\"\nfunc main(){ value := new models.Box[string](\"hello\", <caret>2); value.value = \"world\" }\n");
+        var file=myFixture.configureByText("construct.ghi","namespace main\nimport app.models as models\nfunc main(){ value := new models.Box[string](\"hello\", <caret>2); value.value = \"world\" }\n");
         var model=GhiSymbols.forFile(file);var call=model.callAt(file,myFixture.getCaretOffset());assertNotNull(call);
         assertEquals("constructor",call.symbol().name);assertEquals(1,call.parameter());assertEquals(java.util.List.of("value string","count int = 1"),call.symbol().parameters);
         var target=model.resolve(file,file.getText().indexOf("Box"));assertNotNull(target);assertEquals(library,target.getContainingFile());
         assertEquals("value",model.resolve(file,file.getText().indexOf("value.value")+6).getText());
-        file=myFixture.configureByText("construct-complete.ghi","namespace main\nimport models \"app.models\"\nfunc main(){ value := new models.<caret> }\n");
+        file=myFixture.configureByText("construct-complete.ghi","namespace main\nimport app.models as models\nfunc main(){ value := new models.<caret> }\n");
         var names=GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream().map(symbol->symbol.name).toList();assertEquals(java.util.List.of("Box"),names);
         file=myFixture.configureByText("construct-direct.ghi","namespace main\nclass Box[T any] {public value T}\nfunc main(){new Box[string]().<caret>}\n");
-        assertEquals("value",GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).getFirst().name);        file=myFixture.configureByText("bare-generic.ghi","namespace main\nimport models \"app.models\"\nfunc main(){value := models.Box[string](\"hello\", <caret>2)}\n");
+        assertEquals("value",GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).getFirst().name);        file=myFixture.configureByText("bare-generic.ghi","namespace main\nimport app.models as models\nfunc main(){value := models.Box[string](\"hello\", <caret>2)}\n");
         var bareCall=GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset());assertNotNull(bareCall);assertEquals(call.symbol().parameters,bareCall.symbol().parameters);
         assertEquals(library,GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("Box")).getContainingFile());
     }
@@ -326,6 +326,64 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var variants=myFixture.completeBasic();
         if(variants!=null)for(var item:variants){assertFalse(item.getLookupString().equals("Box"));assertFalse(item.getLookupString().equals("Contract"));}
     }
+    public void testUnifiedNamespaceAndSelectedTypeImports(){
+        var http=myFixture.addFileToProject("presentation/httpapi/api.ghi","namespace presentation.httpapi\n"
+            +"class Handler {constructor(port int){}}\nfunc serve(address string){}\n");
+        var config=myFixture.addFileToProject("infrastructure/config/config.ghi","namespace infrastructure.config\n"
+            +"class Settings {}\nfunc load() Settings{return new Settings()}\n");
+        var models=myFixture.addFileToProject("models/model.ghi","namespace models\nclass Record {}\n");
+        var service=myFixture.addFileToProject("application/tasks/service.ghi","namespace application.tasks\n"
+            +"class Service {constructor(name string){}}\n");
+        var file=myFixture.configureByText("unified-imports.ghi","namespace main\n"
+            +"import presentation.httpapi\nimport infrastructure.config as cfg\n"
+            +"import models\nimport application.tasks.Service as TaskService\n"
+            +"func main(){httpapi.serve(\"x\");new httpapi.Handler(80);cfg.load();new models.Record();new TaskService(\"job\")}\n");
+        var model=GhiSymbols.forFile(file);
+        assertEquals(http,model.resolve(file,file.getText().indexOf("httpapi.serve")+8).getContainingFile());
+        assertEquals(config,model.resolve(file,file.getText().indexOf("cfg.load")+4).getContainingFile());
+        assertEquals(models,model.resolve(file,file.getText().indexOf("models.Record")+7).getContainingFile());
+        assertEquals(service,model.resolve(file,file.getText().indexOf("Service as")).getContainingFile());
+        assertEquals(java.util.List.of("address string"),model.callAt(file,file.getText().indexOf("\"x\"")).symbol().parameters);
+        assertEquals(java.util.List.of("port int"),model.callAt(file,file.getText().indexOf("80)")).symbol().parameters);
+        assertEquals(java.util.List.of("name string"),model.callAt(file,file.getText().indexOf("\"job\"")).symbol().parameters);
+        assertEquals(http,model.complete(file,file.getText().indexOf("httpapi.serve")+8).stream()
+            .filter(symbol->symbol.name.equals("serve")).findFirst().orElseThrow().file);
+        file=myFixture.configureByText("namespace-completion.ghi","namespace main\nimport presentation.htt<caret>\n");
+        assertTrue(GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream()
+            .anyMatch(symbol->symbol.name.equals("httpapi")&&symbol.kind.equals("namespace")));
+        file=myFixture.configureByText("selected-completion.ghi","namespace main\nimport application.tasks.Ser<caret>\n");
+        assertTrue(GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream()
+            .anyMatch(symbol->symbol.name.equals("Service")&&symbol.kind.equals("class")));
+        file=myFixture.configureByText("unified-rename.ghi","namespace main\n"
+            +"import presentation.httpapi\nimport infrastructure.config as cfg\n"
+            +"import models\nimport application.tasks.Service as TaskService\n"
+            +"func main(){httpapi.serve(\"x\");new httpapi.Handler(80);cfg.load();new models.Record();new TaskService(\"job\")}\n");
+        myFixture.getEditor().getCaretModel().moveToOffset(file.getText().indexOf("cfg.load"));
+        myFixture.renameElementAtCaret("settings");
+        assertTrue(file.getText(),file.getText().contains("import infrastructure.config as settings"));
+        assertTrue(file.getText(),file.getText().contains("settings.load()"));
+        assertTrue(config.getText().contains("namespace infrastructure.config"));
+    }
+    public void testUnifiedImportAmbiguousPathHasNoBinding(){
+        myFixture.addFileToProject("task/type.ghi","namespace application.tasks\nclass Service {}\n");
+        myFixture.addFileToProject("task/namespace.ghi","namespace application.tasks.Service\nclass Runner {}\n");
+        var file=myFixture.configureByText("ambiguous-unified.ghi","namespace main\nimport application.tasks.Service\n"
+            +"func main(){new Service()}\n");
+        var model=GhiSymbols.forFile(file);
+        assertNull(model.resolve(file,file.getText().indexOf("Service\n")));
+        assertNull(model.resolve(file,file.getText().lastIndexOf("Service")));
+        assertFalse(model.complete(file,file.getText().lastIndexOf("Service")).stream()
+            .anyMatch(symbol->symbol.name.equals("Service")));
+        file=myFixture.configureByText("ambiguous-completion.ghi","namespace main\nimport application.tasks.Ser<caret>\n");
+        assertFalse(GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream()
+            .anyMatch(symbol->symbol.name.equals("Service")));
+    }
+    public void testLegacyQuotedGhiImportDoesNotBind(){
+        myFixture.addFileToProject("legacy/library.ghi","namespace legacy.library\nclass Item {}\n");
+        var file=myFixture.configureByText("legacy-import.ghi","namespace main\nimport lib \"legacy.library\"\n"
+            +"func main(){new lib.Item()}\n");
+        assertNull(GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("lib.Item")+4));
+    }
     public void testAnonymousArrowScopesCapturesAndCalls(){
         String source="namespace main\nclass Counter {\n public value int\n public func make(seed int) func(int) int {\n  return (n int) int => { return this.value + seed + n }\n }\n}\nfunc main(){\n outer := (a int) func(int) int => {\n  inner := (b int) int => { return a+b }\n  return inner\n }\n sum := (a int, b int) int => { return a+b }\n pair := (a int) (int,error) => { return a,nil }\n named := (x int) (result int, err error) => { result=x; return }\n empty := () => { }\n sum(1,2); pair(1); named(2); empty(); outer(2)\n}\n";
         var file=myFixture.configureByText("arrows.ghi",source);
@@ -367,7 +425,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
         myFixture.addFileToProject(".ghi/packages/stale.lib/types.ghi","namespace stale.lib\nclass Stale {}\n");
         myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":[{\"namespace\":\"acme.lib\"}]}");
         excludeCache(library);
-        var file=myFixture.configureByText("installed.ghi","namespace main\nimport lib \"acme.lib\"\nimport acme.lib.Widget as MyWidget\nfunc main(){w:=new lib.Widget(\"x\");w.<caret>run(2);new MyWidget(\"y\")}\n");
+        var file=myFixture.configureByText("installed.ghi","namespace main\nimport acme.lib as lib\nimport acme.lib.Widget as MyWidget\nfunc main(){w:=new lib.Widget(\"x\");w.<caret>run(2);new MyWidget(\"y\")}\n");
         var model=GhiSymbols.forFile(file);
         assertEquals(library,model.resolve(file,file.getText().indexOf("lib.Widget")+4).getContainingFile());
         assertEquals(library,model.resolve(file,file.getText().indexOf("acme.lib.Widget")+9).getContainingFile());
@@ -495,7 +553,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
         assertNull(GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("Widget")));
     }
     public void testInstalledSourceUsesConsumingLock(){
-        var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nimport next \"next.lib\"\nfunc use(){new next.Next()}\n");
+        var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nimport next.lib as next\nfunc use(){new next.Next()}\n");
         var target=myFixture.addFileToProject(".ghi/packages/next.lib/types.ghi","namespace next.lib\nclass Next {}\n");
         myFixture.addFileToProject(".ghi/packages/acme.lib/mojave.json","{\"version\":1,\"dependencies\":{}}");
         myFixture.addFileToProject(".ghi/packages/acme.lib/mojave.lock","{broken");

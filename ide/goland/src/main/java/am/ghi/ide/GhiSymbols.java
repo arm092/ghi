@@ -27,6 +27,7 @@ final class GhiSymbols {
     static final class Source {
         PsiFile file; String namespace=""; List<Token> tokens=new ArrayList<>();
         List<Scope> scopes=new ArrayList<>(); Map<Integer,Symbol> declarations=new HashMap<>(), arrows=new HashMap<>(); Set<Integer> importPathTokens=new HashSet<>(); Map<Integer,Symbol> selectedPaths=new HashMap<>();
+        List<PendingImport> pendingImports=new ArrayList<>();
         Source(PsiFile file) { this.file=file; }
         Scope scope(int offset) {
             Scope result=scopes.getFirst();
@@ -41,6 +42,7 @@ final class GhiSymbols {
         if(GhiDependencies.applicationRoot(file)!=null)return build(file);
         return com.intellij.psi.util.CachedValuesManager.getCachedValue(file, () -> com.intellij.psi.util.CachedValueProvider.Result.create(build(file), com.intellij.psi.util.PsiModificationTracker.MODIFICATION_COUNT));
     }
+    private record PendingImport(Symbol binding,String path,int lastOffset) {}
     private static GhiSymbols build(PsiFile file) {
         GhiSymbols result=new GhiSymbols(); result.add(file);
         var root=GhiDependencies.applicationRoot(file);
@@ -51,7 +53,22 @@ final class GhiSymbols {
             if(other!=null)result.add(other);
         }
         GhiDependencies.add(file,result);
+        result.resolveImports();
         return result;
+    }
+    private void resolveImports(){
+        for(Source source:sources.values())for(PendingImport pending:source.pendingImports){
+            boolean namespace=sources.values().stream().anyMatch(candidate->candidate.namespace.equals(pending.path));
+            boolean selected=symbols.stream().anyMatch(candidate->isType(candidate)&&candidate.scope.parent==null
+                &&(sources.get(candidate.file).namespace+"."+candidate.name).equals(pending.path));
+            if(namespace==selected){
+                // An unknown or ambiguous path has no safe IDE binding.
+                symbols.remove(pending.binding);source.declarations.remove(pending.binding.offset);
+                source.selectedPaths.remove(pending.lastOffset);
+            }else if(namespace){
+                pending.binding.kind="import";source.selectedPaths.remove(pending.lastOffset);
+            }
+        }
     }
     void addDependency(PsiFile file,String namespace){
         int before=symbols.size();add(file);
@@ -74,26 +91,34 @@ final class GhiSymbols {
         for(int i=0;i<ts.size();i++){
             Token t=ts.get(i);String word=t.text;
             if(word.equals("namespace")){s.namespace=qualified(ts,i+1);continue;}
-            if(word.equals("import")&&i+1<ts.size()&&ts.get(i+1).text.startsWith("\"")){
-                String namespace=ts.get(i+1).text.replace("\"","");String alias=namespace.substring(Math.max(namespace.lastIndexOf('.'),namespace.lastIndexOf('/'))+1);
-                if(alias.startsWith("go:"))alias=alias.substring(3);
-                Symbol symbol=new Symbol(alias,"import",ts.get(i+1).start,file,root);symbol.importNamespace=namespace;symbols.add(symbol);
+            if(word.equals("import")){
+                if(i+1<ts.size()&&ts.get(i+1).text.startsWith("\"")){
+                    String namespace=ts.get(i+1).text.replace("\"","");String alias=namespace.substring(Math.max(namespace.lastIndexOf('.'),namespace.lastIndexOf('/'))+1);
+                    if(alias.startsWith("go:"))alias=alias.substring(3);
+                    if(namespace.startsWith("go:")){Symbol symbol=new Symbol(alias,"import",ts.get(i+1).start,file,root);symbol.importNamespace=namespace;symbols.add(symbol);}
+                }else if(i+1<ts.size()&&ts.get(i+1).identifier){
+                    if(i+2<ts.size()&&ts.get(i+2).text.startsWith("\"")){
+                        String namespace=ts.get(i+2).text.replace("\"","");
+                        if(namespace.startsWith("go:")){Symbol symbol=declare(s,ts.get(i+1),"import",root);symbol.importNamespace=namespace;}
+                    }else{
+                        int end=i+1;while(is(ts,end+1,".")&&end+2<ts.size()&&ts.get(end+2).identifier)end+=2;
+                        for(int at=i+1;at<=end;at+=2)s.importPathTokens.add(ts.get(at).start);
+                        boolean aliased=is(ts,end+1,"as")&&end+2<ts.size()&&ts.get(end+2).identifier;
+                        Symbol binding=declare(s,ts.get(aliased?end+2:end),"typeImport",root);
+                        binding.explicitAlias=aliased;binding.importNamespace=qualified(ts,i+1);
+                        s.selectedPaths.put(ts.get(end).start,binding);
+                        s.pendingImports.add(new PendingImport(binding,binding.importNamespace,ts.get(end).start));
+                    }
+                }
+                continue;
             }
-            if(word.equals("import")&&i+1<ts.size()&&ts.get(i+1).identifier&&is(ts,i+2,".")){
-                int end=i+1;while(is(ts,end+1,".")&&end+2<ts.size()&&ts.get(end+2).identifier)end+=2;
-                for(int at=i+1;at<=end;at+=2)s.importPathTokens.add(ts.get(at).start);
-                boolean aliased=is(ts,end+1,"as")&&end+2<ts.size()&&ts.get(end+2).identifier;
-                Symbol selected=declare(s,ts.get(aliased?end+2:end),"typeImport",root);selected.explicitAlias=aliased;
-                selected.importNamespace=qualified(ts,i+1);s.selectedPaths.put(ts.get(end).start,selected);continue;
-            }
-            if(Set.of("class","interface","type","func","import").contains(word)&&i+1<ts.size()&&ts.get(i+1).identifier){
+            if(Set.of("class","interface","type","func").contains(word)&&i+1<ts.size()&&ts.get(i+1).identifier){
                 int nameIndex=i+1;Token name=ts.get(nameIndex);Scope scope=s.scope(t.start);
                 Symbol symbol=declare(s,name,word,scope);symbol.visibility=scope.owner!=null&&scope.owner.kind.equals("interface")?"public":visibility(ts,i);
                 if(is(ts,nameIndex+1,"[")){
                     int end=matching(ts,nameIndex+1,"[","]");
                     if(end>=0)for(String parameter:GhiGenericTypes.arguments(typeAt(ts,nameIndex)))symbol.typeParameters.add(parameter.split("[^\\p{L}\\p{N}_]",2)[0]);
                 }
-                if(word.equals("import")&&nameIndex+1<ts.size())symbol.importNamespace=ts.get(nameIndex+1).text.replace("\"","");
                 if(word.equals("class")||word.equals("interface")||word.equals("func")) {
                     int open=find(ts,nameIndex+1,"{",Set.of(";","}"));
                     if(word.equals("func")) {
@@ -374,14 +399,14 @@ final class GhiSymbols {
     List<Symbol> complete(PsiFile file,int offset){
         Source s=sources.get(file);int index=0;while(index<s.tokens.size()&&s.tokens.get(index).end<=offset)index++;
         int dot=is(s.tokens,index-1,".")?index-1:is(s.tokens,index-2,".")?index-2:-1;
-        // Import completion is restricted to the selected namespace's types.
+        // Import completion offers child namespaces and types at the selected path.
         int importStart=index-1;
         while(importStart>=0&&(s.tokens.get(importStart).identifier||is(s.tokens,importStart,".")))importStart--;
         if(is(s.tokens,importStart,"import")){
             String namespace="";
             if(dot>=0){StringBuilder path=new StringBuilder();for(int at=importStart+1;at<dot;at++)path.append(s.tokens.get(at).text);namespace=path.toString();}
-            final String selectedNamespace=namespace;
-            return symbols.stream().filter(symbol->isType(symbol)&&symbol.scope.parent==null&&sources.get(symbol.file).namespace.equals(selectedNamespace)).toList();
+            if(s.tokens.subList(importStart+1,Math.min(index,s.tokens.size())).stream().anyMatch(token->token.text.equals("as")))return List.of();
+            return importCompletions(namespace);
         }
         boolean construction=constructionContext(s,index);
         LinkedHashMap<String,Symbol> result=new LinkedHashMap<>();
@@ -405,6 +430,22 @@ final class GhiSymbols {
             Symbol binding=selectedBinding(file,selected.name);if(binding==null)result.remove(selected.name);else result.put(selected.name,binding);
         }
         return completionValues(result,construction,file);
+    }
+    private List<Symbol> importCompletions(String parent){
+        Map<String,Symbol> result=new LinkedHashMap<>();Set<String> ambiguous=new HashSet<>();
+        String prefix=parent.isEmpty()?"":parent+".";
+        for(Source source:sources.values())if(source.namespace.startsWith(prefix)){
+            String remainder=source.namespace.substring(prefix.length());
+            if(remainder.isEmpty())continue;
+            String child=remainder.split("\\.",2)[0];
+            result.putIfAbsent(child,new Symbol(child,"namespace",-1,source.file,source.scopes.getFirst()));
+        }
+        for(Symbol symbol:symbols)if(isType(symbol)&&symbol.scope.parent==null&&sources.get(symbol.file).namespace.equals(parent)){
+            if(result.containsKey(symbol.name)&&result.get(symbol.name).kind.equals("namespace")){
+                ambiguous.add(symbol.name);result.remove(symbol.name);
+            }else if(!ambiguous.contains(symbol.name))result.putIfAbsent(symbol.name,symbol);
+        }
+        return new ArrayList<>(result.values());
     }
     private static int calleeIndex(List<Token> tokens,int index){
         if(is(tokens,index,"]")){
