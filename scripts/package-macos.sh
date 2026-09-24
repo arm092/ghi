@@ -60,11 +60,13 @@ cat > "$work/distribution.xml" <<XML
   <pkg-ref id="am.ghi.compiler" version="$version">component.pkg</pkg-ref>
 </installer-gui-script>
 XML
-sign_args=()
-if [ -n "${GHI_INSTALLER_IDENTITY:-}" ]; then sign_args=(--sign "$GHI_INSTALLER_IDENTITY"); fi
-output="$root/dist/ghi_v${version}_macos_universal.pkg"
-productbuild --distribution "$work/distribution.xml" --package-path "$work" \
-    --resources "$work/resources" "${sign_args[@]}" "$output"
+# Bash 3.2 (shipped with macOS) treats empty arrays as unset under nounset.
+# Positional arguments are never empty here, including unsigned builds.
+set -- --distribution "$work/distribution.xml" --package-path "$work" --resources "$work/resources"
+if [ -n "${GHI_INSTALLER_IDENTITY:-}" ]; then set -- "$@" --sign "$GHI_INSTALLER_IDENTITY"; fi
+output="$work/ghi_v${version}_macos_universal.pkg"
+productbuild "$@" "$output" || exit "$?"
+if [ ! -s "$output" ]; then echo 'productbuild did not create a package.' >&2; exit 1; fi
 if [ -n "${GHI_NOTARY_PROFILE:-}" ]; then
     [ -n "${GHI_INSTALLER_IDENTITY:-}" ] && [ -n "${GHI_APPLICATION_IDENTITY:-}" ] || {
         echo 'Notarization requires both Developer ID signing identities.' >&2; exit 1;
@@ -72,5 +74,7 @@ if [ -n "${GHI_NOTARY_PROFILE:-}" ]; then
     xcrun notarytool submit "$output" --keychain-profile "$GHI_NOTARY_PROFILE" --wait
     xcrun stapler staple "$output"
 fi
+mv "$output" "$root/dist/$(basename "$output")"
+output="$root/dist/$(basename "$output")"
 (cd "$root/dist" && shasum -a 256 "$(basename "$output")" > "$(basename "$output").sha256")
 echo "$output"

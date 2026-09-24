@@ -4,4 +4,5 @@
 *.go text eol=lf
 *.ghi text eol=lf
 *.rb text eol=lf
+*.command text eol=lf
 /install/macos/preinstall text eol=lf
