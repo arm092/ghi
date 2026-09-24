@@ -18,7 +18,8 @@ func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	for _, v := range os.Environ() {
-		if !strings.HasPrefix(strings.ToUpper(v), "GIT_") {
+		upper := strings.ToUpper(v)
+		if !strings.HasPrefix(upper, "GIT_") || strings.HasPrefix(upper, "GIT_SSH_COMMAND=") {
 			cmd.Env = append(cmd.Env, v)
 		}
 	}
