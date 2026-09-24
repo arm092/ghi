@@ -11,11 +11,14 @@ import (
 	"os/signal"
 )
 
-var version = "0.1.0-dev"
+var version = "0.2.1-dev"
 
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "init" {
+		return runInit(args[1:])
+	}
 	if len(args) > 0 && args[0] == "fmt" {
 		return runFormat(args[1:])
 	}
@@ -43,10 +46,14 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
 		return 0
 	}
-	if args[0] == "version" {
+	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V" {
+		if len(args) != 1 {
+			fmt.Fprintln(os.Stderr, "version does not accept arguments")
+			return 2
+		}
 		fmt.Println("ghi " + version)
 		return 0
 	}
