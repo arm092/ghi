@@ -37,11 +37,39 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
 		return 0
 	}
 	if args[0] == "version" {
 		fmt.Println("ghi " + version)
+		return 0
+	}
+	if args[0] == "check" {
+		flags := flag.NewFlagSet("check", flag.ContinueOnError)
+		if err := flags.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if flags.NArg() > 1 {
+			fmt.Fprintln(os.Stderr, "expected one project directory")
+			return 2
+		}
+		for _, arg := range args[1:] {
+			if arg == "--" {
+				fmt.Fprintln(os.Stderr, "program arguments require ghi run")
+				return 2
+			}
+		}
+		dir := "."
+		if flags.NArg() == 1 {
+			dir = flags.Arg(0)
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		if err := compiler.Check(ctx, compiler.Options{Dir: dir, Log: os.Stderr}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println("Check passed")
 		return 0
 	}
 	if args[0] != "build" && args[0] != "run" {

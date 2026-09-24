@@ -25,6 +25,51 @@ func project(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+func TestCheckWithoutExecutableAndWithSeparateTests(t *testing.T) {
+	dir := project(t, map[string]string{
+		"main.ghi":         "namespace main\nfunc main(){}\n",
+		"tests/broken.ghi": "not valid source; tests must not enter a production check",
+	})
+	if err := Check(context.Background(), Options{Dir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bin")); !os.IsNotExist(err) {
+		t.Fatalf("check created an output directory: %v", err)
+	}
+	output := filepath.Join(dir, "existing.exe")
+	if err := os.WriteFile(output, []byte("previous executable"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Check(context.Background(), Options{Dir: dir, Output: output}); err == nil {
+		t.Fatal("check accepted an output path")
+	}
+	data, err := os.ReadFile(output)
+	if err != nil || string(data) != "previous executable" {
+		t.Fatalf("check modified existing output: %s, %v", data, err)
+	}
+	if _, err := Build(context.Background(), Options{Dir: dir}); err != nil {
+		t.Fatalf("production build included tests: %v", err)
+	}
+}
+
+func TestCheckRejectsInvalidProductionCode(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"bodyless main":               {"main.ghi": "namespace main\nfunc main()"},
+		"bodyless helper":             {"main.ghi": "namespace main\nfunc helper()\nfunc main(){}"},
+		"missing main":                {"main.ghi": "namespace main\nfunc other(){}"},
+		"invalid main":                {"main.ghi": "namespace main\nfunc main(value int){}"},
+		"unused namespace":            {"main.ghi": "namespace main\nfunc main(){}", "users/user.ghi": "namespace app.users\nvar value int = \"bad\""},
+		"test import":                 {"main.ghi": "namespace main\nimport helpers \"tests.helpers\"\nfunc main(){helpers.Help()}", "tests/helpers/helper.ghi": "namespace tests.helpers\nfunc Help(){}"},
+		"nested production directory": {"main.ghi": "namespace main\nfunc main(){}", "app/tests/model.ghi": "namespace app.tests\nvar value int = \"bad\""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := Check(context.Background(), Options{Dir: project(t, files)}); err == nil {
+				t.Fatal("invalid production project passed check")
+			}
+		})
+	}
+}
+
 func runProgram(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := project(t, files)

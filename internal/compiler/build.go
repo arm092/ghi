@@ -21,37 +21,12 @@ type Options struct {
 type Result struct{ Executable string }
 
 func Build(ctx context.Context, options Options) (Result, error) {
-	root := options.Dir
-	if root == "" {
-		root = "."
-	}
-	root, err := filepath.Abs(root)
+	prepared, err := prepareProject(ctx, options)
 	if err != nil {
 		return Result{}, err
 	}
-	info, err := os.Stat(root)
-	if err != nil {
-		return Result{}, err
-	}
-	if !info.IsDir() {
-		return Result{}, fmt.Errorf("project path must be a directory: %s", root)
-	}
-	p, err := loadProject(root)
-	if err != nil {
-		return Result{}, err
-	}
-	workspace, err := os.MkdirTemp("", "ghi-build-")
-	if err != nil {
-		return Result{}, err
-	}
-	defer os.RemoveAll(workspace)
-	goPath, err := (toolchain.Manager{Log: options.Log}).Ensure(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	if err := p.generate(ctx, workspace, goPath); err != nil {
-		return Result{}, err
-	}
+	defer prepared.close()
+	root, workspace, goPath := prepared.program.Root, prepared.workspace, prepared.goPath
 	output := options.Output
 	if output == "" {
 		name := filepath.Base(root)

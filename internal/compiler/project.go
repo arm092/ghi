@@ -46,6 +46,10 @@ func loadProject(root string) (*program, error) {
 			return err
 		}
 		if d.IsDir() {
+			// Ghi application tests are isolated from production commands.
+			if path == filepath.Join(root, "tests") {
+				return filepath.SkipDir
+			}
 			if path != root && (strings.HasPrefix(d.Name(), ".") || d.Name() == "bin" || d.Name() == "vendor" || d.Name() == "node_modules") {
 				return filepath.SkipDir
 			}
