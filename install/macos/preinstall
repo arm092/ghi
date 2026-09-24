@@ -6,8 +6,8 @@ if [ "${3:-/}" != / ]; then
     echo 'Ghi can only be installed on the running system volume.' >&2
     exit 1
 fi
-for name in ghi mojave; do
-    path="/usr/local/bin/$name"
+for path in /usr/local/bin/ghi /usr/local/bin/mojave /opt/homebrew/bin/ghi /opt/homebrew/bin/mojave; do
+    name=${path##*/}
     if [ -e "$path" ] || [ -L "$path" ]; then
         if [ ! -L "$path" ] || [ "$(readlink "$path")" != "/usr/local/lib/ghi/bin/$name" ]; then
             echo "$path belongs to another installation. Uninstall that copy before using this package (for Homebrew: brew uninstall ghi)." >&2
