@@ -1,8 +1,8 @@
 class Ghi < Formula
   desc "Statically typed backend language with classes, compiling to Go"
   homepage "https://github.com/arm092/ghi"
-  url "https://github.com/arm092/ghi/archive/refs/tags/v0.2.1.tar.gz"
-  sha256 "089c8b78422dc6834785ad5aa18fed676973e50ae6b60edc77f4bff6e93a7083"
+  url "https://github.com/arm092/ghi/archive/refs/tags/v0.2.2.tar.gz"
+  sha256 "7e94731ca7d5701fed470ee0bcdb0d9c6f238a20c903d886f110bbb033efa723"
   license "MIT"
 
   depends_on "go"
