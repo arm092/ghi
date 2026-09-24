@@ -23,7 +23,7 @@ func (p *program) validateNonNull(info *types.Info) error {
 		typ := info.TypeOf(value)
 		if typ != nil {
 			if basic, ok := typ.(*types.Basic); ok && basic.Kind() == types.UntypedNil {
-				reject(value, "nil requires a nullable type (use '?')")
+				reject(value, "nil requires a nullable type (use '?Type')")
 			}
 		}
 	}

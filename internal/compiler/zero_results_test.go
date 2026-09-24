@@ -29,7 +29,7 @@ func main(){
  object="other"
  failed,matched:=object.(User)
  fmt.Println(failed==nil,matched)
- optional:=make(chan User?,1);optional<-User("optional")
+ optional:=make(chan ?User,1);optional<-User("optional")
  item:=<-optional
  if item!=nil{channel2:=make(chan User,1);channel2<-item;result:=<-channel2;if result!=nil{fmt.Println(result.name)}}
 }

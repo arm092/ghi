@@ -110,7 +110,7 @@ public final class GhiHighlightingLexer extends LexerBase {
             if(namespaces.contains(t) && after.equals(".")){color(i,NAMESPACE);continue;}
             if(after.equals("(")){color(i,FUNCTION);continue;}
             if(constants.contains(t)){color(i,CONSTANT);continue;}
-            if(inClass(i) && outsideFunction(i) && (id(i+1) || Set.of("[","*","map","chan").contains(after))){color(i,FIELD);continue;}
+            if(inClass(i) && outsideFunction(i) && (id(i+1) || Set.of("[","*","?","map","chan").contains(after))){color(i,FIELD);continue;}
             color(i,LOCAL);
         }
     }
