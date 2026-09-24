@@ -162,9 +162,6 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		for _, ns := range p.Ordered {
 			checker.check(ns)
 		}
-		if p.lowerMatchResults(info) {
-			continue
-		}
 		if p.lowerZeroResults(info) {
 			continue
 		}
@@ -180,6 +177,11 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		changed, err := p.rewrite(info)
 		if err != nil {
 			return err
+		}
+		// Match result inference must see the final types of map/channel
+		// reads and native error bridges, rather than their raw Go types.
+		if p.lowerMatchResults(info) {
+			continue
 		}
 		if !changed {
 			if err := p.unresolvedMatch(); err != nil {

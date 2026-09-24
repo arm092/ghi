@@ -163,10 +163,17 @@ func main() {
  value := match true { true => 1, default => 2.5, }
  println(value == 1.0)
  numbers := match false { true => []int{1}, default => nil, }
- println(len(numbers))
+	println(len(numbers))
+	users := map[string]User{}
+	lookedUp := match true { true => users["absent"], default => new User("default"), }
+	println(lookedUp == nil)
+	channel := make(chan User)
+	close(channel)
+	received := match true { true => <-channel, default => new User("default"), }
+	println(received == nil)
  // Parentheses disambiguate a composite subject, as in Go switch headers.
  println(match (struct{ N int }{N: 1}) { (struct{ N int }{N: 1}) => 9, default => 0, })
 }
 `
-	runMatchSource(t, source, "5 ab\ntrue\nnullable\ntrue\ntrue\n0\n9\n")
+	runMatchSource(t, source, "5 ab\ntrue\nnullable\ntrue\ntrue\n0\ntrue\ntrue\n9\n")
 }
