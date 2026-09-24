@@ -53,7 +53,7 @@ var refRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 var commitRE = regexp.MustCompile(`^[a-f0-9]{40}([a-f0-9]{24})?$`)
 var identityPartRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-const ghiKeywords = " namespace class constructor extends implements override public private protected this parent new try catch finally throw as "
+const ghiKeywords = " namespace class constructor extends implements override public private protected this parent new try catch finally throw as match "
 
 func validateName(name string) error {
 	if !namespaceRE.MatchString(name) || strings.EqualFold(strings.Split(name, ".")[0], "main") || strings.EqualFold(strings.Split(name, ".")[0], "ghi") {
