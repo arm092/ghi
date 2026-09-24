@@ -1,8 +1,8 @@
 namespace main
 
-import store "app.store"
-import service "app.service"
-import httpapi "app.httpapi"
+import app.store
+import app.service
+import app.httpapi
 import http "go:net/http"
 import os "go:os"
 import fmt "go:fmt"

@@ -6,9 +6,9 @@ import httptest "go:net/http/httptest"
 import http "go:net/http"
 import strings "go:strings"
 import json "go:encoding/json"
-import store "app.store"
-import service "app.service"
-import httpapi "app.httpapi"
+import app.store
+import app.service
+import app.httpapi
 
 func TestHTTPAndPersistence(t * testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.db")

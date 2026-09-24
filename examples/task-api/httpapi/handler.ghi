@@ -1,6 +1,6 @@
 namespace app.httpapi
 
-import service "app.service"
+import app.service
 import http "go:net/http"
 import json "go:encoding/json"
 import io "go:io"

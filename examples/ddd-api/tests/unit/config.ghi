@@ -1,7 +1,7 @@
 namespace tests.unit
 import testing "go:testing"
 import time "go:time"
-import config "infrastructure.config"
+import infrastructure.config
 
 func TestConfigurationValidation(t * testing.T) {
 	defaults := config.Load(func (name string) string { return "" })

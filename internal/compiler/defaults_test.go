@@ -6,7 +6,7 @@ func TestDefaultsAcrossFilesInterfacesAndImplicitParent(t *testing.T) {
 	got := runProgram(t, map[string]string{
 		"main.ghi": `namespace main
 import fmt "go:fmt"
-import models "models"
+import models
 class Child extends models.Parent {}
 func main() { var p models.Named = new Child(); fmt.Println(p.label(), message()) }
 `,

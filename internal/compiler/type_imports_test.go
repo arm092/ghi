@@ -124,7 +124,7 @@ func TestSelectedImportRejectsInvalidBindings(t *testing.T) {
 		"function is not type":        "import models.Factory\nfunc main(){Factory()}",
 		"duplicate":                   "import models.User\nimport models.User\nfunc main(){_=new User()}",
 		"declaration collision":       "import models.User\nclass User{}\nfunc main(){_=new User()}",
-		"namespace collision":         "import User \"models\"\nimport models.User\nfunc main(){_=new User()}",
+		"namespace collision":         "import models as User\nimport models.User\nfunc main(){_=new User()}",
 		"unused":                      "import models.User\nfunc main(){}",
 		"other members not exposed":   "import models.User\nfunc main(){_=new User();Factory()}",
 		"alias collision":             "import models.User as Item\nimport models.User as Item\nfunc main(){_=new Item()}",
@@ -179,7 +179,7 @@ func TestSelectedImportDoesNotCaptureNamespaceAlias(t *testing.T) {
 	got := runProgram(t, map[string]string{
 		"main.ghi": `namespace main
 import fmt "go:fmt"
-import models "models"
+import models
 import models.Label
 import models.User
 func main(){

@@ -1,7 +1,7 @@
 namespace application.users
 import context "go:context"
 import uuid "go:github.com/google/uuid"
-import user "domain.user"
+import domain.user
 class Service {
 	private repository user.Repository
 	constructor(repository user.Repository) { this.repository = repository }

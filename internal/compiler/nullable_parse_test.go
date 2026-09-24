@@ -8,7 +8,7 @@ import (
 
 func TestNullableTypeSyntax(t *testing.T) {
 	source := `namespace main
-import models "app.models"
+import app.models
 // ?User is a nullable reference; User? is the old spelling.
 class Box {
  public owner ?models.User

@@ -6,9 +6,9 @@ import filepath "go:path/filepath"
 import httptest "go:net/http/httptest"
 import http "go:net/http"
 import json "go:encoding/json"
-import sqlite "infrastructure.sqlite"
-import user "domain.user"
-import task "domain.task"
+import infrastructure.sqlite
+import domain.user
+import domain.task
 
 type userResponse struct { ID string; Name string; Email string }
 func decodeUser(response * http.Response) userResponse {

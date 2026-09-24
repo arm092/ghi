@@ -59,7 +59,7 @@ func TestCheckRejectsInvalidProductionCode(t *testing.T) {
 		"missing main":                {"main.ghi": "namespace main\nfunc other(){}"},
 		"invalid main":                {"main.ghi": "namespace main\nfunc main(value int){}"},
 		"unused namespace":            {"main.ghi": "namespace main\nfunc main(){}", "users/user.ghi": "namespace app.users\nvar value int = \"bad\""},
-		"test import":                 {"main.ghi": "namespace main\nimport helpers \"tests.helpers\"\nfunc main(){helpers.Help()}", "tests/helpers/helper.ghi": "namespace tests.helpers\nfunc Help(){}"},
+		"test import":                 {"main.ghi": "namespace main\nimport tests.helpers\nfunc main(){helpers.Help()}", "tests/helpers/helper.ghi": "namespace tests.helpers\nfunc Help(){}"},
 		"nested production directory": {"main.ghi": "namespace main\nfunc main(){}", "app/tests/model.ghi": "namespace app.tests\nvar value int = \"bad\""},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestBuildNamespacesAndRunExecutable(t *testing.T) {
 	got := runProgram(t, map[string]string{
 		"main.ghi": `namespace main
 import fmt "go:fmt"
-import greeting "app.greeting"
+import app.greeting
 func main() { fmt.Println(greeting.Message("Ghi")) }
 `,
 		"greeting/message.ghi": `namespace app.greeting
@@ -126,7 +126,7 @@ func TestInvalidTypesDoNotReplaceExistingOutput(t *testing.T) {
 func TestInvalidNamespaces(t *testing.T) {
 	for name, files := range map[string]map[string]string{
 		"mixed directory": {"a.ghi": "namespace main\nfunc main() {}", "b.ghi": "namespace other\n"},
-		"cycle":           {"a.ghi": "namespace main\nimport b \"b\"\nfunc main() {}", "b/b.ghi": "namespace b\nimport a \"main\"\n"},
+		"cycle":           {"a.ghi": "namespace main\nimport b\nfunc main() {}", "b/b.ghi": "namespace b\nimport main as a\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Build(context.Background(), Options{Dir: project(t, files)})

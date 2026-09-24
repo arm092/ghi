@@ -3,8 +3,8 @@ namespace tests.unit
 import context "go:context"
 import testing "go:testing"
 import uuid "go:github.com/google/uuid"
-import task "domain.task"
-import tasks "application.tasks"
+import domain.task
+import application.tasks
 
 class MemoryRepository implements task.Repository {
 	private items map[string] task.Task

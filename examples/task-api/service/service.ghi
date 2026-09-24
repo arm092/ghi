@@ -1,6 +1,6 @@
 namespace app.service
 
-import store "app.store"
+import app.store
 import strings "go:strings"
 import utf8 "go:unicode/utf8"
 

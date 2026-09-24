@@ -14,8 +14,8 @@ type selectedTypeImport struct {
 	Start, Line            int
 }
 
-// Erase only the declaration, retaining byte offsets and newlines. Selected
-// imports are bound after all project and Mojave namespaces have been loaded.
+// Erase only the declaration, retaining byte offsets and newlines. Dotted
+// imports are resolved after all project and Mojave namespaces have been loaded.
 func extractTypeImports(filename string, source []byte) ([]byte, []selectedTypeImport, error) {
 	tokens, err := lexSource(filename, source)
 	if err != nil {
@@ -42,7 +42,7 @@ func extractTypeImports(filename string, source []byte) ([]byte, []selectedTypeI
 		var parts []string
 		for {
 			if j >= len(tokens) || tokens[j].Kind != token.IDENT {
-				return nil, nil, fmt.Errorf("%s:%d: expected namespace.Type import", filename, t.Line)
+				return nil, nil, fmt.Errorf("%s:%d: expected namespace or namespace.Type import", filename, t.Line)
 			}
 			parts = append(parts, tokens[j].Text)
 			j++
@@ -55,16 +55,16 @@ func extractTypeImports(filename string, source []byte) ([]byte, []selectedTypeI
 		if j < len(tokens) && tokens[j].Text == "as" {
 			j++
 			if j >= len(tokens) || tokens[j].Kind != token.IDENT {
-				return nil, nil, fmt.Errorf("%s:%d: expected type import alias after as", filename, t.Line)
+				return nil, nil, fmt.Errorf("%s:%d: expected import alias after as", filename, t.Line)
 			}
 			alias = tokens[j].Text
 			j++
 		}
-		if len(parts) < 2 || j >= len(tokens) || (tokens[j].Kind != token.SEMICOLON && tokens[j].Kind != token.EOF) {
-			return nil, nil, fmt.Errorf("%s:%d: expected namespace.Type import", filename, t.Line)
+		if j >= len(tokens) || (tokens[j].Kind != token.SEMICOLON && tokens[j].Kind != token.EOF) {
+			return nil, nil, fmt.Errorf("%s:%d: expected namespace or namespace.Type import", filename, t.Line)
 		}
 		if alias == "_" || strings.Contains(" namespace class constructor extends implements override public private protected this parent new try catch finally throw as ", " "+alias+" ") {
-			return nil, nil, fmt.Errorf("%s:%d: invalid type import alias %s", filename, t.Line, alias)
+			return nil, nil, fmt.Errorf("%s:%d: invalid import alias %s", filename, t.Line, alias)
 		}
 		imports = append(imports, selectedTypeImport{strings.Join(parts[:len(parts)-1], "."), parts[len(parts)-1], alias, t.Start, t.Line})
 		erase(data, t.Start, tokens[j].Start)
@@ -126,6 +126,9 @@ func (p *program) bindTypeImports() error {
 	for _, ns := range p.Ordered {
 		declared := namespaceDeclarations(ns)
 		for _, file := range ns.Files {
+			if err := p.bindNamespaceImports(file, ns); err != nil {
+				return err
+			}
 			if len(file.Unit.TypeImports) == 0 {
 				continue
 			}

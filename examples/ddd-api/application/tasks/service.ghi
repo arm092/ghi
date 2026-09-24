@@ -2,8 +2,8 @@ namespace application.tasks
 
 import context "go:context"
 import uuid "go:github.com/google/uuid"
-import task "domain.task"
-import user "domain.user"
+import domain.task
+import domain.user
 
 class Service {
 	private repository task.Repository

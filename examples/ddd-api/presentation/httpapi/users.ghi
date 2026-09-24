@@ -1,6 +1,6 @@
 namespace presentation.httpapi
-import users "application.users"
-import user "domain.user"
+import application.users
+import domain.user
 import http "go:net/http"
 import uuid "go:github.com/google/uuid"
 

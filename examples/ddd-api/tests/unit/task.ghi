@@ -2,7 +2,7 @@ namespace tests.unit
 
 import testing "go:testing"
 import strings "go:strings"
-import task "domain.task"
+import domain.task
 
 func TestTaskTitleAndCompletion(t * testing.T) {
 	item := new task.Task("task-1", "  Շապիկ  ")

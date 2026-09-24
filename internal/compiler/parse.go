@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"strconv"
 	"strings"
 )
 
@@ -73,6 +74,12 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	tree, err := parser.ParseFile(fset, filename, normalized, parser.ParseComments|parser.AllErrors)
 	if err != nil {
 		return "", nil, nil, err
+	}
+	for _, spec := range tree.Imports {
+		path, _ := strconv.Unquote(spec.Path.Value)
+		if !strings.HasPrefix(path, "go:") {
+			return "", nil, nil, fmt.Errorf("%s: quoted imports are only for Go packages; use import %s with an optional as alias for Ghi", fset.Position(spec.Pos()), path)
+		}
 	}
 	for _, decl := range tree.Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok {

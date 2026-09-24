@@ -5,8 +5,8 @@ import sql "go:database/sql"
 import errors "go:errors"
 import driver "go:modernc.org/sqlite"
 import strings "go:strings"
-import task "domain.task"
-import user "domain.user"
+import domain.task
+import domain.user
 
 func constraintFailure(cause error) bool {
 	var failure * driver.Error

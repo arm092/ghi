@@ -9,7 +9,7 @@ func TestGenericClassesFunctionsAndNamespaces(t *testing.T) {
 	got := runProgram(t, map[string]string{
 		"main.ghi": `namespace main
 import fmt "go:fmt"
-import containers "app.containers"
+import app.containers
 class User {public name string;constructor(name string){this.name=name}}
 func first[T any](value T, count int = 2) T {return value}
 func read[T containers.Reader[string]](value T) string {return value.get()}

@@ -1,8 +1,8 @@
 namespace presentation.httpapi
 
-import tasks "application.tasks"
-import task "domain.task"
-import user "domain.user"
+import application.tasks
+import domain.task
+import domain.user
 import http "go:net/http"
 import json "go:encoding/json"
 import io "go:io"

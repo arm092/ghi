@@ -2,7 +2,7 @@ namespace infrastructure.sqlite
 import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
-import user "domain.user"
+import domain.user
 
 class UserRepository implements user.Repository {
 	private db * sql.DB

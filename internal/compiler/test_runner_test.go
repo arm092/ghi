@@ -15,8 +15,8 @@ func TestGhiRunnerSeparateSuites(t *testing.T) {
 		"tests/support/helper.ghi": "namespace tests.support\nfunc Expected() int{return 5}",
 		"tests/unit/calc.ghi": `namespace tests.unit
 import testing "go:testing"
-import calc "app.calc"
-import support "tests.support"
+import app.calc
+import tests.support
 func TestAdd(t *testing.T){if calc.Add(2,3)!=support.Expected(){t.Fatal("wrong sum")}}
 func TestFailure(t *testing.T){t.Fatal("deliberate failure")}
 `,

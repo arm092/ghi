@@ -108,8 +108,8 @@ func main() { var p Parent = new Child(); fmt.Println(p.name()) }
 func TestNamespaceIdentityCannotCollide(t *testing.T) {
 	_, err := Build(context.Background(), Options{Dir: project(t, map[string]string{
 		"main.ghi": `namespace main
-import one "a.b"
-import two "a_b"
+import a.b as one
+import a_b as two
 func main() { var wrong one.Item = new two.Item(); _ = wrong }
 `,
 		"one/item.ghi": "namespace a.b\nclass Item {}",
@@ -124,8 +124,8 @@ func TestCrossNamespaceInheritanceAndFieldTypes(t *testing.T) {
 	got := runProgram(t, map[string]string{
 		"main.ghi": `namespace main
 import fmt "go:fmt"
-import users "app.users"
-import models "app.models"
+import app.users
+import app.models
 func render(p models.Person) string { return p.greet() }
 func main() { user:=new users.User("Ada"); fmt.Println(render(user),user.friend().label()) }
 `,
@@ -140,7 +140,7 @@ class Person {
 
 `,
 		"users/user.ghi": `namespace app.users
-import models "app.models"
+import app.models
 class User extends models.Person {
  constructor(name string) { parent(name) }
  public override func label() string { return parent.label()+"!" }

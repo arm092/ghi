@@ -10,9 +10,9 @@ import sql "go:database/sql"
 import strings "go:strings"
 import sha256 "go:crypto/sha256"
 import fmt "go:fmt"
-import sqlite "infrastructure.sqlite"
-import task "domain.task"
-import user "domain.user"
+import infrastructure.sqlite
+import domain.task
+import domain.user
 import arm092.migrations.Migrator
 import arm092.migrations.MigrationError
 

@@ -5,10 +5,10 @@ import json "go:encoding/json"
 import slog "go:log/slog"
 import httptest "go:net/http/httptest"
 import filepath "go:path/filepath"
-import sqlite "infrastructure.sqlite"
-import tasks "application.tasks"
-import users "application.users"
-import httpapi "presentation.httpapi"
+import infrastructure.sqlite
+import application.tasks
+import application.users
+import presentation.httpapi
 
 func TestStructuredRequestLog(t * testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "logging.db")); defer repository.Close()

@@ -10,11 +10,11 @@ import strings "go:strings"
 import json "go:encoding/json"
 import io "go:io"
 import uuid "go:github.com/google/uuid"
-import sqlite "infrastructure.sqlite"
-import tasks "application.tasks"
-import users "application.users"
-import httpapi "presentation.httpapi"
-import task "domain.task"
+import infrastructure.sqlite
+import application.tasks
+import application.users
+import presentation.httpapi
+import domain.task
 
 func routerFor(repository sqlite.Repository) http.Handler {
 	return httpapi.NewRouter(new tasks.Service(repository, repository.Users()), new users.Service(repository.Users()))

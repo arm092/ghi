@@ -2,9 +2,9 @@ namespace tests.unit
 import testing "go:testing"
 import context "go:context"
 import strings "go:strings"
-import user "domain.user"
-import task "domain.task"
-import tasks "application.tasks"
+import domain.user
+import domain.task
+import application.tasks
 
 class MemoryUsers implements user.Repository {
 	private items map[string] user.User

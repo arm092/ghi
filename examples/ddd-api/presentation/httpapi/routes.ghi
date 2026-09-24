@@ -1,7 +1,7 @@
 namespace presentation.httpapi
 
-import tasks "application.tasks"
-import users "application.users"
+import application.tasks
+import application.users
 import http "go:net/http"
 import time "go:time"
 import chi "go:github.com/go-chi/chi/v5"

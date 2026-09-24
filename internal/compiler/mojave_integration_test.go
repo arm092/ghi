@@ -34,7 +34,7 @@ func TestMojaveLockedLibraryBuildAndTamperRefusal(t *testing.T) {
 	library := mojaveLibrary(t, "namespace acme.lib\nfunc Message() string{return \"hello from package\"}")
 	root := project(t, map[string]string{"main.ghi": `namespace main
 import fmt "go:fmt"
-import lib "acme.lib"
+import acme.lib
 func main(){fmt.Println(lib.Message())}
 `, "tests/broken.ghi": "deliberately invalid application test syntax"})
 	if e := mojave.Add(ctx, root, "acme.lib", library, "v1.0.0"); e != nil {

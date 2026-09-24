@@ -46,10 +46,12 @@ func TestOwnerQualifiedPackages(t *testing.T) {
 	source := `namespace main
 import arm092.migrations.Migrator
 import someone.migrations.Migrator as OtherMigrator
+import someone.migrations as other
 func main() {
  first := new Migrator()
  second := new OtherMigrator()
- println(first.owner(), second.owner())
+ third := new other.Migrator()
+ println(first.owner(), second.owner(), third.owner())
 }
 `
 	writePackageTestFile(t, project, "main.ghi", source)
@@ -73,7 +75,7 @@ func main() {
 		t.Fatal(err)
 	}
 	output, err := exec.CommandContext(ctx, result.Executable).CombinedOutput()
-	if err != nil || strings.TrimSpace(string(output)) != "arm092 someone" {
+	if err != nil || strings.TrimSpace(string(output)) != "arm092 someone someone" {
 		t.Fatalf("run: %v\n%s", err, output)
 	}
 	writePackageTestFile(t, project, "main.ghi", strings.Replace(source, " as OtherMigrator", "", 1))
