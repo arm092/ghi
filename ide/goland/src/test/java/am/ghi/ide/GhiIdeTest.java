@@ -431,6 +431,170 @@ public class GhiIdeTest extends BasePlatformTestCase {
         excludeCache(library);
         assertEquals(target,GhiSymbols.forFile(library).resolve(library,library.getText().indexOf("next.Next")+5).getContainingFile());
     }
+    public void testLiveGhiDebuggerStopsAndStepsOnSource() throws Exception {
+        String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
+        String source="namespace main\nclass Counter {\n public value int\n constructor(value int){this.value=value}\n public func add(amount int) int {\n  this.value += amount\n  return this.value\n }\n}\nfunc main() {\n counter := new Counter(7)\n answer := counter.add(5)\n println(answer)\n try {\n  throw new Exception(\"debug exception\")\n } catch err Exception {\n  println(err.message)\n  println(err.code)\n }\n}\n";
+        Path root=diskRoot;Path sourceFile=root.resolve("main.ghi");Files.writeString(sourceFile,source);
+        var virtual=com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(sourceFile);assertNotNull(virtual);
+        com.intellij.openapi.application.WriteAction.run(()->{
+            var roots=com.intellij.openapi.roots.ModuleRootManager.getInstance(myFixture.getModule()).getModifiableModel();
+            roots.addContentEntry(virtual.getParent().getUrl());roots.commit();
+        });
+        myFixture.configureFromExistingVirtualFile(virtual);
+        var file=com.intellij.psi.PsiManager.getInstance(getProject()).findFile(virtual);assertNotNull(file);
+        var settings=GhiSettings.get(getProject()).getState();settings.executable=compiler;settings.directory=root.toString();
+        int line=source.substring(0,source.indexOf("this.value += amount")).split("\n",-1).length-1;
+        var type=com.intellij.xdebugger.XDebuggerUtil.getInstance().findBreakpointType(GhiBreakpointType.class);
+        assertNotNull(type);assertTrue(type.canPutAt(file.getVirtualFile(),line,getProject()));
+        var manager=com.intellij.xdebugger.XDebuggerManager.getInstance(getProject());
+        var breakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),line,type.createBreakpointProperties(file.getVirtualFile(),line));
+        int callLine=source.substring(0,source.indexOf("answer := counter.add(5)")).split("\n",-1).length-1;
+        var callBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),callLine,type.createBreakpointProperties(file.getVirtualFile(),callLine));
+        int catchLine=source.substring(0,source.indexOf("println(err.message)")).split("\n",-1).length-1;
+        var catchBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),catchLine,type.createBreakpointProperties(file.getVirtualFile(),catchLine));
+        com.intellij.xdebugger.XDebugSession session=null;
+        try{
+            var action=ActionManager.getInstance().getAction("Ghi.Debug");assertNotNull(action);
+            var context=com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(getProject());
+            action.actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action,null,com.intellij.openapi.actionSystem.ActionPlaces.UNKNOWN,context));
+            long deadline=System.currentTimeMillis()+60000;
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                var sessions=manager.getDebugSessions();if(sessions.length>0){session=sessions[0];if(session.isSuspended())break;}
+                Thread.sleep(50);
+            }
+            assertNotNull("Debug session did not start",session);
+            assertTrue("Breakpoint did not stop the debuggee",session.isSuspended());
+            assertEquals(callLine,session.getCurrentPosition().getLine());
+            session.stepInto();
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==line-1)break;
+                Thread.sleep(50);
+            }
+            assertTrue("Step into did not stop",session.isSuspended());
+            assertEquals(file.getVirtualFile(),session.getCurrentPosition().getFile());
+            assertEquals(line-1,session.getCurrentPosition().getLine());
+            session.stepOver(false);
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==line)break;
+                Thread.sleep(50);
+            }
+            assertEquals(line,session.getCurrentPosition().getLine());
+            var stack=session.getSuspendContext().getActiveExecutionStack();assertNotNull(stack);
+            var title=new com.intellij.ui.SimpleColoredComponent();stack.getTopFrame().customizePresentation(title);
+            assertTrue("Ghi method name missing from stack",title.getCharSequence(false).toString().contains("main.Counter.add"));
+            var variables=debugChildren(stack.getTopFrame());
+            var receiver=debugValue(variables,"this");assertNotNull("Receiver is missing",receiver);
+            assertNotNull("Method argument is missing",debugValue(variables,"amount"));
+            var fields=debugChildren(receiver);
+            assertNotNull("Ghi field name was not decoded",debugValue(fields,"value"));
+            session.stepOver(false);
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==line+1)break;
+                Thread.sleep(50);
+            }
+            assertTrue("Step over did not stop",session.isSuspended());
+            assertEquals(line+1,session.getCurrentPosition().getLine());
+            var stepped=debugChildren(session.getSuspendContext().getActiveExecutionStack().getTopFrame());
+            var steppedFields=debugChildren(debugValue(stepped,"this"));
+            assertEquals("12",debugDisplay(debugValue(steppedFields,"value")));
+            boolean caught=false;
+            for(int attempt=0;attempt<4&&!caught;attempt++){
+                session.resume();
+                while(System.currentTimeMillis()<deadline){
+                    com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                    if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==catchLine)break;
+                    Thread.sleep(50);
+                }
+                assertTrue("Catch breakpoint did not stop",session.isSuspended());
+                assertEquals(catchLine,session.getCurrentPosition().getLine());
+                var caughtVariables=debugChildren(session.getSuspendContext().getActiveExecutionStack().getTopFrame());
+                var exception=debugValue(caughtVariables,"err");
+                if(exception==null)continue;
+                var exceptionFields=debugChildren(exception);
+                var message=debugValue(exceptionFields,"message");
+                if(message==null)continue;
+                assertTrue(debugDisplay(message).contains("debug exception"));
+                assertEquals("0",debugDisplay(debugValue(exceptionFields,"code")));
+                assertNotNull("Exception stackTrace missing",debugValue(exceptionFields,"stackTrace"));
+                caught=true;
+            }
+            assertTrue("Caught Ghi exception was not displayed",caught);
+            session.resume();
+            assertFalse("Resume did not start execution",session.isSuspended());
+            session.getDebugProcess().stop();
+        }finally{
+            if(session!=null){
+                session.getDebugProcess().stop();
+                session.stop();
+                var descriptor=session.getRunContentDescriptor();
+                if(descriptor!=null){
+                    com.intellij.execution.ui.RunContentManager.getInstance(getProject()).removeRunContent(com.intellij.execution.executors.DefaultDebugExecutor.getDebugExecutorInstance(),descriptor);
+                    if(!com.intellij.openapi.util.Disposer.isDisposed(descriptor))com.intellij.openapi.util.Disposer.dispose(descriptor);
+                }
+                var console=session.getDebugProcess().createConsole();
+                if(console instanceof com.intellij.openapi.Disposable disposable&&!com.intellij.openapi.util.Disposer.isDisposed(disposable))com.intellij.openapi.util.Disposer.dispose(disposable);
+                long stoppedBy=System.currentTimeMillis()+10000;
+                while(!session.getDebugProcess().getProcessHandler().isProcessTerminated()&&System.currentTimeMillis()<stoppedBy){
+                    com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(50);
+                }
+                assertTrue("Delve did not exit",session.getDebugProcess().getProcessHandler().isProcessTerminated());
+            }
+            com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(getProject()).closeFile(virtual);
+            com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+            manager.getBreakpointManager().removeBreakpoint(breakpoint);
+            manager.getBreakpointManager().removeBreakpoint(callBreakpoint);
+            manager.getBreakpointManager().removeBreakpoint(catchBreakpoint);
+            com.intellij.openapi.application.WriteAction.run(()->{
+                var roots=com.intellij.openapi.roots.ModuleRootManager.getInstance(myFixture.getModule()).getModifiableModel();
+                for(var entry:roots.getContentEntries())if(entry.getUrl().equals(virtual.getParent().getUrl()))roots.removeContentEntry(entry);
+                roots.commit();
+            });
+        }
+    }
+    public void testGenericDebugNamesUseCompilerMetadata() throws Exception {
+        Path executable=diskRoot.resolve("generic-debug");
+        Files.writeString(Path.of(executable+".ghi-debug.json"),"{\"version\":1,\"fields\":{},\"types\":{\"main.ghiData_Box\":\"main.Box\"},\"functions\":{\"main.GhiBody_Box_get\":{\"name\":\"main.Box.get\",\"helper\":false}}}");
+        var names=GhiDebugNames.read(executable);
+        assertEquals("main.Box[int]",names.type("main.ghiData_Box[go.shape.int]"));
+        assertEquals("main.Box.get[int]",names.function("main.GhiBody_Box_get[go.shape.int]").name());
+    }
+    private com.intellij.xdebugger.frame.XValueChildrenList debugChildren(com.intellij.xdebugger.frame.XValueContainer container) throws Exception {
+        var values=new java.util.concurrent.atomic.AtomicReference<com.intellij.xdebugger.frame.XValueChildrenList>();
+        var error=new java.util.concurrent.atomic.AtomicReference<String>();
+        var node=(com.intellij.xdebugger.frame.XCompositeNode)java.lang.reflect.Proxy.newProxyInstance(
+            getClass().getClassLoader(),new Class[]{com.intellij.xdebugger.frame.XCompositeNode.class},(proxy,method,args)->{
+                if(method.getName().equals("addChildren"))values.set((com.intellij.xdebugger.frame.XValueChildrenList)args[0]);
+                if(method.getName().equals("setErrorMessage"))error.set((String)args[0]);
+                return null;
+            });
+        container.computeChildren(node);
+        long deadline=System.currentTimeMillis()+5000;
+        while(values.get()==null&&error.get()==null&&System.currentTimeMillis()<deadline){
+            com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
+        }
+        assertNull(error.get());assertNotNull("Debugger children timed out",values.get());return values.get();
+    }
+    private com.intellij.xdebugger.frame.XValue debugValue(com.intellij.xdebugger.frame.XValueChildrenList values,String name){
+        if(values==null)return null;
+        for(int i=0;i<values.size();i++)if(values.getName(i).equals(name))return values.getValue(i);
+        return null;
+    }
+    private String debugDisplay(com.intellij.xdebugger.frame.XValue value){
+        assertNotNull(value);
+        var display=new java.util.concurrent.atomic.AtomicReference<String>();
+        var node=(com.intellij.xdebugger.frame.XValueNode)java.lang.reflect.Proxy.newProxyInstance(
+            getClass().getClassLoader(),new Class[]{com.intellij.xdebugger.frame.XValueNode.class},(proxy,method,args)->{
+                if(method.getName().equals("setPresentation")&&args.length==4)display.set((String)args[2]);
+                return null;
+            });
+        value.computePresentation(node,com.intellij.xdebugger.frame.XValuePlace.TREE);
+        assertNotNull("Variable presentation missing",display.get());return display.get();
+    }
     private void excludeCache(com.intellij.psi.PsiFile source){
         var cache=source.getVirtualFile().getParent().getParent().getParent();assertEquals(".ghi",cache.getName());
         com.intellij.openapi.application.WriteAction.run(()->{

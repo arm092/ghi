@@ -7,9 +7,9 @@
         Recognizes .ghi files, highlights syntax, supports comments and brace matching,
         and builds or runs projects in the IDE console with clickable compiler diagnostics.
         Configure the compiler and project directory under Languages &amp; Frameworks &gt; Ghi.
-        Requires the Ghi compiler. Supports both Class(args) and new Class(args) construction, including qualified and generic classes. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Adds concrete generic parameter hints, coordinated override/structural-interface rename, and native Go SDK or Mojave-pinned cache completion/navigation. Ambiguous structural rename signatures raise conflicts. Selected Ghi type imports and file-local aliases support completion, navigation, hints and safe rename. Completion can insert imports; explicit intentions import unresolved types or shorten qualified type references with collision-safe aliases. Debugging is not included.
+        Requires the Ghi compiler. Supports both Class(args) and new Class(args) construction, including qualified and generic classes. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Adds concrete generic parameter hints, coordinated override/structural-interface rename, and native Go SDK or Mojave-pinned cache completion/navigation. Ambiguous structural rename signatures raise conflicts. Selected Ghi type imports and file-local aliases support completion, navigation, hints and safe rename. Completion can insert imports; explicit intentions import unresolved types or shorten qualified type references with collision-safe aliases. Debug Project builds with source metadata and debugs .ghi files with GoLand's bundled Delve, including line breakpoints, stepping, call stacks, variables and caught exceptions.
     ]]></description>
-    <change-notes><![CDATA[Preview 10: lock-scoped installed Ghi dependency completion, type autoimport, navigation and parameter hints, including excluded package caches. Dependency declarations and member families are read-only for rename.]]></change-notes>
+    <change-notes><![CDATA[Preview 11: source-level Ghi debugging in GoLand with line breakpoints, stepping, call stacks, variables, objects and caught exceptions through the bundled Delve debugger. Requires a Ghi compiler with `build --debug` support.]]></change-notes>
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.go</depends>
     <extensions defaultExtensionNs="com.intellij">
@@ -19,6 +19,7 @@
         <intentionAction><className>am.ghi.ide.GhiImportIntention$Import</className><category>Ghi</category><skipBeforeAfter>true</skipBeforeAfter></intentionAction>
         <intentionAction><className>am.ghi.ide.GhiImportIntention$Shorten</className><category>Ghi</category><skipBeforeAfter>true</skipBeforeAfter></intentionAction>
         <completion.contributor language="Ghi" implementationClass="am.ghi.ide.GhiCompletion"/>
+        <xdebugger.breakpointType implementation="am.ghi.ide.GhiBreakpointType"/>
         <lang.parameterInfo language="Ghi" implementationClass="am.ghi.ide.GhiParameterInfo"/>
         <lang.findUsagesProvider language="Ghi" implementationClass="am.ghi.ide.GhiFindUsages"/>
         <renamePsiElementProcessor implementation="am.ghi.ide.GhiRenameProcessor"/>
@@ -36,6 +37,7 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="Ghi.Build" class="am.ghi.ide.GhiAction$Build" text="Build Project" description="Compile the Ghi project to a native executable"/>
             <action id="Ghi.Run" class="am.ghi.ide.GhiAction$Run" text="Run Project" description="Build and run the Ghi project"/>
+            <action id="Ghi.Debug" class="am.ghi.ide.GhiDebugAction" text="Debug Project" description="Build Ghi with debug symbols and debug with Delve"/>
         </group>
     </actions>
 </idea-plugin>
