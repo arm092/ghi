@@ -59,4 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi for GoLand $TAG" --notes "Ghi support for GoLand 2026.2. Install the ZIP through Settings > Plugins > Install Plugin from Disk. Requires the Ghi compiler. Includes syntax highlighting, comments, brace matching, Build/Run actions and compiler diagnostic links. Semantic completion and debugging are not included in this preview."
+        run: |
+          if gh release view "$TAG" --json id >/dev/null 2>&1; then
+            echo "Release $TAG is already published; preserving its assets."
+            exit 0
+          fi
+          gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi for GoLand $TAG" --notes "Ghi support for GoLand 2026.2. Install the ZIP through Settings > Plugins > Install Plugin from Disk. Requires the Ghi compiler. Includes syntax highlighting, comments, brace matching, Build/Run actions and compiler diagnostic links. Semantic completion and debugging are not included in this preview."
