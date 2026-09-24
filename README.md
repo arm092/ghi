@@ -68,7 +68,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-A native universal `.pkg` build recipe is also provided in `scripts/package-macos.sh`; the resulting package still needs native verification before publication. It targets Intel and Apple silicon and prepares Go for the signed-in user before installing Ghi and Mojave. Homebrew and `.pkg` are alternative installation methods.
+Alternatively, download the [universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_macos_universal.pkg). It contains Intel and Apple silicon binaries and prepares Go for the signed-in user before installing Ghi and Mojave. Installation and command startup were verified on an Apple silicon Mac, including managed Go 1.26.8 setup. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The build recipe is in `scripts/package-macos.sh`.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -91,7 +91,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-Release verification is performed locally on Windows. macOS archives are cross-compiled; native macOS execution has not been verified for this release. GitHub Actions is disabled for this repository.
+The full release test suite was run locally on Windows. The native macOS package was built on a Mac, and installation plus `ghi version`, `ghi setup` and `mojave help` were verified on Apple silicon. Native Intel macOS execution, macOS compilation of Ghi projects and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -488,7 +488,7 @@ Native Go assistance uses the configured SDK and locally installed dependencies.
 
 From a cloned checkout, use `ghi run examples/hello`. For projects with dependencies, run `mojave install` inside that example first.
 
-Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is still pending for this release. Ghi source semantics are the public interface; generated Go code is not a supported package API.
+Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation and command checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 
 ### Building the tools from source
 
