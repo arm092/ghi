@@ -14,10 +14,12 @@ import (
 )
 
 type Options struct {
-	Dir    string
-	Output string
-	Log    io.Writer
-	Debug  bool
+	// Overlay replaces existing project source contents in memory.
+	Overlay map[string][]byte
+	Dir     string
+	Output  string
+	Log     io.Writer
+	Debug   bool
 }
 
 type Result struct{ Executable string }

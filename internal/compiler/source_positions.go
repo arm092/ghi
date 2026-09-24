@@ -3,7 +3,6 @@ package compiler
 import (
 	"go/ast"
 	"go/token"
-	"os"
 	"reflect"
 	"strings"
 )
@@ -64,13 +63,19 @@ func (p *program) snapshotSources() map[ast.Node]nodeSource {
 // mappings. Rebase source nodes to virtual files containing the original text.
 func (p *program) rebaseSources(original map[ast.Node]nodeSource) {
 	files := map[string]*token.File{}
+	sources := map[string][]byte{}
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			sources[file.Path] = file.Source
+		}
+	}
 	for _, entry := range original {
 		name := entry.position.Filename
 		if files[name] != nil || !strings.HasSuffix(name, ".ghi") {
 			continue
 		}
-		data, err := os.ReadFile(name)
-		if err != nil {
+		data, ok := sources[name]
+		if !ok {
 			continue
 		}
 		file := p.Fset.AddFile(name, -1, len(data))

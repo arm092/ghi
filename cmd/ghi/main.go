@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"ghi/internal/compiler"
 	"ghi/internal/toolchain"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"unicode/utf8"
 )
 
 var version = "0.2.1-dev"
@@ -46,7 +49,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V" {
@@ -59,6 +62,8 @@ func run(args []string) int {
 	}
 	if args[0] == "check" {
 		flags := flag.NewFlagSet("check", flag.ContinueOnError)
+		stdin := flags.Bool("stdin", false, "check an existing source file using standard input without changing it")
+		filename := flags.String("filename", "", "absolute project source filename for --stdin")
 		if err := flags.Parse(args[1:]); err != nil {
 			return 2
 		}
@@ -78,7 +83,27 @@ func run(args []string) int {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		if err := compiler.Check(ctx, compiler.Options{Dir: dir, Log: os.Stderr}); err != nil {
+		options := compiler.Options{Dir: dir, Log: os.Stderr}
+		if *stdin {
+			if !filepath.IsAbs(*filename) || filepath.Ext(*filename) != ".ghi" {
+				fmt.Fprintln(os.Stderr, "--stdin requires --filename with an absolute .ghi path")
+				return 2
+			}
+			source, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			if !utf8.Valid(source) {
+				fmt.Fprintln(os.Stderr, "standard input must contain UTF-8 source")
+				return 1
+			}
+			options.Overlay = map[string][]byte{filepath.Clean(*filename): source}
+		} else if *filename != "" {
+			fmt.Fprintln(os.Stderr, "--filename requires --stdin")
+			return 2
+		}
+		if err := compiler.Check(ctx, options); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

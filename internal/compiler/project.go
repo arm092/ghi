@@ -13,9 +13,10 @@ import (
 )
 
 type sourceFile struct {
-	Path string
-	Tree *ast.File
-	Unit *unit
+	Path   string
+	Source []byte
+	Tree   *ast.File
+	Unit   *unit
 }
 
 type namespace struct {
@@ -45,6 +46,17 @@ func loadProject(root string) (*program, error) {
 }
 
 func loadProjectMode(root string, testing bool) (*program, error) {
+	return loadProjectOverlay(root, testing, nil)
+}
+
+func loadProjectOverlay(root string, testing bool, overlay map[string][]byte) (*program, error) {
+	remaining := make(map[string]bool, len(overlay))
+	for path := range overlay {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return nil, fmt.Errorf("overlay filename must be an absolute clean path: %s", path)
+		}
+		remaining[path] = true
+	}
 	p := &program{Root: root, Fset: token.NewFileSet(), Namespaces: map[string]*namespace{}, TestNamespaces: map[string]bool{}}
 	directories := map[string]string{}
 	scanRoot, packageNamespace := root, ""
@@ -68,9 +80,14 @@ func loadProjectMode(root string, testing bool) (*program, error) {
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("source symlinks are not supported: %s", path)
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
+		data, replaced := overlay[path]
+		if replaced && packageNamespace == "" {
+			delete(remaining, path)
+		} else {
+			data, err = os.ReadFile(path)
+			if err != nil {
+				return err
+			}
 		}
 		name, tree, unit, err := parseFile(p.Fset, path, data)
 		if err != nil {
@@ -93,7 +110,7 @@ func loadProjectMode(root string, testing bool) (*program, error) {
 			p.Namespaces[name] = ns
 			p.Ordered = append(p.Ordered, ns)
 		}
-		source := &sourceFile{Path: path, Tree: tree, Unit: unit}
+		source := &sourceFile{Path: path, Source: data, Tree: tree, Unit: unit}
 		for _, class := range unit.Classes {
 			class.File = source
 			class.Namespace = ns
@@ -111,6 +128,9 @@ func loadProjectMode(root string, testing bool) (*program, error) {
 	err := filepath.WalkDir(root, visit)
 	if err != nil {
 		return nil, err
+	}
+	for path := range remaining {
+		return nil, fmt.Errorf("overlay target must be an existing production .ghi file in the project: %s", path)
 	}
 	roots, err := mojave.SourceRoots(root)
 	if err != nil {

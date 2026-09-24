@@ -467,6 +467,8 @@ ghi fmt --check .
 ghi check .
 ```
 
+The development compiler also supports `ghi check --stdin --filename /absolute/project/main.ghi /absolute/project` for editor integrations. Send UTF-8 source on standard input. The buffer replaces that existing production file only in memory; other sources and dependencies come from the project, and diagnostics retain the original path and source positions. This does not create new files or check files excluded from production, including `tests/`. Flags precede the optional project directory. This API is not included in the published v0.2.1 binary.
+
 The canonical formatter sorts imports by path, uses tabs, expands nonempty blocks, indents switch/select cases, and puts collection entries on separate lines. It inserts a blank line before `return` when another statement precedes it in the same block. Empty blocks remain `{}`. GoLand's Reformat Code uses this formatter on the editor buffer.
 
 ## GoLand support

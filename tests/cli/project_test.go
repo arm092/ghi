@@ -92,3 +92,73 @@ func TestProjectCLI(t *testing.T) {
 		}
 	}
 }
+
+// An editor check must use the buffer for both parsing and source positions,
+// while imports still resolve from the actual project and disk stays untouched.
+func TestCheckEditorOverlay(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "ghi.exe")
+	build := exec.Command("go", "build", "-o", binary, "../../cmd/ghi")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v %s", err, out)
+	}
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "main.ghi")
+	saved := "namespace main\nfunc main() {}\n"
+	if err := os.WriteFile(sourcePath, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lib := filepath.Join(dir, "model")
+	if err := os.Mkdir(lib, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lib, "value.ghi"), []byte("namespace model\nfunc Value() int { return 4 }\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	invoke := func(input string, args ...string) (string, int) {
+		t.Helper()
+		c := exec.Command(binary, args...)
+		c.Dir = dir
+		c.Stdin = strings.NewReader(input)
+		out, err := c.CombinedOutput()
+		if err == nil {
+			return string(out), 0
+		}
+		if e, ok := err.(*exec.ExitError); ok {
+			return string(out), e.ExitCode()
+		}
+		t.Fatal(err)
+		return "", -1
+	}
+	args := []string{"check", "--stdin", "--filename", sourcePath, dir}
+	valid := "namespace main\nimport model\n\nfunc main() {\n println(model.Value())\n}\n"
+	if out, code := invoke(valid, args...); code != 0 {
+		t.Fatalf("valid overlay: %d %s", code, out)
+	}
+	invalid := "namespace main\nimport model\n\nfunc main() {\n println(model.Value())\n missing()\n}\n"
+	if out, code := invoke(invalid, args...); code != 1 || !strings.Contains(out, sourcePath+":6:2") {
+		t.Fatalf("buffer diagnostic: %d %s", code, out)
+	}
+	if out, code := invoke("", "check", dir); code != 0 {
+		t.Fatalf("disk project: %d %s", code, out)
+	}
+	after, err := os.ReadFile(sourcePath)
+	if err != nil || string(after) != saved {
+		t.Fatalf("source changed: %v %q", err, after)
+	}
+	for _, a := range [][]string{
+		{"check", "--stdin", dir},
+		{"check", "--filename", sourcePath, dir},
+		{"check", "--stdin", "--filename", "main.ghi", dir},
+	} {
+		if out, code := invoke(valid, a...); code != 2 {
+			t.Fatalf("arguments %v: %d %s", a, code, out)
+		}
+	}
+	missing := filepath.Join(dir, "new.ghi")
+	if out, code := invoke(valid, "check", "--stdin", "--filename", missing, dir); code != 1 || !strings.Contains(out, "existing production") {
+		t.Fatalf("missing target: %d %s", code, out)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("created overlay file: %v", err)
+	}
+}

@@ -38,7 +38,7 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 	if !info.IsDir() {
 		return nil, fmt.Errorf("project path must be a directory: %s", root)
 	}
-	p, err := loadProjectMode(root, testing)
+	p, err := loadProjectOverlay(root, testing, options.Overlay)
 	if err != nil {
 		return nil, err
 	}
