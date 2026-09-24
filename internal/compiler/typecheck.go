@@ -193,6 +193,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			if err := p.validateConstraintVisibility(info); err != nil {
 				return err
 			}
+			if err := p.validateEnumValues(info); err != nil {
+				return err
+			}
 			return p.validateNonNull(info)
 		}
 	}

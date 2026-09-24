@@ -79,6 +79,9 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	if err := p.bindTypeImports(); err != nil {
 		return err
 	}
+	if err := p.bindEnums(); err != nil {
+		return err
+	}
 	if err := p.resolveImports(); err != nil {
 		return err
 	}

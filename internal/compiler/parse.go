@@ -53,6 +53,10 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	}
 	name := strings.Join(parts, ".")
 	end := file.Offset(pos)
+	data, enums, enumErr := extractEnums(filename, data)
+	if enumErr != nil {
+		return "", nil, nil, enumErr
+	}
 	transformed := string(data[:start]) + "package " + parts[len(parts)-1] + string(data[end:])
 	importSource, typeImports, err := extractTypeImports(filename, []byte(transformed))
 	if err != nil {
@@ -63,6 +67,7 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 		return "", nil, nil, err
 	}
 	unit.TypeImports = typeImports
+	unit.Enums = enums
 	normalized, err = normalizeExceptions(filename, normalized)
 	if err != nil {
 		return "", nil, nil, err
@@ -83,6 +88,9 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 				meta.Node = fn
 			}
 		}
+	}
+	if err := appendEnumDeclarations(fset, filename, tree, enums); err != nil {
+		return "", nil, nil, err
 	}
 	return name, tree, unit, nil
 }

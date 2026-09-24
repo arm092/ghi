@@ -21,6 +21,11 @@ func (p *program) sourceError(err error) error {
 	replacements := map[string]string{}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
+			for _, e := range file.Unit.Enums {
+				for _, c := range e.Cases {
+					replacements[enumSymbol(e.Name, c.Name)] = e.Name + "." + c.Name
+				}
+			}
 			for _, selected := range file.Unit.TypeImports {
 				for _, spec := range file.Tree.Imports {
 					path, _ := strconv.Unquote(spec.Path.Value)

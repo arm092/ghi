@@ -110,7 +110,7 @@ func formatStructure(source []byte, all []formatToken) string {
 				}
 			}
 			switch ts[j].text {
-			case "for", "if", "switch", "select", "func", "constructor", "class", "interface", "struct", "try", "catch", "finally", "else":
+			case "for", "if", "switch", "select", "func", "constructor", "enum", "class", "interface", "struct", "try", "catch", "finally", "else":
 				if result == "" {
 					result = ts[j].text
 				}
@@ -273,6 +273,10 @@ func formatStructure(source []byte, all []formatToken) string {
 				newline(1)
 			}
 		case token.COMMA:
+			if top != nil && top.header == "enum" {
+				newline(1)
+				clause = i + 1
+			}
 			if top != nil && top.header == "match" && top.matchResult {
 				newline(1)
 				top.matchResult = false

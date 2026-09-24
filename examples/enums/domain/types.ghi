@@ -1,0 +1,21 @@
+namespace domain
+
+enum Direction {
+	North,
+	South,
+}
+
+enum Status string {
+	Pending = "pending",
+	Done = "done",
+}
+
+enum HttpCode int {
+	OK = 200,
+	NotFound = 404,
+}
+
+enum SwitchState bool {
+	On = true,
+	Off = false,
+}

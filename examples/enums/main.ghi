@@ -1,0 +1,22 @@
+namespace main
+
+import domain.Direction
+import domain.HttpCode
+import domain.Status
+import domain.SwitchState
+
+func describe(direction Direction) string {
+	return match direction {
+		Direction.North => "north",
+		default => "south",
+	}
+}
+
+func report(status string, code int, enabled bool) {
+	println(status, code, enabled)
+}
+
+func main() {
+	report(Status.Pending, HttpCode.OK, SwitchState.On)
+	println(describe(Direction.North))
+}

@@ -17,6 +17,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 - [How compilation works](#how-compilation-works)
 - [Files, namespaces and imports](#files-namespaces-and-imports)
 - [Types and collections](#types-and-collections)
+- [Enums](#enums)
 - [Classes and inheritance](#classes-and-inheritance)
 - [Interfaces and generics](#interfaces-and-generics)
 - [Nullable values](#nullable-values)
@@ -188,6 +189,57 @@ func main() {
 ```
 
 `[]T{}` is an empty slice; `[N]T{...}` is a fixed-size array; `map[K]V{}` is an initialized empty map. `make` allocates slices, maps or channels. A nil map cannot be written to until initialized. Zero-filled allocations containing nonnullable Ghi objects or unconstrained generic values are restricted: initialize those values explicitly, for example by appending constructed objects.
+
+## Enums
+
+Enum support is available in the development source; it is not included in the published v0.2.1 binaries.
+
+A plain enum declares its own type. Pass its cases to parameters of that type; strings and cases of another enum are not assignable. Its zero value is the first declared case. Plain cases support equality, map keys and generic `comparable` constraints; construct values using declared cases, not casts or composite literals. Plain cases are runtime values, so they cannot initialize a `const`.
+
+```ghi
+enum Direction {
+	North,
+	South,
+}
+
+func move(direction Direction) string {
+	return match direction {
+		Direction.North => "north",
+		default => "south",
+	}
+}
+```
+
+For explicitly assigned values, declare the backing type: `string`, `int` or `bool`. Every case must have a literal value of that type. These cases are ordinary typed constants and can be passed directly to native Go or Ghi functions accepting the backing type.
+
+```ghi
+enum Status string {
+	Pending = "pending",
+	Done = "done",
+}
+
+enum HttpCode int {
+	OK = 200,
+	NotFound = 404,
+}
+
+enum SwitchState bool {
+	On = true,
+	Off = false,
+}
+
+func report(status string, code int, enabled bool) {
+	println(status, code, enabled)
+}
+
+func main() {
+	report(Status.Pending, HttpCode.OK, SwitchState.On)
+}
+```
+
+Case definitions are immutable: `Status.Pending = "other"` and `Direction.North = Direction.South` are errors. A local variable initialized from a case remains assignable: `status := Status.Pending; status = "custom"` is valid. A backed enum name is an alias for its backing type, so a `Status` parameter also accepts arbitrary strings; it does not validate membership.
+
+Enums are declared at namespace scope and must contain at least one case. Case names and values must be unique. Assigned values without a backing type, missing values in a backed enum, and mismatched literal types are rejected. Enum cases work with the existing `match` syntax, which continues to require a final `default` arm.
 
 ## Classes and inheritance
 
@@ -493,6 +545,7 @@ Native Go assistance uses the configured SDK and locally installed dependencies.
 
 | Project | Demonstrates |
 | --- | --- |
+| [Enums](examples/enums) | Plain enum types, string/int/bool constants, imports and match. |
 | [Hello](examples/hello) | Minimal executable |
 | [Objects](examples/objects) | Classes, interfaces and inheritance |
 | [Inheritance](examples/inheritance) | Generic repositories and specialization |
