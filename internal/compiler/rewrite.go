@@ -223,20 +223,18 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								changed = true
 								return node
 							}
-							if c := p.expressionClass(selector.X, info); c != nil {
-								if method := c.method(selector.Sel.Name); method != nil {
-									if !accessible(method.Visibility, method.Owner, owner) {
-										reject("method " + method.Name + " is " + method.Visibility)
-										return node
-									}
-									selector.Sel = ast.NewIdent("GhiM_" + method.Name)
-									fillDefaults(n, method, 0, func(value ast.Expr) ast.Expr {
-										bindings := p.inheritedCallBindings(c, method.Owner, selector.X, value, info, file, ns)
-										return p.classDefaultTransform(method.Owner, bindings, file, ns)(value)
-									})
-									changed = true
+							if c, method := p.expressionMethod(selector.X, selector.Sel.Name, info); method != nil {
+								if !accessible(method.Visibility, method.Owner, owner) {
+									reject("method " + method.Name + " is " + method.Visibility)
 									return node
 								}
+								selector.Sel = ast.NewIdent("GhiM_" + method.Name)
+								fillDefaults(n, method, 0, func(value ast.Expr) ast.Expr {
+									bindings := p.inheritedCallBindings(c, method.Owner, selector.X, value, info, file, ns)
+									return p.classDefaultTransform(method.Owner, bindings, file, ns)(value)
+								})
+								changed = true
+								return node
 							}
 						}
 					case *ast.SelectorExpr:
@@ -249,14 +247,14 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								changed = true
 								return &ast.CallExpr{Fun: &ast.SelectorExpr{X: n.X, Sel: ast.NewIdent(fieldGet(field))}}
 							}
-							if method := c.method(n.Sel.Name); method != nil {
-								if !accessible(method.Visibility, method.Owner, owner) {
-									reject("method " + method.Name + " is " + method.Visibility)
-									return node
-								}
-								n.Sel = ast.NewIdent("GhiM_" + method.Name)
-								changed = true
+						}
+						if _, method := p.expressionMethod(n.X, n.Sel.Name, info); method != nil {
+							if !accessible(method.Visibility, method.Owner, owner) {
+								reject("method " + method.Name + " is " + method.Visibility)
+								return node
 							}
+							n.Sel = ast.NewIdent("GhiM_" + method.Name)
+							changed = true
 						}
 					}
 					return node

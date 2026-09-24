@@ -149,7 +149,7 @@ func (p *program) inheritedCallBindings(child, ancestor *classDecl, receiver, va
 	}
 	concrete := make([]ast.Expr, len(classParameterNames(child)))
 	if info != nil {
-		if named, ok := types.Unalias(info.TypeOf(receiver)).(*types.Named); ok {
+		if _, named := p.constraintClass(info.TypeOf(receiver), func(c *classDecl) bool { return c == child }); named != nil {
 			for i := 0; i < named.TypeArgs().Len(); i++ {
 				if i >= len(concrete) || !needed[classParameterNames(child)[i]] {
 					continue

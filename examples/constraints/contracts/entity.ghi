@@ -1,0 +1,24 @@
+namespace contracts
+
+interface Identifiable {
+	func getId() int
+}
+
+interface Labelled {
+	func label() string
+}
+
+type Entity interface {
+	Identifiable
+	Labelled
+}
+
+class Repository[T Entity] {
+	public func describe(item T) string {
+		return item.label()
+	}
+
+	public func identify(item T) int {
+		return item.getId()
+	}
+}

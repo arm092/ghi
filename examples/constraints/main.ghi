@@ -1,0 +1,30 @@
+namespace main
+
+import contracts.Entity as EntityConstraint
+import contracts.Identifiable
+import contracts.Labelled
+import contracts.Repository
+
+class User implements Identifiable, Labelled {
+	public func getId() int {
+		return 7
+	}
+
+	public func label() string {
+		return "Ada"
+	}
+}
+
+class UserRepository extends Repository[User] {}
+
+func describe[T EntityConstraint](item T) string {
+	label := item.label
+
+	return label()
+}
+
+func main() {
+	user := new User()
+	repository := new UserRepository()
+	println(repository.identify(user), repository.describe(user), describe(user))
+}
