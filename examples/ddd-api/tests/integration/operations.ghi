@@ -13,6 +13,8 @@ import fmt "go:fmt"
 import sqlite "infrastructure.sqlite"
 import task "domain.task"
 import user "domain.user"
+import migrations.Migrator
+import migrations.MigrationError
 
 func TestBatchTransactionRollbackAndPagination(t * testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "atomic.db"))
@@ -67,7 +69,7 @@ func TestVersionedMigrationsRejectChangedHistory(t * testing.T) {
 	repository = new sqlite.Repository(path, directory); repository.Close()
 	os.WriteFile(filepath.Join(directory, "004_atomic.sql"), [] byte("CREATE TABLE incomplete(id INTEGER); INSERT INTO nonexistent VALUES (1);"), 0600)
 	failed := false
-	try { repository = new sqlite.Repository(path, directory); repository.Close() } catch err GoError { failed = true }
+	try { repository = new sqlite.Repository(path, directory); repository.Close() } catch err MigrationError { failed = true; if err.code != 0 { t.Fatal("unexpected migration error code") } }
 	if ! failed { t.Fatal("broken migration succeeded") }
 	database = sql.Open("sqlite", path)
 	var incomplete int
@@ -105,4 +107,23 @@ func TestExistingFilenameChecksumLedgerIsPreserved(t * testing.T) {
 	var versions int
 	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(& versions)
 	if versions != 3 { t.Fatal("migration did not extend existing filename ledger") }
+}
+
+func TestMigrationPackageRollsBackAndReappliesDDDSchema(t * testing.T) {
+	database := sql.Open("sqlite", filepath.Join(t.TempDir(), "rollback.db"))
+	defer database.Close()
+	database.SetMaxOpenConns(1)
+	database.Exec("PRAGMA foreign_keys = ON")
+	migrator := new Migrator(database, sqlite.MigrationDirectory())
+	if migrator.Up() != 3 || migrator.Version() != "003_assignee_index.sql" { t.Fatal("initial schema version incorrect") }
+	if migrator.Down(3) != 3 || migrator.Version() != "" { t.Fatal("schema rollback failed") }
+	var remaining int
+	database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('tasks','users','tasks_assignee_id')").Scan(& remaining)
+	if remaining != 0 { t.Fatal("rollback left application schema behind") }
+	if migrator.Up() != 3 || migrator.Up() != 0 { t.Fatal("reapply was not idempotent") }
+	database.Exec("INSERT INTO users(id,name,email) VALUES ('owner','Owner','owner@example.com')")
+	database.Exec("INSERT INTO tasks(id,title,assignee_id) VALUES ('task','After rollback','owner')")
+	var owner string
+	database.QueryRow("SELECT assignee_id FROM tasks WHERE id='task'").Scan(& owner)
+	if owner != "owner" { t.Fatal("reapplied schema lost relationships") }
 }

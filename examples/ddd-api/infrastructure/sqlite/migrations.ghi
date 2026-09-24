@@ -1,17 +1,12 @@
 namespace infrastructure.sqlite
 
-import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
 import os "go:os"
 import filepath "go:path/filepath"
 import runtime "go:runtime"
-import strings "go:strings"
-import regexp "go:regexp"
-import sort "go:sort"
-import sha256 "go:crypto/sha256"
-import fmt "go:fmt"
 import slog "go:log/slog"
+import migrations.Migrator
 
 func MigrationDirectory() string {
 	configured := os.Getenv("GHI_DDD_MIGRATIONS")
@@ -30,52 +25,16 @@ func rollback(tx * sql.Tx) {
 	}
 }
 
-func applyMigration(db * sql.DB, name string, checksum string, statement string) {
-	tx := db.BeginTx(context.Background(), nil)
-	defer rollback(tx)
-	// The previous example already added this column without a migration ledger.
-	// Adopt that exact legacy step; every other migration executes normally.
-	alreadyApplied := false
-	if name == "002_task_assignee.sql" {
-		var columns int
-		tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='assignee_id'").Scan(& columns)
-		alreadyApplied = columns == 1
-	}
-	if ! alreadyApplied { tx.Exec(statement) }
-	tx.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (?,?)", name, checksum)
-	tx.Commit()
-	slog.Info("database migration applied", "version", name, "legacy_adoption", alreadyApplied)
-}
-
 func initializeSchema(db * sql.DB, directory string) {
 	db.Exec("PRAGMA foreign_keys = ON")
 	db.Exec("PRAGMA busy_timeout = 5000")
-	db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY,checksum TEXT NOT NULL)")
-	files := [] string {}
-	versions := map[string] bool {}
-	for _, entry := range os.ReadDir(directory) {
-		if entry.IsDir() || ! strings.HasSuffix(entry.Name(), ".sql") { continue }
-		name := entry.Name()
-		if ! regexp.MatchString(`^[0-9]{3}_[a-z0-9_]+\.sql$`, name) { throw new Exception("Invalid SQL migration filename: " + name, 3001) }
-		version := strings.SplitN(name, "_", 2) [0]
-		if versions[version] { throw new Exception("Duplicate SQL migration version: " + version, 3001) }
-		versions[version] = true; files = append(files, name)
-	}
-	if len(files) == 0 { throw new Exception("No SQL migrations found in " + directory, 3001) }
-	sort.Strings(files)
-	checksums := map[string] string {}
-	statements := map[string] string {}
-	for _, name := range files { data := os.ReadFile(filepath.Join(directory, name)); checksums[name] = fmt.Sprintf("%x", sha256.Sum256([] byte(strings.ReplaceAll(string(data), "\r\n", "\n")))); statements[name] = string(data) }
-	applied := map[string] string {}
-	rows := db.Query("SELECT version,checksum FROM schema_migrations ORDER BY version")
-	defer rows.Close()
-	for rows.Next() { var version string; var checksum string; rows.Scan(& version, & checksum); applied[version] = checksum }
-	rows.Close(); rows.Err()
-	latest := ""
-	for name, checksum := range applied {
-		if checksums[name] == "" || checksums[name] != checksum { throw new Exception("Applied SQL migration is missing or changed: " + name, 3001) }
-		if name > latest { latest = name }
-	}
-	for _, name := range files { if applied[name] == "" && name < latest { throw new Exception("SQL migrations cannot be inserted before applied history: " + name, 3001) } }
-	for _, name := range files { if applied[name] == "" { applyMigration(db, name, checksums[name], statements[name]) } }
+	migrator := new Migrator(db, directory)
+	applied := migrator.UpWithAdoption(func (tx * sql.Tx, name string) bool {
+			// Older DDD versions added this column before the migration ledger existed.
+			if name != "002_task_assignee.sql" { return false }
+			var columns int
+			tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='assignee_id'").Scan(& columns)
+			return columns == 1
+		})
+	if applied > 0 { slog.Info("database migrations applied", "count", applied) }
 }
