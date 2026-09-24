@@ -22,21 +22,24 @@ type Dependency struct {
 	Ref        string `json:"ref"`
 }
 type Manifest struct {
-	Version      int                   `json:"version"`
-	Dependencies map[string]Dependency `json:"dependencies"`
+	Version        int                   `json:"version"`
+	Dependencies   map[string]Dependency `json:"dependencies"`
+	GoDependencies map[string]string     `json:"goDependencies,omitempty"`
 }
 type LockedPackage struct {
-	Namespace    string                `json:"namespace"`
-	Repository   string                `json:"repository"`
-	Ref          string                `json:"ref"`
-	Commit       string                `json:"commit"`
-	Integrity    string                `json:"integrity"`
-	Dependencies map[string]Dependency `json:"dependencies,omitempty"`
+	Namespace      string                `json:"namespace"`
+	Repository     string                `json:"repository"`
+	Ref            string                `json:"ref"`
+	Commit         string                `json:"commit"`
+	Integrity      string                `json:"integrity"`
+	Dependencies   map[string]Dependency `json:"dependencies,omitempty"`
+	GoDependencies map[string]string     `json:"goDependencies,omitempty"`
 }
 type Lock struct {
 	Version      int             `json:"version"`
 	ManifestHash string          `json:"manifestHash"`
 	Packages     []LockedPackage `json:"packages"`
+	Go           *GoLock         `json:"go,omitempty"`
 }
 type SourceRoot struct {
 	Namespace string
@@ -117,6 +120,11 @@ func readManifest(root string) (Manifest, error) {
 			return m, fmt.Errorf("package %s: %w", name, e)
 		}
 	}
+	for path, query := range m.GoDependencies {
+		if e = validateGoDependency(path, query); e != nil {
+			return m, e
+		}
+	}
 	return m, nil
 }
 func manifestHash(m Manifest) string {
@@ -191,6 +199,9 @@ func readLock(root string, m Manifest) (Lock, error) {
 	}
 	if len(visited) != len(packages) {
 		return l, fmt.Errorf("lock contains unreachable packages; run mojave update")
+	}
+	if e = validateGoLock(m, l); e != nil {
+		return l, e
 	}
 	return l, nil
 }
@@ -302,7 +313,7 @@ func Install(ctx context.Context, root string) error {
 				return fmt.Errorf("install %s at %s: %w", p.Namespace, p.Commit, e)
 			}
 		}
-		return nil
+		return installGo(ctx, l.Go)
 	})
 }
 func mutate(ctx context.Context, root string, change func(*Manifest) error, update bool) error {
@@ -450,7 +461,7 @@ func resolve(ctx context.Context, root string, m Manifest, old *Lock) error {
 				child.Dependencies[n] = dep
 			}
 		}
-		selected[name] = LockedPackage{name, d.Repository, d.Ref, commit, integrity, child.Dependencies}
+		selected[name] = LockedPackage{Namespace: name, Repository: d.Repository, Ref: d.Ref, Commit: commit, Integrity: integrity, Dependencies: child.Dependencies, GoDependencies: child.GoDependencies}
 		for _, n := range names(child.Dependencies) {
 			if e = visit(n, child.Dependencies[n]); e != nil {
 				return e
@@ -469,6 +480,10 @@ func resolve(ctx context.Context, root string, m Manifest, old *Lock) error {
 	l := Lock{Version: 1, ManifestHash: manifestHash(m), Packages: []LockedPackage{}}
 	for _, n := range names(selected) {
 		l.Packages = append(l.Packages, selected[n])
+	}
+	l.Go, e = resolveGo(ctx, m, l.Packages, old)
+	if e != nil {
+		return e
 	}
 	// Swap the fully resolved tree, rolling back on metadata write failures.
 	cache := filepath.Join(root, ".ghi", "packages")

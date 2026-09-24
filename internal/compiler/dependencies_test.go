@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"ghi/internal/mojave"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -116,13 +117,48 @@ func TestDependencyDownloadVerifiesProjectChecksum(t *testing.T) {
 	if _, err := Build(context.Background(), Options{Dir: root}); err != nil {
 		t.Fatal(err)
 	}
+	// Mojave projects compile the same native dependency without root Go files.
+	managedRoot := project(t, map[string]string{
+		"mojave.json": `{"version":1,"goDependencies":{"example.test/library":"v1.0.0"}}`,
+		"main.ghi":    "namespace main\nimport library \"go:example.test/library\"\nfunc main(){println(library.Value())}\n",
+	})
+	if err := mojave.Install(context.Background(), managedRoot); err != nil {
+		t.Fatal(err)
+	}
+	locked, err := os.ReadFile(filepath.Join(managedRoot, "mojave.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	built, err := Build(context.Background(), Options{Dir: managedRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(built.Executable).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "verified" {
+		t.Fatalf("managed binary: %v %s", err, out)
+	}
+	for _, name := range []string{"go.mod", "go.sum"} {
+		if _, err := os.Stat(filepath.Join(managedRoot, name)); !os.IsNotExist(err) {
+			t.Fatalf("build created root %s", name)
+		}
+	}
+	after, err := os.ReadFile(filepath.Join(managedRoot, "mojave.lock"))
+	if err != nil || !bytes.Equal(locked, after) {
+		t.Fatal("build changed Mojave lock")
+	}
+	if err := os.WriteFile(filepath.Join(managedRoot, "go.mod"), []byte("module conflicting\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Build(context.Background(), Options{Dir: managedRoot}); err == nil || !strings.Contains(err.Error(), "remove the legacy go.mod") {
+		t.Fatalf("ambiguous manifests accepted: %v", err)
+	}
 	// A fresh cache forces the second build to verify the downloaded archive.
 	t.Setenv("GOMODCACHE", t.TempDir())
 	sums := "example.test/library v1.0.0 h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
 	if err := os.WriteFile(filepath.Join(root, "go.sum"), []byte(sums), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Build(context.Background(), Options{Dir: root})
+	_, err = Build(context.Background(), Options{Dir: root})
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("expected checksum rejection, got %v", err)
 	}

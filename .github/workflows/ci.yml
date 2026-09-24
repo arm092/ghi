@@ -24,6 +24,12 @@ jobs:
           cache: false
       - run: go test ./...
       - run: go vet ./...
+      - name: Install Task API dependencies with Mojave
+        working-directory: examples/task-api
+        run: go run ../../cmd/mojave install
+      - name: Install DDD API dependencies with Mojave
+        working-directory: examples/ddd-api
+        run: go run ../../cmd/mojave install
       - name: Verify Ghi developer tools and database API
         run: |
           go run ./cmd/ghi fmt --check ./examples/task-api

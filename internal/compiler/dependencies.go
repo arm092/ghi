@@ -10,27 +10,42 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"ghi/internal/mojave"
 	"ghi/internal/toolchain"
 )
 
 // stageDependencies keeps the original manifest and lockfile unchanged. Go
 // resolves pinned dependencies and verifies their checksums in the build dir.
 func (p *program) stageDependencies(ctx context.Context, dir, goPath string) error {
-	manifest, err := os.ReadFile(filepath.Join(p.Root, "go.mod"))
-	if os.IsNotExist(err) {
-		return os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+generatedModule+"\n\ngo 1.26.0\n"), 0644)
-	}
+	manifest, sums, managed, err := mojave.GoModuleFiles(p.Root)
 	if err != nil {
-		return fmt.Errorf("read project go.mod: %w", err)
+		return fmt.Errorf("prepare Mojave Go dependencies: %w", err)
+	}
+	if managed {
+		for _, name := range []string{"go.mod", "go.sum"} {
+			if _, err := os.Stat(filepath.Join(p.Root, name)); err == nil {
+				return fmt.Errorf("Mojave manages Go dependencies: remove the legacy %s after migrating its dependencies to mojave.json", name)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+		}
+	} else {
+		manifest, err = os.ReadFile(filepath.Join(p.Root, "go.mod"))
+		if os.IsNotExist(err) {
+			return os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+generatedModule+"\n\ngo 1.26.0\n"), 0644)
+		}
+		if err != nil {
+			return fmt.Errorf("read project go.mod: %w", err)
+		}
+		sums, err = os.ReadFile(filepath.Join(p.Root, "go.sum"))
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("read project go.sum: %w", err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), manifest, 0644); err != nil {
 		return err
 	}
-	sums, err := os.ReadFile(filepath.Join(p.Root, "go.sum"))
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read project go.sum: %w", err)
-	}
-	if err == nil {
+	if len(sums) > 0 {
 		if err := os.WriteFile(filepath.Join(dir, "go.sum"), sums, 0644); err != nil {
 			return err
 		}
@@ -61,7 +76,11 @@ func (p *program) stageDependencies(ctx context.Context, dir, goPath string) err
 	if module.Go != "" && version.Compare(version.Lang("go"+module.Go), compilerVersion) > 0 {
 		return fmt.Errorf("project requires Go %s; this Ghi compiler supports %s", module.Go, compilerVersion)
 	}
-	args := []string{"mod", "edit", "-module=" + generatedModule, "-go=1.26.0", "-toolchain=none"}
+	targetGo := "1.26.0"
+	if managed && module.Go != "" {
+		targetGo = module.Go
+	}
+	args := []string{"mod", "edit", "-module=" + generatedModule, "-go=" + targetGo, "-toolchain=none"}
 	for _, replace := range module.Replace {
 		if replace.New.Version != "" {
 			continue
@@ -79,6 +98,11 @@ func (p *program) stageDependencies(ctx context.Context, dir, goPath string) err
 	if _, err := run(args...); err != nil {
 		return err
 	}
-	_, err = run("mod", "download", "all")
+	if _, err = run("mod", "download", "all"); err != nil {
+		return err
+	}
+	if managed {
+		_, err = run("mod", "verify")
+	}
 	return err
 }
