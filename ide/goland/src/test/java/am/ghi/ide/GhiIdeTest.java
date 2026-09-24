@@ -433,7 +433,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
     }
     public void testLiveGhiDebuggerStopsAndStepsOnSource() throws Exception {
         String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
-        String source="namespace main\nclass Counter {\n public value int\n constructor(value int){this.value=value}\n public func add(amount int) int {\n  this.value += amount\n  return this.value\n }\n}\nfunc main() {\n counter := new Counter(7)\n answer := counter.add(5)\n println(answer)\n try {\n  throw new Exception(\"debug exception\")\n } catch err Exception {\n  println(err.message)\n  println(err.code)\n }\n}\n";
+        String source="namespace main\nimport time \"go:time\"\nclass Counter {\n public value int\n constructor(value int){this.value=value}\n public func add(amount int) int {\n  this.value += amount\n  return this.value\n }\n}\nfunc main() {\n counter := new Counter(7)\n answer := counter.add(5)\n println(answer)\n try {\n  throw new Exception(\"debug exception\")\n } catch err Exception {\n  println(err.message)\n  println(err.code)\n }\n count := 0\n for {\n  time.Sleep(200 * time.Millisecond)\n  count += 1\n }\n}\n";
         Path root=diskRoot;Path sourceFile=root.resolve("main.ghi");Files.writeString(sourceFile,source);
         var virtual=com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(sourceFile);assertNotNull(virtual);
         com.intellij.openapi.application.WriteAction.run(()->{
@@ -452,6 +452,8 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var callBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),callLine,type.createBreakpointProperties(file.getVirtualFile(),callLine));
         int catchLine=source.substring(0,source.indexOf("println(err.message)")).split("\n",-1).length-1;
         var catchBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),catchLine,type.createBreakpointProperties(file.getVirtualFile(),catchLine));
+        int loopLine=source.substring(0,source.indexOf("count += 1")).split("\n",-1).length-1;
+        com.intellij.xdebugger.breakpoints.XLineBreakpoint<GhiBreakpointType.Properties> liveBreakpoint=null;
         com.intellij.xdebugger.XDebugSession session=null;
         try{
             var action=ActionManager.getInstance().getAction("Ghi.Debug");assertNotNull(action);
@@ -525,6 +527,25 @@ public class GhiIdeTest extends BasePlatformTestCase {
             assertTrue("Caught Ghi exception was not displayed",caught);
             session.resume();
             assertFalse("Resume did not start execution",session.isSuspended());
+            Thread.sleep(300);
+            liveBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),loopLine,type.createBreakpointProperties(file.getVirtualFile(),loopLine));
+            long liveDeadline=System.currentTimeMillis()+5000;
+            while(System.currentTimeMillis()<liveDeadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==loopLine)break;
+                Thread.sleep(20);
+            }
+            assertTrue("Breakpoint added while running did not stop",session.isSuspended());
+            assertEquals(loopLine,session.getCurrentPosition().getLine());
+            session.resume();
+            assertFalse("Resume did not start execution",session.isSuspended());
+            manager.getBreakpointManager().removeBreakpoint(liveBreakpoint);
+            liveBreakpoint=null;
+            long clearDeadline=System.currentTimeMillis()+700;
+            while(System.currentTimeMillis()<clearDeadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
+            }
+            assertFalse("Removed breakpoint stopped the running debuggee",session.isSuspended());
             session.getDebugProcess().stop();
         }finally{
             if(session!=null){
@@ -549,6 +570,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
             manager.getBreakpointManager().removeBreakpoint(breakpoint);
             manager.getBreakpointManager().removeBreakpoint(callBreakpoint);
             manager.getBreakpointManager().removeBreakpoint(catchBreakpoint);
+            if(liveBreakpoint!=null)manager.getBreakpointManager().removeBreakpoint(liveBreakpoint);
             com.intellij.openapi.application.WriteAction.run(()->{
                 var roots=com.intellij.openapi.roots.ModuleRootManager.getInstance(myFixture.getModule()).getModifiableModel();
                 for(var entry:roots.getContentEntries())if(entry.getUrl().equals(virtual.getParent().getUrl()))roots.removeContentEntry(entry);
