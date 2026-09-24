@@ -70,10 +70,19 @@ func TestUserCRUDAndTaskAssignments(t * testing.T) {
 }
 
 func TestLegacyTaskMigrationAndDatabaseLinkGuards(t * testing.T) {
+	checkLegacyTaskMigration(t, false)
+	checkLegacyTaskMigration(t, true)
+}
+
+func checkLegacyTaskMigration(t * testing.T, hasAssigneeColumn bool) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	old := sql.Open("sqlite", path)
 	old.Exec("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK(completed IN (0,1)))")
+	if hasAssigneeColumn {
+		old.Exec("CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE)")
+		old.Exec("ALTER TABLE tasks ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE RESTRICT")
+	}
 	old.Exec("INSERT INTO tasks(id,title,completed) VALUES ('legacy','Existing task',1)")
 	old.Close()
 	repository := new sqlite.Repository(path)
