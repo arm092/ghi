@@ -4,7 +4,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.0-beta.1](https://github.com/arm092/ghi/releases/tag/v0.2.0-beta.1), bundled with the Mojave package manager. **IDE:** [Ghi for GoLand preview.18](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0-preview.18).
+**Current release:** [Ghi v0.2.0-beta.1](https://github.com/arm092/ghi/releases/tag/v0.2.0-beta.1), bundled with the Mojave package manager. **IDE:** [Ghi for GoLand v0.1.0-beta.1](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0-beta.1).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -442,7 +442,7 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 ## GoLand support
 
-Download the [preview.18 plugin ZIP](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0-preview.18) and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+Download the [v0.1.0-beta.1 plugin ZIP](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0-beta.1) and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 The plugin provides:
 
