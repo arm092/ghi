@@ -57,11 +57,12 @@ jobs:
           if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable') { throw 'Failed setup must preserve the previous executable.' }
           if ((Get-Content "$failureTarget/mojave.exe" -Raw).Trim() -ne 'previous package manager') { throw 'Failed setup must preserve Mojave.' }
           $env:GHI_GO = ''
+          Copy-Item install/mojave.exe "$env:RUNNER_TEMP/mojave-verified.exe"
           Add-Content install/mojave.exe 'tampered'
           $rejected = $false
           try { ./install/install.ps1 -InstallDir $failureTarget -NoPath } catch { $rejected = $true }
           if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable' -or (Get-Content "$failureTarget/mojave.exe" -Raw).Trim() -ne 'previous package manager') { throw 'Checksum failure must preserve both executables.' }
-          go build -o install/mojave.exe ./cmd/mojave
+          Copy-Item "$env:RUNNER_TEMP/mojave-verified.exe" install/mojave.exe -Force
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Remove every Go executable directory, then install into a fresh user cache.
           $env:Path = (($env:Path -split ';') | Where-Object { $_ -and !(Test-Path -LiteralPath (Join-Path $_ 'go.exe')) }) -join ';'
@@ -87,11 +88,12 @@ jobs:
           if GHI_GO="$RUNNER_TEMP/missing-go" GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-failed-install" sh install/install.sh; then exit 1; fi
           test "$(cat "$RUNNER_TEMP/ghi-failed-install/ghi")" = 'previous executable'
           test "$(cat "$RUNNER_TEMP/ghi-failed-install/mojave")" = 'previous package manager'
+          cp install/mojave "$RUNNER_TEMP/mojave-verified"
           printf 'tampered' >> install/mojave
           if GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-failed-install" sh install/install.sh; then exit 1; fi
           test "$(cat "$RUNNER_TEMP/ghi-failed-install/ghi")" = 'previous executable'
           test "$(cat "$RUNNER_TEMP/ghi-failed-install/mojave")" = 'previous package manager'
-          go build -o install/mojave ./cmd/mojave
+          cp "$RUNNER_TEMP/mojave-verified" install/mojave
           export HOME="$RUNNER_TEMP/ghi-fresh-home"
           export XDG_CONFIG_HOME="$HOME/.config"
           export SHELL=/bin/zsh
