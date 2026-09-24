@@ -62,8 +62,7 @@ jobs:
           $rejected = $false
           try { ./install/install.ps1 -InstallDir $failureTarget -NoPath } catch { $rejected = $true }
           if (!$rejected -or (Get-Content "$failureTarget/ghi.exe" -Raw).Trim() -ne 'previous executable' -or (Get-Content "$failureTarget/mojave.exe" -Raw).Trim() -ne 'previous package manager') { throw 'Checksum failure must preserve both executables.' }
-          Copy-Item "$env:RUNNER_TEMP/mojave-verified.exe" install/mojave.exe -Force
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "$env:RUNNER_TEMP/mojave-verified.exe" install/mojave.exe -Force -ErrorAction Stop
           # Remove every Go executable directory, then install into a fresh user cache.
           $env:Path = (($env:Path -split ';') | Where-Object { $_ -and !(Test-Path -LiteralPath (Join-Path $_ 'go.exe')) }) -join ';'
           $env:GHI_GO = ''
