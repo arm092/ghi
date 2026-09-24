@@ -386,6 +386,44 @@ public class GhiIdeTest extends BasePlatformTestCase {
         myFixture.getLookup().setCurrentItem(choice);myFixture.finishLookup(com.intellij.codeInsight.lookup.Lookup.NORMAL_SELECT_CHAR);
         assertEquals("namespace main\nimport acme.lib.Widget\nfunc main(){new Widget}\n",file.getText());
     }
+    public void testOwnerQualifiedInstalledPackagesWithSameBasename(){
+        var first=myFixture.addFileToProject(".ghi/packages/arm092.migrations/migrator.ghi",
+            "namespace arm092.migrations\nclass Migrator {constructor(source string){} public func run() {}}\n");
+        var second=myFixture.addFileToProject(".ghi/packages/someone.migrations/migrator.ghi",
+            "namespace someone.migrations\nclass Migrator {constructor(version int){} public func run() {}}\n");
+        myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":["
+            +"{\"identity\":\"arm092/migrations\",\"namespace\":\"arm092.migrations\"},"
+            +"{\"identity\":\"someone/migrations\",\"namespace\":\"someone.migrations\"}]}");
+        excludeCache(first);
+        var file=myFixture.configureByText("owned-imports.ghi","namespace main\n"
+            +"import arm092.migrations.Migrator\n"
+            +"import someone.migrations.Migrator as OtherMigrator\n"
+            +"func main(){new Migrator(\"old\");new OtherMigrator(2)}\n");
+        var model=GhiSymbols.forFile(file);
+        assertEquals(first,model.resolve(file,file.getText().indexOf("Migrator\n")).getContainingFile());
+        assertEquals(second,model.resolve(file,file.getText().indexOf("Migrator as")).getContainingFile());
+        assertEquals(first,model.resolve(file,file.getText().indexOf("new Migrator")+4).getContainingFile());
+        assertEquals(file,model.resolve(file,file.getText().indexOf("new OtherMigrator")+4).getContainingFile());
+        assertEquals(second,model.type("OtherMigrator",file).file);
+        assertEquals(java.util.List.of("source string"),model.callAt(file,file.getText().indexOf("\"old\"")).symbol().parameters);
+        assertEquals(java.util.List.of("version int"),model.callAt(file,file.getText().indexOf("2)}")).symbol().parameters);
+        var paths=GhiTypeImports.candidates(file,"Migrator").stream().map(GhiTypeImports.Choice::path).toList();
+        assertTrue(paths.toString(),paths.contains("arm092.migrations.Migrator"));
+        assertTrue(paths.toString(),paths.contains("someone.migrations.Migrator"));
+        file=myFixture.configureByText("owned-completion.ghi","namespace main\nimport someone.migrations.Mig<caret>\n");
+        var available=GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset());
+        assertEquals(1,available.stream().filter(symbol->symbol.name.equals("Migrator")).count());
+        assertEquals(second,available.stream().filter(symbol->symbol.name.equals("Migrator")).findFirst().orElseThrow().file);
+        file=myFixture.configureByText("owned-shorten.ghi","namespace main\n"
+            +"import arm092.migrations.Migrator\n"
+            +"func main(){new someone.migrations.Mig<caret>rator(2)}\n");
+        var shorten=new GhiImportIntention.Shorten();
+        assertTrue(shorten.isAvailable(getProject(),myFixture.getEditor(),file));
+        shorten.invoke(getProject(),myFixture.getEditor(),file);
+        assertTrue(file.getText(),file.getText().contains("import someone.migrations.Migrator as MigrationsMigrator"));
+        assertTrue(file.getText(),file.getText().contains("new MigrationsMigrator(2)"));
+        assertEquals(second,GhiSymbols.forFile(file).type("MigrationsMigrator",file).file);
+    }
     public void testInstalledLockRefreshAndReadOnlyRename(){
         var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {public func run(count int){}}\n");
         var next=myFixture.addFileToProject(".ghi/packages/next.lib/types.ghi","namespace next.lib\nclass Next {}\n");
