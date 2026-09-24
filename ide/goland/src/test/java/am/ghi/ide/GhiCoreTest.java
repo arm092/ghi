@@ -57,4 +57,20 @@ public class GhiCoreTest {
         assertEquals(List.of("build",dir.toString()),GhiCommand.create("ghi",dir,"build","ignored").getParametersList().getList());
         assertEquals(dir.resolve("child"),GhiCommand.directory(dir.toString(),"child"));
     }
+    @Test public void contextualNamesAndPartialEditorRanges(){
+        String source="namespace main\nimport fmt \"go:fmt\"\nclass Person { name string; constructor(name string){this.name=name}; public func greet() string {return this.name} }\nfunc show(person Person){fmt.Println(person.greet())}";
+        var lexer=new GhiHighlightingLexer();lexer.start(source);
+        var roles=new HashMap<Integer,IElementType>();
+        while(lexer.getTokenType()!=null){roles.put(lexer.getTokenStart(),lexer.getTokenType());lexer.advance();}
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.indexOf("Person")));
+        assertEquals(GhiHighlightingLexer.FIELD,roles.get(source.indexOf("name string")));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("name string",source.indexOf("constructor"))));
+        assertEquals(GhiHighlightingLexer.FIELD,roles.get(source.indexOf("this.name")+5));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("=name")+1));
+        assertEquals(GhiHighlightingLexer.METHOD,roles.get(source.indexOf("greet")));
+        assertEquals(GhiHighlightingLexer.FUNCTION,roles.get(source.indexOf("show")));
+        assertEquals(GhiHighlightingLexer.BUILTIN_TYPE,roles.get(source.indexOf("string")));
+        int end=source.indexOf("Person");lexer.start(source,0,end,0);
+        int count=0;while(lexer.getTokenType()!=null){assertTrue(lexer.getTokenEnd()<=end);assertTrue(++count<100);lexer.advance();}
+    }
 }

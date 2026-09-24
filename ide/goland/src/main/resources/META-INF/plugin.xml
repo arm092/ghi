@@ -17,6 +17,9 @@
         <lang.syntaxHighlighterFactory language="Ghi" implementationClass="am.ghi.ide.GhiHighlighterFactory"/>
         <lang.commenter language="Ghi" implementationClass="am.ghi.ide.GhiCommenter"/>
         <lang.braceMatcher language="Ghi" implementationClass="am.ghi.ide.GhiBraceMatcher"/>
+        <colorSettingsPage implementation="am.ghi.ide.GhiColorSettingsPage"/>
+        <additionalTextAttributes scheme="Default" file="colors/GhiDefault.xml"/>
+        <additionalTextAttributes scheme="Darcula" file="colors/GhiDarcula.xml"/>
         <projectService serviceImplementation="am.ghi.ide.GhiSettings"/>
         <projectConfigurable parentId="language" id="am.ghi.settings" displayName="Ghi" instance="am.ghi.ide.GhiConfigurable"/>
     </extensions>
