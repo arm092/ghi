@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+# Installer runs as root. Prepare Go for the signed-in user, not root.
+if [ "${3:-/}" != / ]; then
+    echo 'Ghi can only be installed on the running system volume.' >&2
+    exit 1
+fi
+for name in ghi mojave; do
+    path="/usr/local/bin/$name"
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        if [ ! -L "$path" ] || [ "$(readlink "$path")" != "/usr/local/lib/ghi/bin/$name" ]; then
+            echo "$path belongs to another installation. Uninstall that copy before using this package (for Homebrew: brew uninstall ghi)." >&2
+            exit 1
+        fi
+    fi
+done
+
+user=$(stat -f '%Su' /dev/console)
+case "$user" in
+    ''|root|loginwindow|_*)
+        echo 'Sign in to a normal macOS account before installing Ghi.' >&2
+        exit 1
+        ;;
+esac
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+/usr/bin/sudo -H -u "$user" /usr/bin/env PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin \
+    "$script_dir/ghi" setup

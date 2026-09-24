@@ -45,17 +45,32 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-From the extracted directory, run in PowerShell:
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+
+The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
+
+For portable archive installation, extract the ZIP and run in PowerShell:
 
 ```powershell
 .\install.ps1
 ```
 
-The default installation directory is `%LOCALAPPDATA%\Ghi\bin`. The installer adds it to your user PATH. Open a new terminal afterwards. Optional arguments: `-InstallDir <directory>` and `-NoPath`.
+The portable script defaults to `%LOCALAPPDATA%\Ghi\bin`. Optional arguments: `-InstallDir <directory>` and `-NoPath`.
 
 ### macOS
 
-From the extracted directory:
+With Homebrew:
+
+```sh
+brew tap arm092/ghi https://github.com/arm092/ghi
+brew install arm092/ghi/ghi
+```
+
+The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
+
+A native universal `.pkg` build recipe is also provided in `scripts/package-macos.sh`; the resulting package still needs native verification before publication. It targets Intel and Apple silicon and prepares Go for the signed-in user before installing Ghi and Mojave. Homebrew and `.pkg` are alternative installation methods.
+
+For portable archive installation, extract the macOS archive and run:
 
 ```sh
 sh install.sh
@@ -65,7 +80,7 @@ The default directory is `~/.local/bin`. The installer configures zsh or bash st
 
 ### Automatic Go setup
 
-Both installers verify the bundled executable checksums and run `ghi setup`. A compatible Go installation is reused. If none is available, Ghi downloads an official Go distribution, verifies its SHA-256 checksum and installs it in a per-user cache. Initial setup may need internet access. No administrator privileges are required by the installer.
+The archive scripts and Windows wizard run `ghi setup`. A compatible Go installation is reused. If none is available, Ghi downloads an official Go distribution, verifies its SHA-256 checksum and installs it in a per-user cache. Initial setup may need internet access. Homebrew installs Go as a dependency. The macOS `.pkg` requires administrator authentication for system-wide Ghi installation; the Windows wizard and archive scripts do not.
 
 ```sh
 ghi version
