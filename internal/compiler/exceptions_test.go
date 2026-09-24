@@ -64,10 +64,11 @@ func main() {
   fmt.Println(string(data))
  } catch err GoError {
   fmt.Println(errors.Is(err.cause,os.ErrNotExist))
+  fmt.Println(err.code, err.typeName, len(err.stackTrace)>0)
  } finally { fmt.Println("done") }
 }
 `})
-	if got != "true\ndone\n" {
+	if got != "true\n0 ghi.runtime.GoError true\ndone\n" {
 		t.Fatalf("output %q", got)
 	}
 }
@@ -90,5 +91,34 @@ func main() {
 	out, err := exec.Command(result.Executable).CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "cleanup") || strings.Contains(string(out), "incorrectly caught") {
 		t.Fatalf("panic handling: %v %s", err, out)
+	}
+}
+
+func TestExceptionMetadataAndRethrow(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import fmt "go:fmt"
+import strings "go:strings"
+class Missing extends Exception {
+ constructor(message string, code int = 0) { parent(message,code) }
+}
+func origin() { throw Missing("gone",404) }
+func main() {
+ plain:=Exception("default")
+ fmt.Println(plain.code,plain.typeName,plain.message,len(plain.stackTrace))
+ try {
+  try { origin() } catch err Exception {
+   frame:=err.stackTrace[0]
+   fmt.Println(err.code,err.typeName,err.message,frame.functionName,strings.HasSuffix(frame.file,"main.ghi"),frame.line)
+   throw err
+  }
+ } catch err Missing {
+  frame:=err.stackTrace[0]
+  fmt.Println(err.code,err.typeName,frame.functionName,frame.line)
+ }
+}
+`})
+	expected := "0 ghi.runtime.Exception default 0\n404 main.Missing gone main.origin true 7\n404 main.Missing main.origin 7\n"
+	if got != expected {
+		t.Fatalf("metadata output %q", got)
 	}
 }

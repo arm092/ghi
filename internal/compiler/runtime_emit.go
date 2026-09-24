@@ -11,14 +11,28 @@ import (
 const runtimeNamespace = "ghi.runtime"
 
 const runtimeClasses = `namespace ghi.runtime
+class StackFrame {
+ public functionName string
+ public file string
+ public line int
+ constructor(functionName string, file string, line int) {
+  this.functionName = functionName; this.file = file; this.line = line
+ }
+}
 class Exception {
+ public code int
+ public typeName string
  public message string
- constructor(message string = "") { this.message = message }
+ public stackTrace []StackFrame
+ constructor(message string = "", code int = 0) {
+  this.message = message; this.code = code; this.typeName = ""
+  this.stackTrace = []StackFrame{}
+ }
  public func Error() string { return this.message }
 }
 class GoError extends Exception {
  public cause error
- constructor(cause error) { parent(cause.Error()); this.cause = cause }
+ constructor(cause error, code int = 0) { parent(cause.Error(), code); this.cause = cause }
 }
 `
 
@@ -34,9 +48,21 @@ import (
 func ReportPanic() {
  value:=recover()
  if value==nil{return}
- fmt.Fprintln(os.Stderr, "fatal:", value)
+ trace := CaptureStack()
+ if exception,ok := value.(raised); ok {
+  fmt.Fprintf(os.Stderr, "fatal: %s (code %d): %s\n", exception.value.GhiGet_6768692e72756e74696d65_Exception_typeName(), exception.value.GhiGet_6768692e72756e74696d65_Exception_code(), exception.value.GhiM_Error())
+  trace = exception.value.GhiGet_6768692e72756e74696d65_Exception_stackTrace()
+ } else { fmt.Fprintln(os.Stderr, "fatal:", value) }
+ for _,frame := range trace {
+  fmt.Fprintf(os.Stderr,"  at %s (%s:%d)\n",frame.GhiGet_6768692e72756e74696d65_StackFrame_functionName(),frame.GhiGet_6768692e72756e74696d65_StackFrame_file(),frame.GhiGet_6768692e72756e74696d65_StackFrame_line())
+ }
+ os.Exit(2)
+}
+func CaptureStack() []StackFrame {
+ trace:=[]StackFrame{}
  pcs:=make([]uintptr,64)
  count:=goruntime.Callers(2,pcs)
+ for count==len(pcs) { pcs=make([]uintptr,len(pcs)*2); count=goruntime.Callers(2,pcs) }
  frames:=goruntime.CallersFrames(pcs[:count])
  for {
   frame,more:=frames.Next()
@@ -45,11 +71,11 @@ func ReportPanic() {
    if at:=strings.LastIndex(name,".GhiBody_");at>=0 {name=name[:at+1]+strings.Replace(name[at+9:],"_",".",1)}
    name=strings.ReplaceAll(name,"GhiInit_","constructor.")
    name=strings.TrimPrefix(name,"ghi.generated/")
-   fmt.Fprintf(os.Stderr,"  at %s (%s:%d)\n",name,frame.File,frame.Line)
+   trace=append(trace,GhiNew_StackFrame(name,frame.File,frame.Line))
   }
   if !more {break}
  }
- os.Exit(2)
+ return trace
 }
 func Some[T any](value T) *T { return &value }
 func Received[T any](value T,ok bool)*T{if !ok{return nil};return &value}
@@ -73,8 +99,13 @@ func Equal[L any,R any](left *L,right *R)bool {
 }
 type raised struct { value Exception }
 func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
-func Raise(value Exception) any { return raised{value} }
-func Throw(value Exception) { panic(raised{value}) }
+func Raise(value Exception) any {
+ if len(value.GhiGet_6768692e72756e74696d65_Exception_stackTrace())==0 {
+  value.GhiSet_6768692e72756e74696d65_Exception_stackTrace(CaptureStack())
+ }
+ return raised{value}
+}
+func Throw(value Exception) { panic(Raise(value)) }
 func Try(body func(), handler func(Exception), finalizer func()) {
  if finalizer != nil { defer finalizer() }
  if handler != nil {
@@ -86,7 +117,7 @@ func Try(body func(), handler func(Exception), finalizer func()) {
  }
  body()
 }
-func Check(err error) { if err != nil { Throw(GhiNew_GoError(err)) } }
+func Check(err error) { if err != nil { Throw(GhiNew_GoError(err,0)) } }
 `
 
 func (p *program) addRuntime() error {
@@ -118,7 +149,7 @@ func (p *program) addRuntime() error {
 		if other == ns {
 			continue
 		}
-		content := fmt.Sprintf("package %s\nimport ghi_runtime \"go:%s/ghi/runtime\"\ntype Exception = ghi_runtime.Exception\ntype GoError = ghi_runtime.GoError\n", other.GoName, generatedModule)
+		content := fmt.Sprintf("package %s\nimport ghi_runtime \"go:%s/ghi/runtime\"\ntype Exception = ghi_runtime.Exception\ntype GoError = ghi_runtime.GoError\ntype StackFrame = ghi_runtime.StackFrame\n", other.GoName, generatedModule)
 		tree, err := parser.ParseFile(p.Fset, filename+".aliases", content, parser.AllErrors|parser.SkipObjectResolution)
 		if err != nil {
 			return err

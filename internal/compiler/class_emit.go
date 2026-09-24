@@ -64,7 +64,13 @@ func (p *program) emitClass(c *classDecl) error {
 		if args != "" {
 			args = ", " + args
 		}
-		fmt.Fprintf(&out, "func GhiNew_%s%s(%s) %s%s { this := &%s{}; GhiInit_%s%s(this%s); return this }\n", c.Name, parameters, p.parameters(ctor, c.File, c.Namespace), c.Name, arguments, receiver, c.Name, arguments, args)
+		metadata := ""
+		for _, field := range c.allFields() {
+			if field.Owner.Namespace.Name == runtimeNamespace && field.Owner.Name == "Exception" && field.Name == "typeName" {
+				metadata = fmt.Sprintf("this.%s(%q); ", fieldSet(field), c.Namespace.Name+"."+c.Name)
+			}
+		}
+		fmt.Fprintf(&out, "func GhiNew_%s%s(%s) %s%s { this := &%s{}; GhiInit_%s%s(this%s); %sreturn this }\n", c.Name, parameters, p.parameters(ctor, c.File, c.Namespace), c.Name, arguments, receiver, c.Name, arguments, args, metadata)
 	}
 	parsed, err := parser.ParseFile(p.Fset, c.File.Path+".generated", out.String(), parser.AllErrors|parser.SkipObjectResolution)
 	if err != nil {
