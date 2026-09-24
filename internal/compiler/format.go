@@ -144,6 +144,9 @@ func scanFormatTokens(filename string, source []byte) ([]formatToken, error) {
 }
 
 func formatSpace(previous, current formatToken) bool {
+	if previous.kind == token.ASSIGN && current.kind == token.GTR && previous.end == current.start {
+		return false
+	}
 	if previous.kind == token.COMMENT || current.kind == token.COMMENT {
 		return true
 	}
@@ -154,6 +157,9 @@ func formatSpace(previous, current formatToken) bool {
 	case token.COMMA, token.SEMICOLON, token.PERIOD, token.COLON, token.RPAREN, token.RBRACK:
 		return false
 	case token.LPAREN:
+		if previous.kind == token.DEFINE || previous.kind == token.ASSIGN || previous.kind == token.COMMA || previous.kind == token.RETURN {
+			return true
+		}
 		switch previous.kind {
 		case token.IF, token.FOR, token.SWITCH, token.SELECT, token.FUNC:
 			return true

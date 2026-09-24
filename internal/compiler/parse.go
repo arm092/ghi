@@ -18,6 +18,10 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	if nullableErr != nil {
 		return "", nil, nil, nullableErr
 	}
+	data, nullableErr = normalizeArrows(filename, data)
+	if nullableErr != nil {
+		return "", nil, nil, nullableErr
+	}
 	scanSet := token.NewFileSet()
 	file := scanSet.AddFile(filename, -1, len(data))
 	var s scanner.Scanner
