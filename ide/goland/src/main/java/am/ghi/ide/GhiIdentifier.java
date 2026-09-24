@@ -16,6 +16,7 @@ public final class GhiIdentifier extends ASTWrapperPsiElement implements PsiName
     @Override public int getTextOffset() { return getTextRange().getStartOffset(); }
     @Override public @NotNull SearchScope getUseScope() { return GlobalSearchScope.projectScope(getProject()); }
     @Override public PsiElement setName(@NotNull String name) {
+        if(GhiDependencies.installed(getContainingFile()))throw new com.intellij.util.IncorrectOperationException("Installed Ghi dependency declarations are read-only");
         if (!name.matches("[\\p{L}_][\\p{L}\\p{N}_]*")) throw new com.intellij.util.IncorrectOperationException("Invalid Ghi identifier");
         GhiLexer lexer=new GhiLexer();lexer.start(name);
         if(lexer.getTokenType()!=GhiLexer.IDENTIFIER||lexer.getTokenEnd()!=name.length())throw new com.intellij.util.IncorrectOperationException("Invalid Ghi identifier");

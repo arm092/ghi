@@ -326,6 +326,119 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var variants=myFixture.completeBasic();
         if(variants!=null)for(var item:variants){assertFalse(item.getLookupString().equals("Box"));assertFalse(item.getLookupString().equals("Contract"));}
     }
+    public void testExcludedInstalledPackageNavigationHintsAndAutoImport(){
+        var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {public value string\nconstructor(name string){this.value=name}\npublic func run(count int){}}\nclass Wider {}\n");
+        myFixture.addFileToProject(".ghi/packages/acme.lib/tests/trap.ghi","namespace acme.lib\nclass TestTrap {}\n");
+        myFixture.addFileToProject(".ghi/packages/acme.lib/vendor/trap.ghi","namespace acme.lib\nclass VendorTrap {}\n");
+        myFixture.addFileToProject(".ghi/packages/stale.lib/types.ghi","namespace stale.lib\nclass Stale {}\n");
+        myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":[{\"namespace\":\"acme.lib\"}]}");
+        excludeCache(library);
+        var file=myFixture.configureByText("installed.ghi","namespace main\nimport lib \"acme.lib\"\nimport acme.lib.Widget as MyWidget\nfunc main(){w:=new lib.Widget(\"x\");w.<caret>run(2);new MyWidget(\"y\")}\n");
+        var model=GhiSymbols.forFile(file);
+        assertEquals(library,model.resolve(file,file.getText().indexOf("lib.Widget")+4).getContainingFile());
+        assertEquals(library,model.resolve(file,file.getText().indexOf("acme.lib.Widget")+9).getContainingFile());
+        assertEquals(library,model.resolve(file,file.getText().indexOf("w.run")+2).getContainingFile());
+        assertEquals(java.util.List.of("count int"),model.callAt(file,file.getText().indexOf("2)")).symbol().parameters);
+        assertEquals(java.util.List.of("name string"),model.callAt(file,file.getText().indexOf("\"y\"")).symbol().parameters);
+        assertTrue(model.complete(file,myFixture.getCaretOffset()).stream().anyMatch(symbol->symbol.name.equals("run")));
+        var paths=GhiTypeImports.candidates(file,null).stream().map(GhiTypeImports.Choice::path).toList();
+        assertTrue(paths.toString(),paths.contains("acme.lib.Widget"));
+        assertFalse(paths.toString(),paths.contains("acme.lib.TestTrap"));
+        assertFalse(paths.toString(),paths.contains("acme.lib.VendorTrap"));
+        assertFalse(paths.toString(),paths.contains("stale.lib.Stale"));
+        file=myFixture.configureByText("installed-complete.ghi","namespace main\nfunc main(){new Wid<caret>}\n");
+        var variants=myFixture.completeBasic();assertNotNull(variants);
+        var choice=java.util.Arrays.stream(variants).filter(item->item.getObject() instanceof GhiTypeImports.Choice candidate&&candidate.path().equals("acme.lib.Widget")).findFirst().orElseThrow();
+        myFixture.getLookup().setCurrentItem(choice);myFixture.finishLookup(com.intellij.codeInsight.lookup.Lookup.NORMAL_SELECT_CHAR);
+        assertEquals("namespace main\nimport acme.lib.Widget\nfunc main(){new Widget}\n",file.getText());
+    }
+    public void testInstalledLockRefreshAndReadOnlyRename(){
+        var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {public func run(count int){}}\n");
+        var next=myFixture.addFileToProject(".ghi/packages/next.lib/types.ghi","namespace next.lib\nclass Next {}\n");
+        var lock=myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":[{\"namespace\":\"acme.lib\"}]}");
+        excludeCache(library);
+        var file=myFixture.configureByText("locked.ghi","namespace main\nimport acme.lib.Widget as LocalWidget\nclass Worker extends LocalWidget {public override func run(count int){}}\nfunc main(){new LocalWidget().run(1)}\n");
+        var model=GhiSymbols.forFile(file);
+        var declaration=model.resolve(file,file.getText().indexOf("Widget as"));assertEquals(library,declaration.getContainingFile());
+        assertTrue(new GhiRenameProcessor().canProcessElement(declaration));
+        try{new com.intellij.refactoring.rename.RenameProcessor(getProject(),declaration,"Gadget",false,false).run();}
+        catch(RuntimeException expected){assertTrue(expected.toString(),expected.toString().contains("read-only"));}
+        assertTrue(library.getText(),library.getText().contains("class Widget"));
+        try{((GhiIdentifier)declaration).setName("Gadget");fail("Installed declaration changed");}
+        catch(com.intellij.util.IncorrectOperationException expected){assertTrue(library.getText().contains("class Widget"));}
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();
+        new GhiRenameProcessor().findExistingNameConflicts(declaration,"Gadget",conflicts);assertFalse(conflicts.isEmpty());
+        var method=model.resolve(file,file.getText().indexOf("run(1)"));conflicts.clear();
+        new GhiRenameProcessor().findExistingNameConflicts(method,"execute",conflicts);assertFalse(conflicts.isEmpty());
+        var localMethod=model.resolve(file,file.getText().indexOf("run(count"));conflicts.clear();
+        new GhiRenameProcessor().findExistingNameConflicts(localMethod,"execute",conflicts);assertFalse(conflicts.isEmpty());
+        var unaliased=myFixture.configureByText("unaliased.ghi","namespace main\nimport acme.lib.Widget\nfunc use(){new <caret>Widget()}\n");
+        try{myFixture.renameElementAtCaret("Gadget");}
+        catch(RuntimeException expected){assertTrue(expected.toString(),expected.toString().contains("read-only"));}
+        assertTrue(unaliased.getText(),unaliased.getText().contains("new Widget()"));
+        assertTrue(library.getText(),library.getText().contains("class Widget"));
+        myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+        myFixture.getEditor().getCaretModel().moveToOffset(file.getText().indexOf("LocalWidget()"));myFixture.renameElementAtCaret("ConsumerWidget");
+        assertTrue(file.getText(),file.getText().contains("import acme.lib.Widget as ConsumerWidget"));
+        assertTrue(library.getText().contains("class Widget"));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            try{com.intellij.openapi.vfs.VfsUtil.saveText(lock.getVirtualFile(),"{\"version\":1,\"packages\":[{\"namespace\":\"next.lib\"}]}");}
+            catch(java.io.IOException error){throw new RuntimeException(error);}
+        });
+        model=GhiSymbols.forFile(file);
+        assertNull(model.resolve(file,file.getText().indexOf("Widget as")));
+        var paths=GhiTypeImports.candidates(file,null).stream().map(GhiTypeImports.Choice::path).toList();
+        assertFalse(paths.toString(),paths.contains("acme.lib.Widget"));assertTrue(paths.toString(),paths.contains("next.lib.Next"));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            var document=com.intellij.psi.PsiDocumentManager.getInstance(getProject()).getDocument(next);
+            assertNotNull(document);document.setText("namespace next.lib\nclass Updated {}\n");
+            com.intellij.psi.PsiDocumentManager.getInstance(getProject()).commitDocument(document);
+        });
+        paths=GhiTypeImports.candidates(file,null).stream().map(GhiTypeImports.Choice::path).toList();
+        assertFalse(paths.toString(),paths.contains("next.lib.Next"));assertTrue(paths.toString(),paths.contains("next.lib.Updated"));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            try{next.getVirtualFile().delete(this);}
+            catch(java.io.IOException error){throw new RuntimeException(error);}
+        });
+        assertFalse(GhiTypeImports.candidates(file,null).stream().anyMatch(choice->choice.path().equals("next.lib.Updated")));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            try{com.intellij.openapi.vfs.VfsUtil.saveText(lock.getVirtualFile(),"{broken");}
+            catch(java.io.IOException error){throw new RuntimeException(error);}
+        });
+        paths=GhiTypeImports.candidates(file,null).stream().map(GhiTypeImports.Choice::path).toList();
+        assertFalse(paths.toString(),paths.contains("next.lib.Next"));assertFalse(paths.toString(),paths.contains("acme.lib.Widget"));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            try{com.intellij.openapi.vfs.VfsUtil.saveText(lock.getVirtualFile(),"{\"version\":\"oops\",\"packages\":[{\"namespace\":\"acme.lib\"}]}");}
+            catch(java.io.IOException error){throw new RuntimeException(error);}
+        });
+        assertFalse(GhiTypeImports.candidates(file,null).stream().anyMatch(choice->choice.path().equals("acme.lib.Widget")));
+    }
+    public void testNestedManifestDoesNotInheritAncestorPackages(){
+        myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {}\n");
+        myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":[{\"namespace\":\"acme.lib\"}]}");
+        myFixture.addFileToProject("nested/mojave.json","{\"version\":1,\"dependencies\":{}}");
+        var file=myFixture.addFileToProject("nested/main.ghi","namespace main\nfunc main(){new Widget()}\n");
+        myFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+        assertFalse(GhiTypeImports.candidates(file,null).stream().anyMatch(choice->choice.path().equals("acme.lib.Widget")));
+        assertNull(GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("Widget")));
+    }
+    public void testInstalledSourceUsesConsumingLock(){
+        var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nimport next \"next.lib\"\nfunc use(){new next.Next()}\n");
+        var target=myFixture.addFileToProject(".ghi/packages/next.lib/types.ghi","namespace next.lib\nclass Next {}\n");
+        myFixture.addFileToProject(".ghi/packages/acme.lib/mojave.json","{\"version\":1,\"dependencies\":{}}");
+        myFixture.addFileToProject(".ghi/packages/acme.lib/mojave.lock","{broken");
+        myFixture.addFileToProject("mojave.lock","{\"version\":1,\"packages\":[{\"namespace\":\"acme.lib\"},{\"namespace\":\"next.lib\"}]}");
+        excludeCache(library);
+        assertEquals(target,GhiSymbols.forFile(library).resolve(library,library.getText().indexOf("next.Next")+5).getContainingFile());
+    }
+    private void excludeCache(com.intellij.psi.PsiFile source){
+        var cache=source.getVirtualFile().getParent().getParent().getParent();assertEquals(".ghi",cache.getName());
+        com.intellij.openapi.application.WriteAction.run(()->{
+            var roots=com.intellij.openapi.roots.ModuleRootManager.getInstance(myFixture.getModule()).getModifiableModel();
+            roots.getContentEntries()[0].addExcludeFolder(cache.getUrl());roots.commit();
+        });
+        assertTrue(com.intellij.openapi.roots.ProjectFileIndex.getInstance(getProject()).isExcluded(cache));
+    }
     private void checkImportedProject(String name,String source,String library) throws Exception {
         String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
         Path project=Files.createDirectory(diskRoot.resolve(name));Files.writeString(project.resolve("main.ghi"),source);

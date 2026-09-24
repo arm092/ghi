@@ -9,7 +9,7 @@
         Configure the compiler and project directory under Languages &amp; Frameworks &gt; Ghi.
         Requires the Ghi compiler. Supports both Class(args) and new Class(args) construction, including qualified and generic classes. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Adds concrete generic parameter hints, coordinated override/structural-interface rename, and native Go SDK or Mojave-pinned cache completion/navigation. Ambiguous structural rename signatures raise conflicts. Selected Ghi type imports and file-local aliases support completion, navigation, hints and safe rename. Completion can insert imports; explicit intentions import unresolved types or shorten qualified type references with collision-safe aliases. Debugging is not included.
     ]]></description>
-    <change-notes><![CDATA[Preview 9: selected Ghi type imports, explicit aliases, import-aware rename, completion autoimport and import/shorten intentions. Native Go imports retain their existing behavior.]]></change-notes>
+    <change-notes><![CDATA[Preview 10: lock-scoped installed Ghi dependency completion, type autoimport, navigation and parameter hints, including excluded package caches. Dependency declarations and member families are read-only for rename.]]></change-notes>
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.go</depends>
     <extensions defaultExtensionNs="com.intellij">

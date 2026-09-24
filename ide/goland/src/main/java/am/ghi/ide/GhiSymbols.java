@@ -36,16 +36,29 @@ final class GhiSymbols {
     }
     final List<Symbol> symbols=new ArrayList<>(); final Map<PsiFile,Source> sources=new LinkedHashMap<>();
     static GhiSymbols forFile(PsiFile file) {
+        // The lock and installed tree can change outside PSI edits (for example, mojave update).
+        // Rebuild these models so removed packages cannot survive in completion caches.
+        if(GhiDependencies.applicationRoot(file)!=null)return build(file);
         return com.intellij.psi.util.CachedValuesManager.getCachedValue(file, () -> com.intellij.psi.util.CachedValueProvider.Result.create(build(file), com.intellij.psi.util.PsiModificationTracker.MODIFICATION_COUNT));
     }
     private static GhiSymbols build(PsiFile file) {
         GhiSymbols result=new GhiSymbols(); result.add(file);
+        var root=GhiDependencies.applicationRoot(file);
         if(!DumbService.isDumb(file.getProject()))for(var vf:FileTypeIndex.getFiles(GhiFileType.INSTANCE,GlobalSearchScope.projectScope(file.getProject()))) {
-            if(file.getVirtualFile()!=null&&vf.equals(file.getVirtualFile()))continue;
+            if(file.getVirtualFile()!=null&&vf.equals(file.getVirtualFile())||GhiDependencies.generated(vf)
+                ||root!=null&&!GhiDependencies.inApplication(vf,root))continue;
             PsiFile other=PsiManager.getInstance(file.getProject()).findFile(vf);
             if(other!=null)result.add(other);
         }
+        GhiDependencies.add(file,result);
         return result;
+    }
+    void addDependency(PsiFile file,String namespace){
+        int before=symbols.size();add(file);
+        String actual=sources.get(file).namespace;
+        if(!actual.equals(namespace)&&!actual.startsWith(namespace+".")){
+            sources.remove(file);symbols.subList(before,symbols.size()).clear();
+        }
     }
     private void add(PsiFile file) {
         Source s=new Source(file);sources.put(file,s); GhiLexer lexer=new GhiLexer();String text=file.getText();lexer.start(text);
