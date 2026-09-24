@@ -121,4 +121,23 @@ func TestDelveDDDController(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("request did not finish after resume")
 	}
+	// Stop while the server is running, not suspended at a breakpoint. Closing
+	// Delve alone can leave the traced server and its inherited pipes alive.
+	if err := client.Call("RPCServer.Command", map[string]any{"name": "halt"}, &map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call("RPCServer.Detach", map[string]any{"Kill": true}, &map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	for until := time.Now().Add(3 * time.Second); ; {
+		connection, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+		if err != nil {
+			break
+		}
+		connection.Close()
+		if time.Now().After(until) {
+			t.Fatal("DDD HTTP server remains alive after debugger Stop")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
