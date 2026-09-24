@@ -4,7 +4,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.0](https://github.com/arm092/ghi/releases/tag/v0.2.0), bundled with the Mojave package manager. **IDE:** [Ghi for GoLand v0.1.0](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0).
+**Current release:** [Ghi v0.2.0](https://github.com/arm092/ghi/releases/tag/v0.2.0), bundled with the Mojave package manager. **IDE:** [Ghi for GoLand v0.1.0](https://github.com/arm092/ghi-goland/releases/tag/v0.1.0).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -444,7 +444,9 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 ## GoLand support
 
-Download the [v0.1.0 plugin ZIP](https://github.com/arm092/ghi/releases/tag/goland-v0.1.0) and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Its [JetBrains Marketplace submission](https://plugins.jetbrains.com/plugin/34508-ghi) is awaiting moderation. After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
+
+Until then, download the [v0.1.0 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.0) and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 The plugin provides:
 
