@@ -13,8 +13,8 @@ import fmt "go:fmt"
 import sqlite "infrastructure.sqlite"
 import task "domain.task"
 import user "domain.user"
-import migrations.Migrator
-import migrations.MigrationError
+import arm092.migrations.Migrator
+import arm092.migrations.MigrationError
 
 func TestBatchTransactionRollbackAndPagination(t * testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "atomic.db"))

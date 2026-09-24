@@ -6,7 +6,7 @@ import os "go:os"
 import filepath "go:path/filepath"
 import runtime "go:runtime"
 import slog "go:log/slog"
-import migrations.Migrator
+import arm092.migrations.Migrator
 
 func MigrationDirectory() string {
 	configured := os.Getenv("GHI_DDD_MIGRATIONS")
