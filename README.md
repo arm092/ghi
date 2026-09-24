@@ -527,7 +527,7 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Its [JetBrains Marketplace submission](https://plugins.jetbrains.com/plugin/34508-ghi) is awaiting moderation. After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
 
-Until then, download the [v0.1.0 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.0) and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.1 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.1) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 The plugin provides:
 
@@ -535,9 +535,13 @@ The plugin provides:
 - Completion, navigation, parameter hints and rename assistance.
 - Class autoimport, import shortening and collision-safe aliases.
 - Generic inheritance and embedded interface constraint assistance.
-- Canonical Reformat Code and saved-file compiler diagnostics.
+- Enum declaration/case highlighting, completion and navigation.
+- Improved expression inference for chained calls and generic fields/methods.
+- Canonical Reformat Code and compiler diagnostics, including unsaved editor buffers with a compatible development compiler.
 - Build, Run and Debug actions.
 - Original-source breakpoints, stepping, stacks and variables through GoLand's bundled Delve.
+
+Enum compilation and unsaved-buffer checking require Ghi built from commit `7aabb48` or later (see the source build instructions below); released compiler v0.2.1 does not include these features.
 
 Native Go assistance uses the configured SDK and locally installed dependencies. Type inference is still partial; compiler checking remains authoritative. Debug builds can also be created with `ghi build --debug .`.
 
