@@ -155,6 +155,7 @@ func startDelve(t *testing.T, ctx context.Context, dlv, executable, dir string, 
 	listener.Close()
 	var output bytes.Buffer
 	command := exec.CommandContext(ctx, dlv, "exec", executable, "--headless", "--api-version=2", "--listen="+address)
+	command.WaitDelay = 3 * time.Second
 	command.Dir = dir
 	command.Env = append(os.Environ(), env...)
 	command.Stdout, command.Stderr = &output, &output
@@ -184,6 +185,7 @@ func startDelve(t *testing.T, ctx context.Context, dlv, executable, dir string, 
 	client := jsonrpc.NewClient(connection)
 	t.Cleanup(func() {
 		connection.SetDeadline(time.Now().Add(3 * time.Second))
+		_ = client.Call("RPCServer.Command", map[string]any{"name": "halt"}, &map[string]any{})
 		_ = client.Call("RPCServer.Detach", map[string]any{"Kill": true}, &map[string]any{})
 	})
 	return client
