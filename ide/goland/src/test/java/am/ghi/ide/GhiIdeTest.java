@@ -407,6 +407,23 @@ public class GhiIdeTest extends BasePlatformTestCase {
             assertEquals(source,myFixture.getEditor().getDocument().getText());
         }finally{settings.executable=previous;}
     }
+    public void testReformatMatchExpressionUsesCompiler() throws Exception {
+        String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
+        String source="namespace main\nfunc label(status int) string{return match status {200=>\"OK\",500,503=>\"Error\",default=>\"Unknown\",}}\n";
+        var file=myFixture.configureByText("format-match.ghi",source);
+        String formatted=GhiFormattingService.format(compiler,source,"format-match.ghi",new java.util.concurrent.atomic.AtomicReference<>());
+        assertTrue(formatted,formatted.contains("match status {"));
+        assertFalse(source.equals(formatted));
+        var settings=GhiSettings.get(getProject()).getState();String previous=settings.executable;settings.executable=compiler;
+        try{
+            myFixture.performEditorAction("ReformatCode");
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while(source.equals(myFixture.getEditor().getDocument().getText())&&System.nanoTime()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
+            }
+            assertEquals(formatted,myFixture.getEditor().getDocument().getText());
+        }finally{settings.executable=previous;}
+    }
     public void testAnonymousArrowScopesCapturesAndCalls(){
         String source="namespace main\nclass Counter {\n public value int\n public func make(seed int) func(int) int {\n  return (n int) int => { return this.value + seed + n }\n }\n}\nfunc main(){\n outer := (a int) func(int) int => {\n  inner := (b int) int => { return a+b }\n  return inner\n }\n sum := (a int, b int) int => { return a+b }\n pair := (a int) (int,error) => { return a,nil }\n named := (x int) (result int, err error) => { result=x; return }\n empty := () => { }\n sum(1,2); pair(1); named(2); empty(); outer(2)\n}\n";
         var file=myFixture.configureByText("arrows.ghi",source);
