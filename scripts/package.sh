@@ -17,11 +17,13 @@ for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
     (cd "$bundle" && shasum -a 256 "ghi$suffix" > ghi.sha256)
     (cd "$bundle" && shasum -a 256 "mojave$suffix" > mojave.sha256)
     if [ "$os" = windows ]; then
-        cp install/install.ps1 "$bundle/"
-        (cd "$bundle" && zip -q "$root/dist/ghi_${version}_${os}_${arch}.zip" "ghi$suffix" "mojave$suffix" ghi.sha256 mojave.sha256 install.ps1)
+    cp install/install.ps1 "$bundle/"
+        cp LICENSE THIRD_PARTY_NOTICES "$bundle/"
+        (cd "$bundle" && zip -q "$root/dist/ghi_${version}_${os}_${arch}.zip" "ghi$suffix" "mojave$suffix" ghi.sha256 mojave.sha256 install.ps1 LICENSE THIRD_PARTY_NOTICES)
     else
         cp install/install.sh "$bundle/"
-        tar -czf "$root/dist/ghi_${version}_${os}_${arch}.tar.gz" -C "$bundle" ghi mojave ghi.sha256 mojave.sha256 install.sh
+        cp LICENSE THIRD_PARTY_NOTICES "$bundle/"
+        tar -czf "$root/dist/ghi_${version}_${os}_${arch}.tar.gz" -C "$bundle" ghi mojave ghi.sha256 mojave.sha256 install.sh LICENSE THIRD_PARTY_NOTICES
     fi
     # bundle is the exact directory returned by mktemp in this shell.
     rm -rf -- "$bundle"
