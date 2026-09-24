@@ -26,14 +26,11 @@ func main() {
 
 func run() {
 	settings := config.Load(os.Getenv)
-	level := slog.LevelInfo
-	switch settings.LogLevel {
-		case "debug":
-			level = slog.LevelDebug
-		case "warn":
-			level = slog.LevelWarn
-		case "error":
-			level = slog.LevelError
+	level := match settings.LogLevel {
+		"debug" => slog.LevelDebug,
+		"warn" => slog.LevelWarn,
+		"error" => slog.LevelError,
+		default => slog.LevelInfo,
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,

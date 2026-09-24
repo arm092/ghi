@@ -162,6 +162,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		for _, ns := range p.Ordered {
 			checker.check(ns)
 		}
+		if p.lowerMatchResults(info) {
+			continue
+		}
 		if p.lowerZeroResults(info) {
 			continue
 		}
@@ -179,6 +182,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			return err
 		}
 		if !changed {
+			if err := p.unresolvedMatch(); err != nil {
+				return err
+			}
 			if checker.first != nil {
 				return checker.first
 			}

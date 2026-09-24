@@ -44,6 +44,7 @@ func formatStructure(source []byte, all []formatToken) string {
 		indented                   bool
 		parameters                 bool
 		statement                  bool
+		matchResult, armEnd        bool
 		header                     string
 	}
 	var stack []*frame
@@ -113,6 +114,8 @@ func formatStructure(source []byte, all []formatToken) string {
 				if result == "" {
 					result = ts[j].text
 				}
+			case "match":
+				result = "match"
 			}
 		}
 		if collection && (result == "for" || result == "if" || result == "switch") && end > 0 && ts[end-1].kind == token.IDENT {
@@ -145,6 +148,10 @@ func formatStructure(source []byte, all []formatToken) string {
 		// A pending structural newline belongs after a trailing comment.
 		if t.kind == token.COMMENT && !gapBreak && prev != nil && prev.kind != token.LBRACE {
 			pending = 0
+		}
+		if top != nil && top.header == "match" && top.armEnd && t.kind != token.COMMENT {
+			newline(1)
+			top.armEnd = false
 		}
 		if t.kind == token.SEMICOLON {
 			h := header(i)
@@ -266,8 +273,19 @@ func formatStructure(source []byte, all []formatToken) string {
 				newline(1)
 			}
 		case token.COMMA:
+			if top != nil && top.header == "match" && top.matchResult {
+				newline(1)
+				top.matchResult = false
+				top.armEnd = true
+				clause = i + 1
+			}
 			if top != nil && top.literal {
 				newline(1)
+				clause = i + 1
+			}
+		case token.GTR:
+			if top != nil && top.header == "match" && prev != nil && prev.kind == token.ASSIGN && prev.end == t.start {
+				top.matchResult = true
 				clause = i + 1
 			}
 		case token.COLON:

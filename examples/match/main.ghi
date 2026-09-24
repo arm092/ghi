@@ -1,0 +1,19 @@
+namespace main
+
+import fmt "go:fmt"
+
+func describe(status int) string {
+	return match status {
+		200, 201 => "Success",
+		404 => "Not found",
+		500, 503 => "Server error",
+		default => "Unknown",
+	}
+}
+
+func main() {
+	fmt.Println(describe(200))
+	fmt.Println(describe(404))
+	fmt.Println(describe(503))
+	fmt.Println(describe(418))
+}

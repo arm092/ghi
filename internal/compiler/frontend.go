@@ -159,6 +159,15 @@ func normalizeParameters(text string) (string, map[int]ast.Expr, error) {
 			}
 			defaults[index] = value
 			erase(data, start, end)
+			// Erasing a multiline default must not leave an implicit semicolon
+			// after the parameter type. Move its separator before the erased
+			// newlines, retaining their source locations for the function body.
+			if strings.Contains(text[start:end], "\n") {
+				data[start] = ','
+				if end < len(data) && data[end] == ',' {
+					data[end] = ' '
+				}
+			}
 			i = j - 1
 		}
 	}
@@ -209,6 +218,18 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 				return nil, nil, fmt.Errorf("%s:%d: identifier %s is reserved for the compiler", filename, t.Line, t.Text)
 			}
 		}
+	}
+	source, err = normalizeMatches(filename, source)
+	if err != nil {
+		return nil, nil, err
+	}
+	source, err = normalizeArrows(filename, source)
+	if err != nil {
+		return nil, nil, err
+	}
+	tokens, err = lexSource(filename, source)
+	if err != nil {
+		return nil, nil, err
 	}
 	source, err = normalizeNew(filename, source, tokens)
 	if err != nil {

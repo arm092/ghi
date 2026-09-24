@@ -121,7 +121,7 @@ func formatSpace(previous, current formatToken) bool {
 		case token.IF, token.FOR, token.SWITCH, token.SELECT, token.IMPORT:
 			return true
 		}
-		return previous.text == "catch"
+		return previous.text == "catch" || previous.text == "match" || previous.kind == token.GTR
 	case token.LBRACK:
 		if previous.kind == token.RANGE || previous.kind == token.RETURN {
 			return true
