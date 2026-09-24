@@ -40,7 +40,7 @@ final class GhiDebugProcess extends XDebugProcess {
     private final XBreakpointHandler<?>[] handlers={new Lines()};
     private volatile GhiDelve delve;
     private volatile boolean starting=true;
-    private volatile CompletableFuture<JsonObject> activeCommand;
+    private volatile CompletableFuture<?> activeCommand;
     private final AtomicBoolean stopped=new AtomicBoolean();
     private final AtomicBoolean editingBreakpoints=new AtomicBoolean();
 
@@ -109,8 +109,8 @@ final class GhiDebugProcess extends XDebugProcess {
     private void command(String name,int remainingSteps){
         GhiDelve client=delve;if(client==null)return;
         JsonObject params=new JsonObject();params.addProperty("name",name);
-        CompletableFuture<JsonObject> request=client.request("Command",params);activeCommand=request;
-        request.whenComplete((result,error)->{
+        CompletableFuture<JsonObject> request=client.request("Command",params);
+        activeCommand=request.whenComplete((result,error)->{
             if(error!=null){if(!handler.isProcessTerminated())getSession().reportError("Delve "+name+": "+error.getMessage());return;}
             JsonObject state=object(result,"State");
             if(bool(state,"exited")){stop();getSession().stop();return;}
@@ -123,12 +123,12 @@ final class GhiDebugProcess extends XDebugProcess {
             client.request("Stacktrace",trace).whenComplete((stack,stackError)->{
                 if(stackError!=null){getSession().reportError("Delve stack: "+stackError.getMessage());return;}
                 List<Frame> frames=new ArrayList<>();JsonArray locations=array(stack,"Locations");
-                if(name.equals("step")&&remainingSteps>0&&locations!=null&&!locations.isEmpty()){
+                if((name.equals("step")||name.equals("stepOut"))&&remainingSteps>0&&locations!=null&&!locations.isEmpty()){
                     JsonObject first=locations.get(0).getAsJsonObject();
                     GhiDebugNames.Function function=names.function(string(object(first,"function"),"name"));
                     String source=string(first,"file");
                     if((function!=null&&function.helper())||!source.endsWith(".ghi")||source.endsWith(".ghi-runtime.ghi")){
-                        command("step",remainingSteps-1);return;
+                        command(name,remainingSteps-1);return;
                     }
                 }
                 if(locations!=null)for(int index=0;index<locations.size();index++){
@@ -148,13 +148,15 @@ final class GhiDebugProcess extends XDebugProcess {
         });
     }
     private void changeBreakpoint(String operation,JsonObject params,BiConsumer<JsonObject,Throwable> completion){
-        worker.execute(()->{
+        worker.execute(()->changeBreakpointNow(operation,params,completion));
+    }
+    private void changeBreakpointNow(String operation,JsonObject params,BiConsumer<JsonObject,Throwable> completion){
             GhiDelve client=delve;if(client==null||stopped.get())return;
             boolean resume=false;
             try{
                 if(!getSession().isSuspended()){
                     editingBreakpoints.set(true);
-                    CompletableFuture<JsonObject> interrupted=activeCommand;
+                    CompletableFuture<?> interrupted=activeCommand;
                     JsonObject halt=new JsonObject();halt.addProperty("name","halt");
                     JsonObject state=object(client.request("Command",halt).get(3,TimeUnit.SECONDS),"State");
                     if(interrupted!=null)interrupted.get(3,TimeUnit.SECONDS);
@@ -166,7 +168,6 @@ final class GhiDebugProcess extends XDebugProcess {
                 editingBreakpoints.set(false);
                 if(resume&&!stopped.get()&&!getSession().isSuspended())command("continue");
             }
-        });
     }
     private final class Lines extends XBreakpointHandler<XLineBreakpoint<GhiBreakpointType.Properties>> {
         Lines(){super(GhiBreakpointType.class);}
@@ -189,11 +190,17 @@ final class GhiDebugProcess extends XDebugProcess {
             }else changeBreakpoint("CreateBreakpoint",params,complete);
         }
         @Override public void unregisterBreakpoint(@NotNull XLineBreakpoint<GhiBreakpointType.Properties> breakpoint,boolean temporary){
-            Integer id=breakpointIds.remove(breakpoint);GhiDelve client=delve;
-            if(id!=null&&client!=null){JsonObject params=new JsonObject();params.addProperty("Id",id);
-                if(starting)client.request("ClearBreakpoint",params);
-                else changeBreakpoint("ClearBreakpoint",params,(result,error)->{if(error!=null)getSession().reportError("Delve clear breakpoint: "+error.getMessage());});
+            if(starting){
+                Integer id=breakpointIds.remove(breakpoint);GhiDelve client=delve;
+                if(id!=null&&client!=null){JsonObject params=new JsonObject();params.addProperty("Id",id);client.request("ClearBreakpoint",params);}
+                return;
             }
+            worker.execute(()->{
+                Integer id=breakpointIds.remove(breakpoint);
+                if(id==null)return;
+                JsonObject params=new JsonObject();params.addProperty("Id",id);
+                changeBreakpointNow("ClearBreakpoint",params,(result,error)->{if(error!=null)getSession().reportError("Delve clear breakpoint: "+error.getMessage());});
+            });
         }
     }
     private final class Suspended extends XSuspendContext {

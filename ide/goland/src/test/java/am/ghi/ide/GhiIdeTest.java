@@ -453,6 +453,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
         int catchLine=source.substring(0,source.indexOf("println(err.message)")).split("\n",-1).length-1;
         var catchBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),catchLine,type.createBreakpointProperties(file.getVirtualFile(),catchLine));
         int loopLine=source.substring(0,source.indexOf("count += 1")).split("\n",-1).length-1;
+        int quickLine=source.substring(0,source.indexOf("count := 0")).split("\n",-1).length-1;
         com.intellij.xdebugger.breakpoints.XLineBreakpoint<GhiBreakpointType.Properties> liveBreakpoint=null;
         com.intellij.xdebugger.XDebugSession session=null;
         try{
@@ -503,6 +504,26 @@ public class GhiIdeTest extends BasePlatformTestCase {
             var stepped=debugChildren(session.getSuspendContext().getActiveExecutionStack().getTopFrame());
             var steppedFields=debugChildren(debugValue(stepped,"this"));
             assertEquals("12",debugDisplay(debugValue(steppedFields,"value")));
+            session.stepOut();
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==callLine)break;
+                Thread.sleep(50);
+            }
+            assertTrue("Step out did not stop",session.isSuspended());
+            assertEquals("Step out did not reach the caller",callLine,session.getCurrentPosition().getLine());
+            var caller=new com.intellij.ui.SimpleColoredComponent();
+            session.getSuspendContext().getActiveExecutionStack().getTopFrame().customizePresentation(caller);
+            assertTrue("Step out retained a generated helper frame",caller.getCharSequence(false).toString().contains("main.main"));
+            session.stepOver(false);
+            while(System.currentTimeMillis()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();
+                if(session.isSuspended()&&session.getCurrentPosition()!=null&&session.getCurrentPosition().getLine()==callLine+1)break;
+                Thread.sleep(50);
+            }
+            assertEquals(callLine+1,session.getCurrentPosition().getLine());
+            var callerValues=debugChildren(session.getSuspendContext().getActiveExecutionStack().getTopFrame());
+            assertEquals("12",debugDisplay(debugValue(callerValues,"answer")));
             boolean caught=false;
             for(int attempt=0;attempt<4&&!caught;attempt++){
                 session.resume();
@@ -546,6 +567,19 @@ public class GhiIdeTest extends BasePlatformTestCase {
                 com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
             }
             assertFalse("Removed breakpoint stopped the running debuggee",session.isSuspended());
+            var quickBreakpoint=manager.getBreakpointManager().addLineBreakpoint(type,file.getVirtualFile().getUrl(),quickLine,type.createBreakpointProperties(file.getVirtualFile(),quickLine));
+            manager.getBreakpointManager().removeBreakpoint(quickBreakpoint);
+            session.getDebugProcess().startPausing();
+            long pauseDeadline=System.currentTimeMillis()+5000;
+            while(System.currentTimeMillis()<pauseDeadline&&!session.isSuspended()){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
+            }
+            assertTrue("Debugger did not pause after quick add/remove",session.isSuspended());
+            var connection=GhiDebugProcess.class.getDeclaredField("delve");connection.setAccessible(true);
+            var delve=(GhiDelve)connection.get(session.getDebugProcess());
+            var points=delve.request("ListBreakpoints",new com.google.gson.JsonObject()).get(3,TimeUnit.SECONDS).getAsJsonArray("Breakpoints");
+            assertNotNull(points);
+            for(var point:points)assertFalse("Quickly removed breakpoint remains in Delve",point.getAsJsonObject().get("line").getAsInt()==quickLine+1&&point.getAsJsonObject().get("file").getAsString().endsWith("main.ghi"));
             session.getDebugProcess().stop();
         }finally{
             if(session!=null){
