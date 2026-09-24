@@ -17,6 +17,8 @@ public final class GhiRenameProcessor extends RenamePsiElementProcessor {
     @Override public void findExistingNameConflicts(@NotNull PsiElement element,@NotNull String newName,@NotNull com.intellij.util.containers.MultiMap<PsiElement,String> conflicts){
         var model=GhiSymbols.forFile(element.getContainingFile());var target=model.symbolAt(element.getContainingFile(),element.getTextOffset());
         if(target==null)return;
+        for(var candidate:model.symbols)if(candidate.file==target.file&&candidate.typeParameters.contains(newName))conflicts.putValue(element,"Renaming would capture a Ghi type parameter.");
+        if(model.importedRenameCollision(target,newName))conflicts.putValue(element,"Renaming this imported type would capture an existing or ambiguous file-local name.");
         if(model.ambiguousStructuralFamily(target))conflicts.putValue(element,"Cannot safely rename this structural interface family: generic, alias or compound function signatures need full compiler type resolution.");
         for(var renamed:model.methodFamily(target))for(var candidate:model.symbols)if(candidate!=renamed&&candidate.name.equals(newName)){
             // Refuse capture both at the selected declaration and across the whole contract family.

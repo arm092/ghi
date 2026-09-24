@@ -18,7 +18,17 @@ public final class GhiCompletion extends CompletionContributor {
             }
             String preceding=file.getText().substring(0,parameters.getPosition().getTextOffset()).stripTrailing();
             if(!preceding.endsWith(".")&&!preceding.matches("(?s).*\\bnew")&&!parameters.getPosition().getText().isEmpty() && "new".startsWith(parameters.getPosition().getText().replace("IntellijIdeaRulezzz", "")))result.addElement(LookupElementBuilder.create("new").bold());
-            for(var symbol:GhiSymbols.forFile(file).complete(file,parameters.getOffset())){
+            var available=GhiSymbols.forFile(file).complete(file,parameters.getOffset());
+            if(!preceding.endsWith(".")&&!preceding.substring(preceding.lastIndexOf('\n')+1).stripLeading().startsWith("import ")){
+                for(var choice:GhiTypeImports.candidates(file,null)){
+                    if(available.stream().anyMatch(symbol->symbol==choice.symbol()))continue;
+                    if(preceding.matches("(?s).*\\bnew")&&!choice.symbol().kind.equals("class"))continue;
+                    result.addElement(LookupElementBuilder.create(choice,choice.symbol().name).withTailText(" ("+choice.path()+")",true).withIcon(GhiIcons.FILE)
+                        .withInsertHandler((insertion,item)->GhiTypeImports.apply(insertion.getFile(),insertion.getEditor(),
+                            new GhiTypeImports.Site(insertion.getStartOffset(),insertion.getTailOffset(),choice.symbol().name),choice)));
+                }
+            }
+            for(var symbol:available){
                 var item=LookupElementBuilder.create(symbol.name).withTypeText(symbol.kind+(symbol.type.isEmpty()?"":" "+symbol.type),true).withIcon(GhiIcons.FILE);
                 if(symbol.kind.equals("func"))item=item.withTailText("("+String.join(", ",symbol.parameters)+")",true);
                 result.addElement(item);

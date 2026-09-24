@@ -45,9 +45,10 @@ type classDecl struct {
 	Interfaces     []*classDecl
 }
 type unit struct {
-	Native    bool
-	Classes   []*classDecl
-	Functions map[string]*functionDecl
+	TypeImports []selectedTypeImport
+	Native      bool
+	Classes     []*classDecl
+	Functions   map[string]*functionDecl
 }
 
 func lexSource(filename string, source []byte) ([]lexeme, error) {

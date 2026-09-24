@@ -172,7 +172,13 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								reject("cannot instantiate interface " + c.Name)
 								return node
 							}
-							n.Fun, _ = parser.ParseExpr(p.classSymbol(c, "GhiNew_"+c.Name, file, ns) + typeArgumentsText(typeArguments))
+							constructor := p.classSymbol(c, "GhiNew_"+c.Name, file, ns)
+							if qualified, ok := base.(*ast.SelectorExpr); ok && c.Namespace != ns {
+								// Keep the actual call-site binding when several aliases
+								// import the same namespace in this file.
+								constructor = expressionText(qualified.X) + ".GhiNew_" + c.Name
+							}
+							n.Fun, _ = parser.ParseExpr(constructor + typeArgumentsText(typeArguments))
 							fillDefaults(n, c.Constructor, 0)
 							changed = true
 							return node

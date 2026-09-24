@@ -224,4 +224,113 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var file=myFixture.configureByText("generic-implementation.ghi","namespace main\ninterface Reader {func read() string}\nclass Box[T any] {public func read() T{panic(\"unused\")}}\nfunc use(reader Reader){reader.read()}\nfunc main(){use(new Box[string]())}\n");
         var target=GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("read"));
         var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();new GhiRenameProcessor().findExistingNameConflicts(target,"fetch",conflicts);assertFalse(conflicts.isEmpty());
-    }}
+    }
+    public void testSelectedTypeImportBindingHintsAndFileIsolation(){
+        var library=myFixture.addFileToProject("migrations/types.ghi","namespace migrations\nclass Migrator[T any] {public value T\nconstructor(value T){this.value=value}}\ninterface Runner {func run()}\ntype Version int\nfunc helper(){}\nclass Hidden {}\n");
+        var other=myFixture.addFileToProject("other.ghi","namespace main\nfunc other(){Migrator[string](\"x\")}\n");
+        var file=myFixture.configureByText("selected.ghi","namespace main\nimport migrations.Migrator\nimport migrations.Runner\nimport migrations.Version\nfunc use(r ?Runner, v Version){var m ?Migrator[string];m.value}\nfunc main(){new Migrator[string](<caret>\"x\")}\n");
+        var model=GhiSymbols.forFile(file);
+        for(String name:java.util.List.of("Migrator","Runner","Version")){
+            assertEquals(library,model.resolve(file,file.getText().indexOf(name)).getContainingFile());
+            assertEquals(library,model.resolve(file,file.getText().lastIndexOf(name)).getContainingFile());
+        }
+        assertNull(model.resolve(file,file.getText().indexOf("migrations")));
+        assertNull(model.resolve(other,other.getText().indexOf("Migrator")));
+        assertEquals(java.util.List.of("value string"),model.callAt(file,myFixture.getCaretOffset()).symbol().parameters);
+        assertEquals("value",model.resolve(file,file.getText().indexOf("m.value")+2).getText());
+        var names=model.complete(file,file.getText().indexOf("new Migrator")).stream().map(symbol->symbol.name).toList();
+        assertTrue(names.toString(),names.containsAll(java.util.List.of("Migrator","Runner","Version")));assertFalse(names.contains("Hidden"));assertFalse(names.contains("helper"));
+        file=myFixture.configureByText("bare-selected.ghi","namespace main\nimport migrations.Migrator\nfunc main(){Migrator[int](<caret>1)}\n");
+        assertEquals(java.util.List.of("value int"),GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset()).symbol().parameters);
+    }
+    public void testSelectedImportCompletionAndRename(){
+        var library=myFixture.addFileToProject("migrations/type.ghi","namespace migrations\nclass Migrator {}\ninterface Runner {}\ntype Version int\nfunc helper(){}\n");
+        var unrelated=myFixture.addFileToProject("other/type.ghi","namespace other\nclass Migrator {}\n");
+        var file=myFixture.configureByText("import-complete.ghi","namespace main\nimport migrations.Mig<caret>\n");
+        myFixture.completeBasic();assertEquals("namespace main\nimport migrations.Migrator\n",file.getText());
+        file=myFixture.configureByText("selected-rename.ghi","namespace main\nimport migrations.Migrator\nfunc main(){new <caret>Migrator();Migrator()} // Migrator\nconst label = \"Migrator\"\n");
+        myFixture.renameElementAtCaret("Executor");
+        assertTrue(library.getText().contains("class Executor"));assertTrue(unrelated.getText().contains("class Migrator"));
+        assertTrue(file.getText(),file.getText().contains("import migrations.Executor"));assertTrue(file.getText().contains("new Executor();Executor()"));
+        assertTrue(file.getText().contains("// Migrator"));assertTrue(file.getText().contains("\"Migrator\""));
+    }
+    public void testSelectedImportAmbiguityAndRenameCapture(){
+        var library=myFixture.addFileToProject("one.ghi","namespace one\nclass Item {}\n");
+        myFixture.addFileToProject("two.ghi","namespace two\nclass Item {}\n");
+        var file=myFixture.configureByText("ambiguous.ghi","namespace main\nimport one.Item\nimport two.Item\nfunc main(){new Item()}\n");
+        var model=GhiSymbols.forFile(file);assertNull(model.resolve(file,file.getText().lastIndexOf("Item")));
+        assertFalse(model.complete(file,file.getText().lastIndexOf("Item")).stream().anyMatch(symbol->symbol.name.equals("Item")));
+        var target=model.resolve(library,library.getText().indexOf("Item"));
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();new GhiRenameProcessor().findExistingNameConflicts(target,"Renamed",conflicts);assertFalse(conflicts.isEmpty());
+        file=myFixture.configureByText("capture.ghi","namespace app\nimport one.Item\nclass Taken {}\nfunc main(){new Item()}\n");
+        target=GhiSymbols.forFile(file).resolve(file,file.getText().lastIndexOf("Item"));conflicts.clear();new GhiRenameProcessor().findExistingNameConflicts(target,"Taken",conflicts);assertFalse(conflicts.isEmpty());
+    }
+
+    public void testSelectedImportAliasRenameIsLocal() throws Exception {
+        var library=myFixture.addFileToProject("domain.ghi","namespace domain\nclass User {constructor(name string){}}\n");
+        var file=myFixture.configureByText("alias.ghi","namespace main\nimport domain.User as Account\nfunc main(){new <caret>Account(\"x\")}\n");
+        var model=GhiSymbols.forFile(file);assertEquals("Account",model.resolve(file,file.getText().lastIndexOf("Account")).getText());
+        assertEquals(library,model.resolve(file,file.getText().indexOf("User")).getContainingFile());
+        assertEquals(java.util.List.of("name string"),model.callAt(file,file.getText().indexOf("\"x\"")).symbol().parameters);
+        myFixture.renameElementAtCaret("Member");assertTrue(file.getText(),file.getText().contains("import domain.User as Member"));assertTrue(file.getText().contains("new Member("));assertTrue(library.getText().contains("class User"));
+        myFixture.getEditor().getCaretModel().moveToOffset(file.getText().indexOf("User"));myFixture.renameElementAtCaret("Person");
+        assertTrue(library.getText().contains("class Person"));assertTrue(file.getText(),file.getText().contains("import domain.Person as Member"));assertTrue(file.getText().contains("new Member("));
+        checkImportedProject("alias-renamed",file.getText(),library.getText());
+    }
+    public void testExplicitImportActionsAndCollisionAlias() throws Exception {
+        myFixture.addFileToProject("users.ghi","namespace app.users\nclass User {}\n");
+        var file=myFixture.configureByText("auto.ghi","namespace main\nfunc main(){new Us<caret>er()}\n");
+        var action=new GhiImportIntention.Import();assertTrue(action.isAvailable(getProject(),myFixture.getEditor(),file));action.invoke(getProject(),myFixture.getEditor(),file);
+        assertEquals("namespace main\nimport app.users.User\nfunc main(){new User()}\n",file.getText());
+        file=myFixture.configureByText("shorten.ghi","namespace main\nclass User {}\nfunc main(){new app.users.Us<caret>er()}\n");
+        var shorten=new GhiImportIntention.Shorten();assertTrue(shorten.isAvailable(getProject(),myFixture.getEditor(),file));shorten.invoke(getProject(),myFixture.getEditor(),file);
+        assertEquals("namespace main\nimport app.users.User as UsersUser\nclass User {}\nfunc main(){new UsersUser()}\n",file.getText());
+        assertNotNull(GhiSymbols.forFile(file).resolve(file,file.getText().lastIndexOf("UsersUser")));
+        checkImportedProject("shortened-import",file.getText(),"namespace app.users\nclass User {}\n");
+    }
+    public void testCompletionAutoImportAndMultipleCandidates(){
+        myFixture.addFileToProject("one/user.ghi","namespace one\nclass User {}\n");
+        myFixture.addFileToProject("two/user.ghi","namespace two\nclass User {}\n");
+        var file=myFixture.configureByText("auto-complete.ghi","namespace main\nfunc main(){new Us<caret>}\n");
+        var variants=myFixture.completeBasic();assertNotNull(variants);
+        var choices=java.util.Arrays.stream(variants).filter(item->item.getObject() instanceof GhiTypeImports.Choice).toList();assertEquals(2,choices.size());
+        var item=choices.stream().filter(candidate->((GhiTypeImports.Choice)candidate.getObject()).path().equals("two.User")).findFirst().orElseThrow();
+        myFixture.getLookup().setCurrentItem(item);myFixture.finishLookup(com.intellij.codeInsight.lookup.Lookup.NORMAL_SELECT_CHAR);
+        assertEquals("namespace main\nimport two.User\nfunc main(){new User}\n",file.getText());
+    }
+    public void testImportActionAvoidsShadowedAliasAndTypeParameter() throws Exception {
+        myFixture.addFileToProject("users.ghi","namespace app.users\nclass User {}\n");
+        var file=myFixture.configureByText("shadowed-import.ghi","namespace main\nimport app.users.User\nfunc use[UsersUser any](){User:=1;_ = User;new app.users.Us<caret>er()}\nfunc main(){new User();use[int]()}\n");
+        var action=new GhiImportIntention.Shorten();assertTrue(action.isAvailable(getProject(),myFixture.getEditor(),file));action.invoke(getProject(),myFixture.getEditor(),file);
+        assertTrue(file.getText(),file.getText().contains("import app.users.User as UsersUser2"));
+        assertTrue(file.getText().contains("_ = User;new UsersUser2()"));assertTrue(file.getText().contains("new User();use[int]()"));
+        checkImportedProject("shadowed-import",file.getText(),"namespace app.users\nclass User {}\n");
+    }
+    public void testImportedTypeRenameRejectsTypeParameterCapture(){
+        myFixture.addFileToProject("user.ghi","namespace domain\nclass User {}\n");
+        var file=myFixture.configureByText("capture-type-parameter.ghi","namespace main\nimport domain.User\nfunc use[T any](){new User()}\n");
+        var target=GhiSymbols.forFile(file).resolve(file,file.getText().lastIndexOf("User"));
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();new GhiRenameProcessor().findExistingNameConflicts(target,"T",conflicts);assertFalse(conflicts.isEmpty());
+    }
+    public void testImportInsertionPreservesCommentsAndRawStrings(){
+        myFixture.addFileToProject("user.ghi","namespace users\nclass User {}\n");
+        var file=myFixture.configureByText("literal.ghi","namespace main // heading\nconst sample = `first\nimport fake.Trap\nlast`\nfunc main(){new users.Us<caret>er()}\n");
+        var action=new GhiImportIntention.Shorten();assertTrue(action.isAvailable(getProject(),myFixture.getEditor(),file));action.invoke(getProject(),myFixture.getEditor(),file);
+        assertEquals("namespace main // heading\nimport users.User\nconst sample = `first\nimport fake.Trap\nlast`\nfunc main(){new User()}\n",file.getText());
+    }
+    public void testSelectedImportsDoNotLeakIntoMemberCompletion(){
+        myFixture.addFileToProject("models.ghi","namespace models\nclass Box {public value string}\ninterface Reader {}\n");
+        var file=myFixture.configureByText("member-imports.ghi","namespace main\nimport models.Box\nimport models.Reader as Contract\nfunc main(){box:=new Box();box.<caret>}\n");
+        var names=GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream().map(symbol->symbol.name).toList();
+        assertEquals(java.util.List.of("value"),names);
+        var variants=myFixture.completeBasic();
+        if(variants!=null)for(var item:variants){assertFalse(item.getLookupString().equals("Box"));assertFalse(item.getLookupString().equals("Contract"));}
+    }
+    private void checkImportedProject(String name,String source,String library) throws Exception {
+        String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
+        Path project=Files.createDirectory(diskRoot.resolve(name));Files.writeString(project.resolve("main.ghi"),source);
+        Path dependency=Files.createDirectory(project.resolve("library"));Files.writeString(dependency.resolve("types.ghi"),library);
+        var process=GhiCommand.create(compiler,project,"check","").withRedirectErrorStream(true).createProcess();
+        try{assertTrue(process.waitFor(30,TimeUnit.SECONDS));String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);assertEquals(output,0,process.exitValue());}finally{process.destroyForcibly();}
+    }
+}

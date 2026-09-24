@@ -52,6 +52,7 @@ func TestParserTruncatedExtensions(t *testing.T) {
 }
 
 var parserSeeds = []string{
+	"namespace main\nimport app.users.User as AuthUser\nfunc main(){_=new AuthUser()}",
 	"namespace main\nclass Box[T any] extends Base implements Named { public value T; constructor(value T) { this.value = value }; public override func get() T { return this.value } }",
 	"namespace main\ninterface Named { func name(value string = \"guest\") string }",
 	"namespace main\nfunc main() { try { throw new Exception(\"bad\", 1) } catch e Exception { println(e.message) } finally { println(\"done\") } }",

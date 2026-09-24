@@ -1,8 +1,8 @@
 namespace main
 
-import tasks "application.tasks"
-import users "application.users"
-import sqlite "infrastructure.sqlite"
+import application.tasks.Service as TaskService
+import application.users.Service as UserService
+import infrastructure.sqlite.Repository as SQLiteRepository
 import httpapi "presentation.httpapi"
 import http "go:net/http"
 import os "go:os"
@@ -25,11 +25,11 @@ func run() {
 	switch settings.LogLevel { case "debug": level = slog.LevelDebug; case "warn": level = slog.LevelWarn; case "error": level = slog.LevelError }
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, & slog.HandlerOptions { Level: level }))
 	slog.SetDefault(logger)
-	repository := new sqlite.Repository(settings.Database, settings.Migrations)
+	repository := new SQLiteRepository(settings.Database, settings.Migrations)
 	defer repository.Close()
 	userRepository := repository.Users()
-	service := new tasks.Service(repository, userRepository)
-	server := & http.Server { Addr: settings.Address, Handler: httpapi.NewRouter(service, new users.Service(userRepository), logger, settings.RequestTimeout), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: settings.RequestTimeout + 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError) }
+	service := new TaskService(repository, userRepository)
+	server := & http.Server { Addr: settings.Address, Handler: httpapi.NewRouter(service, new UserService(userRepository), logger, settings.RequestTimeout), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: settings.RequestTimeout + 5 * time.Second, IdleTimeout: 60 * time.Second, ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError) }
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutdownDone := make(chan struct {})

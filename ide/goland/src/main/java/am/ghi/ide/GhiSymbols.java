@@ -18,7 +18,7 @@ final class GhiSymbols {
         String name, kind, type="", base="", visibility="public", importNamespace="", resultSignature=""; int offset;
         PsiFile file; Scope scope, body; List<String> parameters=new ArrayList<>();
         List<String> typeParameters=new ArrayList<>(), contracts=new ArrayList<>();
-        PsiElement external;
+        PsiElement external; boolean explicitAlias;
         Symbol(String name,String kind,int offset,PsiFile file,Scope scope) {
             this.name=name;this.kind=kind;this.offset=offset;this.file=file;this.scope=scope;
         }
@@ -26,7 +26,7 @@ final class GhiSymbols {
     }
     static final class Source {
         PsiFile file; String namespace=""; List<Token> tokens=new ArrayList<>();
-        List<Scope> scopes=new ArrayList<>(); Map<Integer,Symbol> declarations=new HashMap<>();
+        List<Scope> scopes=new ArrayList<>(); Map<Integer,Symbol> declarations=new HashMap<>(); Set<Integer> importPathTokens=new HashSet<>(); Map<Integer,Symbol> selectedPaths=new HashMap<>();
         Source(PsiFile file) { this.file=file; }
         Scope scope(int offset) {
             Scope result=scopes.getFirst();
@@ -65,6 +65,13 @@ final class GhiSymbols {
                 String namespace=ts.get(i+1).text.replace("\"","");String alias=namespace.substring(Math.max(namespace.lastIndexOf('.'),namespace.lastIndexOf('/'))+1);
                 if(alias.startsWith("go:"))alias=alias.substring(3);
                 Symbol symbol=new Symbol(alias,"import",ts.get(i+1).start,file,root);symbol.importNamespace=namespace;symbols.add(symbol);
+            }
+            if(word.equals("import")&&i+1<ts.size()&&ts.get(i+1).identifier&&is(ts,i+2,".")){
+                int end=i+1;while(is(ts,end+1,".")&&end+2<ts.size()&&ts.get(end+2).identifier)end+=2;
+                for(int at=i+1;at<=end;at+=2)s.importPathTokens.add(ts.get(at).start);
+                boolean aliased=is(ts,end+1,"as")&&end+2<ts.size()&&ts.get(end+2).identifier;
+                Symbol selected=declare(s,ts.get(aliased?end+2:end),"typeImport",root);selected.explicitAlias=aliased;
+                selected.importNamespace=qualified(ts,i+1);s.selectedPaths.put(ts.get(end).start,selected);continue;
             }
             if(Set.of("class","interface","type","func","import").contains(word)&&i+1<ts.size()&&ts.get(i+1).identifier){
                 int nameIndex=i+1;Token name=ts.get(nameIndex);Scope scope=s.scope(t.start);
@@ -156,7 +163,9 @@ final class GhiSymbols {
     PsiElement resolve(PsiFile file,int offset){Symbol symbol=symbolAt(file,offset);return symbol==null?null:symbol.psi();}
     private Symbol resolveToken(Source s,int index,Set<Integer> visited){
         if(index<0||!visited.add(index))return null;Token token=s.tokens.get(index);
+        Symbol selected=s.selectedPaths.get(token.start);if(selected!=null)return selectedTarget(selected);
         Symbol declaration=s.declarations.get(token.start);if(declaration!=null)return declaration;
+        if(s.importPathTokens.contains(token.start))return null;
         if(is(s.tokens,index-1,".")){
             Symbol receiver=receiver(s,index-2,visited);if(receiver==null)return null;
             if(receiver.kind.equals("import"))return imported(s,receiver,token.text);
@@ -171,29 +180,57 @@ final class GhiSymbols {
             for(Symbol symbol:symbols)if(symbol.file==s.file&&symbol.scope==at&&symbol.name.equals(token.text)
                 &&(!symbol.kind.equals("local")&&!symbol.kind.equals("const")||symbol.offset<=token.start))
                 if(result==null||symbol.offset>result.offset)result=symbol;
-            if(result!=null)return result;
+            if(result!=null)return at.parent==null&&hasSelectedImport(s.file,token.text)?selectedBinding(s.file,token.text):result;
         }
-        for(Symbol symbol:symbols)if(symbol.scope.parent==null&&symbol.kind.equals("import")==false&&symbol.name.equals(token.text)&&sameNamespace(s.file,symbol.file))return symbol;
+        for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!isImport(symbol)&&symbol.name.equals(token.text)&&sameNamespace(s.file,symbol.file))return symbol;
         return null;
     }
     private Symbol receiver(Source s,int index,Set<Integer> visited){
         if(index<0)return null;
         if(is(s.tokens,index,")")){int depth=1;for(int i=index-1;i>=0;i--){if(is(s.tokens,i,")"))depth++;if(is(s.tokens,i,"(")&&--depth==0){Symbol call=resolveToken(s,calleeIndex(s.tokens,i-1),visited);if(call==null)return null;Symbol result=asType(call,s.file);
-            if(result!=null&&call.kind.equals("class")){Symbol concrete=new Symbol(result.name,result.kind,result.offset,result.file,result.scope);concrete.body=result.body;concrete.base=result.base;concrete.type=typeAt(s.tokens,calleeIndex(s.tokens,i-1));return concrete;}return result;}}return null;}
+            if(result!=null&&(call.kind.equals("class")||call.kind.equals("typeImport"))){Symbol concrete=new Symbol(result.name,result.kind,result.offset,result.file,result.scope);concrete.body=result.body;concrete.base=result.base;concrete.type=typeAt(s.tokens,calleeIndex(s.tokens,i-1));return concrete;}return result;}}return null;}
         return resolveToken(s,index,visited);
     }
     private Symbol imported(Source s,Symbol alias,String name){
         String namespace=alias.importNamespace;
         if(namespace.startsWith("go:"))return GhiGoSymbols.packageMembers(namespace.substring(3),s.file).stream().filter(symbol->symbol.name.equals(name)).findFirst().orElse(null);
-        for(Symbol symbol:symbols)if(symbol.scope.parent==null&&symbol.name.equals(name)&&sources.get(symbol.file).namespace.equals(namespace))return symbol;
+        for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!isImport(symbol)&&symbol.name.equals(name)&&sources.get(symbol.file).namespace.equals(namespace))return symbol;
         return null;
+    }
+    private static boolean isImport(Symbol symbol){return symbol.kind.equals("import")||symbol.kind.equals("typeImport");}
+    private static boolean isType(Symbol symbol){return Set.of("class","interface","type").contains(symbol.kind);}
+    private Symbol selectedTarget(Symbol selected){
+        Symbol found=null;
+        for(Symbol candidate:symbols)if(isType(candidate)&&candidate.scope.parent==null&&(sources.get(candidate.file).namespace+"."+candidate.name).equals(selected.importNamespace)){
+            if(found!=null)return null;found=candidate;
+        }
+        return found;
+    }
+    private boolean hasSelectedImport(PsiFile file,String name){return symbols.stream().anyMatch(symbol->symbol.file==file&&symbol.kind.equals("typeImport")&&symbol.name.equals(name));}
+    private Symbol selectedBinding(PsiFile file,String name){
+        Symbol found=null;int count=0;
+        for(Symbol candidate:symbols)if(candidate.scope.parent==null&&candidate.name.equals(name)){
+            if(candidate.file==file&&isImport(candidate)){count++;found=candidate.kind.equals("typeImport")&&!candidate.explicitAlias?selectedTarget(candidate):candidate;}
+            else if(!isImport(candidate)&&sameNamespace(file,candidate.file))count++;
+        }
+        return count==1?found:null;
+    }
+    boolean importedRenameCollision(Symbol target,String newName){
+        for(Symbol selected:symbols)if(selected.kind.equals("typeImport")&&!selected.explicitAlias&&selectedTarget(selected)==target){
+            if(selectedBinding(selected.file,selected.name)!=target)return true;
+            for(Symbol candidate:symbols)if(candidate!=target&&((candidate.file==selected.file&&candidate.typeParameters.contains(newName))||(candidate.name.equals(newName)
+                &&(candidate.file==selected.file||(!isImport(candidate)&&candidate.scope.parent==null&&sameNamespace(selected.file,candidate.file))))))return true;
+        }
+        return false;
     }
     Symbol type(String name,PsiFile context){
         name=GhiGenericTypes.base(name);
+        if(hasSelectedImport(context,name)){Symbol binding=selectedBinding(context,name);return binding!=null&&binding.kind.equals("typeImport")?selectedTarget(binding):binding;}
         int dot=name.indexOf('.');
         if(dot>0)for(Symbol alias:symbols)if(alias.file==context&&alias.kind.equals("import")&&alias.name.equals(name.substring(0,dot)))return imported(sources.get(context),alias,name.substring(dot+1));
         for(Symbol symbol:symbols)if(Set.of("class","interface","type").contains(symbol.kind)&&(symbol.name.equals(name)&&sameNamespace(context,symbol.file)||(sources.get(symbol.file).namespace+"."+symbol.name).equals(name)))return symbol;return null;}
     private Symbol asType(Symbol symbol,PsiFile context){
+        if(symbol.kind.equals("typeImport"))return selectedTarget(symbol);
         if(symbol.external!=null)return GhiGoSymbols.resultType(symbol);
         if(Set.of("class","interface","type").contains(symbol.kind))return symbol;
         Symbol result=type(symbol.type,context);return result!=null&&result.external!=null?GhiGoSymbols.resultType(result):result;
@@ -232,7 +269,7 @@ final class GhiSymbols {
     private String canonicalType(String expression,PsiFile context){
         Map<String,String> names=new LinkedHashMap<>(Map.of("byte","uint8","rune","int32","any","interface{}"));
         for(Symbol symbol:symbols)if(symbol.scope.parent==null){
-            if(symbol.file==context&&symbol.kind.equals("import"))names.put(symbol.name,symbol.importNamespace);
+            if(symbol.file==context&&isImport(symbol))names.put(symbol.name,symbol.importNamespace);
             else if(Set.of("class","interface","type").contains(symbol.kind)&&sameNamespace(context,symbol.file))names.put(symbol.name,sources.get(symbol.file).namespace+"."+symbol.name);
         }
         return GhiGenericTypes.substitute(expression,names).replaceAll("\\s+","");
@@ -273,12 +310,21 @@ final class GhiSymbols {
     List<Symbol> complete(PsiFile file,int offset){
         Source s=sources.get(file);int index=0;while(index<s.tokens.size()&&s.tokens.get(index).end<=offset)index++;
         int dot=is(s.tokens,index-1,".")?index-1:is(s.tokens,index-2,".")?index-2:-1;
+        // Import completion is restricted to the selected namespace's types.
+        int importStart=index-1;
+        while(importStart>=0&&(s.tokens.get(importStart).identifier||is(s.tokens,importStart,".")))importStart--;
+        if(is(s.tokens,importStart,"import")){
+            String namespace="";
+            if(dot>=0){StringBuilder path=new StringBuilder();for(int at=importStart+1;at<dot;at++)path.append(s.tokens.get(at).text);namespace=path.toString();}
+            final String selectedNamespace=namespace;
+            return symbols.stream().filter(symbol->isType(symbol)&&symbol.scope.parent==null&&sources.get(symbol.file).namespace.equals(selectedNamespace)).toList();
+        }
         boolean construction=constructionContext(s,index);
         LinkedHashMap<String,Symbol> result=new LinkedHashMap<>();
         if(dot>=0){Symbol receiver=receiver(s,dot-1,new HashSet<>());if(receiver==null)return List.of();
             if(receiver.kind.equals("import")){
                 if(receiver.importNamespace.startsWith("go:"))return GhiGoSymbols.packageMembers(receiver.importNamespace.substring(3),file);
-                for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!symbol.kind.equals("import")&&sources.get(symbol.file).namespace.equals(receiver.importNamespace))result.putIfAbsent(symbol.name,symbol);
+                for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!isImport(symbol)&&sources.get(symbol.file).namespace.equals(receiver.importNamespace))result.putIfAbsent(symbol.name,symbol);
                 return completionValues(result,construction,file);
             }
             Symbol cls=asType(receiver,file);if(cls!=null&&cls.external!=null)return GhiGoSymbols.members(cls);Set<Symbol> visited=new HashSet<>();Symbol current=enclosingClass(s.scope(offset));
@@ -287,8 +333,12 @@ final class GhiSymbols {
         }else{
 
             for(Scope scope=s.scope(offset);scope!=null;scope=scope.parent)for(Symbol symbol:symbols)if(symbol.file==file&&symbol.scope==scope&&(!symbol.kind.equals("local")||symbol.offset<offset))result.putIfAbsent(symbol.name,symbol);
-            for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!symbol.kind.equals("import")&&sameNamespace(file,symbol.file))result.putIfAbsent(symbol.name,symbol);
+            for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!isImport(symbol)&&sameNamespace(file,symbol.file))result.putIfAbsent(symbol.name,symbol);
             for(String name:List.of("Exception","GoError","StackFrame"))result.putIfAbsent(name,builtin(name,file));
+        }
+        if(dot<0)for(Symbol selected:symbols)if(selected.file==file&&selected.kind.equals("typeImport")){
+            Symbol existing=result.get(selected.name);if(existing!=null&&existing.scope.parent!=null)continue;
+            Symbol binding=selectedBinding(file,selected.name);if(binding==null)result.remove(selected.name);else result.put(selected.name,binding);
         }
         return completionValues(result,construction,file);
     }
@@ -319,14 +369,15 @@ final class GhiSymbols {
         if(parameters==null)return null;
         Symbol symbol=new Symbol(name,"class",-1,file,null);symbol.parameters=parameters;return symbol;
     }
-    private static List<Symbol> completionValues(LinkedHashMap<String,Symbol> values,boolean construction,PsiFile file){
-        if(construction)values.values().removeIf(symbol->!symbol.kind.equals("class")&&!symbol.kind.equals("import"));
+    private List<Symbol> completionValues(LinkedHashMap<String,Symbol> values,boolean construction,PsiFile file){
+        if(construction)values.values().removeIf(symbol->!symbol.kind.equals("class")&&!symbol.kind.equals("import")&&!(symbol.kind.equals("typeImport")&&selectedTarget(symbol)!=null&&selectedTarget(symbol).kind.equals("class")));
         return new ArrayList<>(values.values());
     }    record Call(Symbol symbol,int open,int parameter) {}
     Call callAt(PsiFile file,int offset){Source s=sources.get(file);Deque<Integer> stack=new ArrayDeque<>();for(int i=0;i<s.tokens.size()&&s.tokens.get(i).start<offset;i++){if(is(s.tokens,i,"("))stack.push(i);else if(is(s.tokens,i,")")&&!stack.isEmpty())stack.pop();}
         if(stack.isEmpty())return null;int open=stack.peek();int callee=calleeIndex(s.tokens,open-1);
         Symbol callable=resolveToken(s,callee,new HashSet<>());
         if(callable==null && callee>=0 && !is(s.tokens,callee-1,"."))callable=builtin(s.tokens.get(callee).text,file);
+        if(callable!=null&&callable.kind.equals("typeImport"))callable=selectedTarget(callable);
         if(callable==null)return null;
         Map<String,String> bindings=new LinkedHashMap<>();
         if(callable.kind.equals("class")){

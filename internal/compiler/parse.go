@@ -53,10 +53,15 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	name := strings.Join(parts, ".")
 	end := file.Offset(pos)
 	transformed := string(data[:start]) + "package " + parts[len(parts)-1] + string(data[end:])
-	normalized, unit, err := extractExtensions(fset, filename, []byte(transformed))
+	importSource, typeImports, err := extractTypeImports(filename, []byte(transformed))
 	if err != nil {
 		return "", nil, nil, err
 	}
+	normalized, unit, err := extractExtensions(fset, filename, importSource)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	unit.TypeImports = typeImports
 	normalized, err = normalizeExceptions(filename, normalized)
 	if err != nil {
 		return "", nil, nil, err

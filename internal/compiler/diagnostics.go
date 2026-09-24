@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,14 @@ func (p *program) sourceError(err error) error {
 	replacements := map[string]string{}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
+			for _, selected := range file.Unit.TypeImports {
+				for _, spec := range file.Tree.Imports {
+					path, _ := strconv.Unquote(spec.Path.Value)
+					if path == generatedModule+"/"+strings.ReplaceAll(selected.Namespace, ".", "/") && spec.Name != nil {
+						replacements[spec.Name.Name+"."+selected.Name] = selected.Alias
+					}
+				}
+			}
 			for _, c := range file.Unit.Classes {
 				replacements["GhiIs_"+c.key()] = c.Name
 				replacements["GhiNew_"+c.Name] = c.Name

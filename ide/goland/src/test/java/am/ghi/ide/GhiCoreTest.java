@@ -83,4 +83,16 @@ public class GhiCoreTest {
         int end=source.indexOf("Person");lexer.start(source,0,end,0);
         int count=0;while(lexer.getTokenType()!=null){assertTrue(lexer.getTokenEnd()<=end);assertTrue(++count<100);lexer.advance();}
     }
+
+    @Test public void selectedTypeImportHighlighting(){
+        String source="namespace main\nimport app.users.User as Account\nimport app.Version\nfunc main(){new Account();var version ?Version}";
+        var lexer=new GhiHighlightingLexer();lexer.start(source);var roles=new HashMap<Integer,IElementType>();
+        while(lexer.getTokenType()!=null){roles.put(lexer.getTokenStart(),lexer.getTokenType());lexer.advance();}
+        assertEquals(GhiHighlightingLexer.NAMESPACE,roles.get(source.indexOf("users")));
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.indexOf("User")));
+        assertEquals(GhiLexer.KEYWORD,roles.get(source.indexOf("as Account")));
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.indexOf("Account")));
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.lastIndexOf("Account")));
+        assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.lastIndexOf("Version")));
+    }
 }
