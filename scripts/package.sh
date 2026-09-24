@@ -5,6 +5,7 @@ root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 version=${1:-dev}
 case "$version" in *[!a-zA-Z0-9._-]*|'') echo 'Invalid version' >&2; exit 1;; esac
+mojave_version=$(go list -m -f '{{.Version}}' github.com/arm092/mojave)
 mkdir -p dist
 for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
     os=${target%/*}
@@ -13,7 +14,7 @@ for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
     suffix=''
     if [ "$os" = windows ]; then suffix='.exe'; fi
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-X main.version=$version" -o "$bundle/ghi$suffix" ./cmd/ghi
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "$bundle/mojave$suffix" ./cmd/mojave
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-X main.version=$mojave_version" -o "$bundle/mojave$suffix" github.com/arm092/mojave/cmd/mojave
     (cd "$bundle" && shasum -a 256 "ghi$suffix" > ghi.sha256)
     (cd "$bundle" && shasum -a 256 "mojave$suffix" > mojave.sha256)
     if [ "$os" = windows ]; then

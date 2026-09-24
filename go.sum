@@ -1,2 +1,4 @@
+github.com/arm092/mojave v0.1.0 h1:vERRmYQsWZgvahSfN6XntUJCjl5/ZlhrYrNEeKBEjmk=
+github.com/arm092/mojave v0.1.0/go.mod h1:iiT3ln/sIQZd8q/xEWcmy7QIxu6b/e/VmdHFui8ZnmE=
 golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=
 golang.org/x/mod v0.41.0/go.mod h1:Ek9pY8RKWXwsWvd3rQiHYtMqkjSUV+s1Rj7j4H5Ur6o=

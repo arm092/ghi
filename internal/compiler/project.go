@@ -2,7 +2,7 @@ package compiler
 
 import (
 	"fmt"
-	"ghi/internal/mojave"
+	"github.com/arm092/mojave/pkg/mojave"
 	"go/ast"
 	"go/token"
 	"io/fs"

@@ -2,7 +2,7 @@ package compiler
 
 import (
 	"context"
-	"ghi/internal/mojave"
+	"github.com/arm092/mojave/pkg/mojave"
 	"os"
 	"os/exec"
 	"path/filepath"

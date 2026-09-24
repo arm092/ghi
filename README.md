@@ -4,7 +4,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.0](https://github.com/arm092/ghi/releases/tag/v0.2.0), bundled with the Mojave package manager. **IDE:** [Ghi for GoLand v0.1.0](https://github.com/arm092/ghi-goland/releases/tag/v0.1.0).
+**Current release:** [Ghi v0.2.1](https://github.com/arm092/ghi/releases/tag/v0.2.1), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.0](https://github.com/arm092/ghi-goland/releases/tag/v0.1.0).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -32,7 +32,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.0).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.1).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -45,7 +45,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -68,7 +68,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-Alternatively, download the [universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_macos_universal.pkg). It contains Intel and Apple silicon binaries and prepares Go for the signed-in user before installing Ghi and Mojave. Installation and command startup were verified on an Apple silicon Mac, including managed Go 1.26.8 setup. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The build recipe is in `scripts/package-macos.sh`.
+The v0.2.1 macOS `.pkg` is awaiting a fresh native build. Download the [v0.2.1 installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) to build it on a Mac. The previous [v0.2.0 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_macos_universal.pkg) remains available but does not contain the new CLI commands. It contains Intel and Apple silicon binaries and prepares Go for the signed-in user before installing Ghi and Mojave. Installation and command startup were verified on an Apple silicon Mac, including managed Go 1.26.8 setup. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The build recipe is in `scripts/package-macos.sh`.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -95,7 +95,19 @@ The full release test suite was run locally on Windows. The native macOS package
 
 ## Quick start
 
-Create a directory containing `main.ghi`:
+Create a project:
+
+```sh
+ghi init my-app
+cd my-app
+ghi run
+```
+
+`ghi init` without a directory initializes the current directory, including an existing Git checkout. It creates `main.ghi`, `mojave.json`, a separate `tests/` directory and a `.gitignore` for generated files. Existing `main.ghi` or `mojave.json` files cause an error before anything is written; an existing `.gitignore` is preserved. It does not initialize Git or download dependencies.
+
+Both tools accept `version`, `--version`, `-v` and `-V`. Ghi and Mojave have independent versions; a Ghi release bundles a specific Mojave version. The `-v` flag after `ghi test` still means verbose test output.
+
+The executable entry point is a `main.ghi` file such as:
 
 ```ghi
 namespace main
@@ -419,7 +431,7 @@ For example, the [DDD API](examples/ddd-api) uses the chi router, SQLite, HTTP c
 
 ## Mojave packages
 
-Mojave is included with the compiler. It installs Ghi libraries from Git repositories and Go libraries through the Go toolchain. Run commands in your project directory:
+Mojave is developed in its own public [repository](https://github.com/arm092/mojave) and has an independent version. A compatible version is included with the compiler. It installs Ghi libraries from Git repositories and Go libraries through the Go toolchain. Run commands in your project directory. `mojave add` creates `mojave.json` automatically if it does not exist; you do not need to create it by hand. Failed dependency resolution does not leave a newly created manifest behind.
 
 ```sh
 mojave add arm092/migrations https://github.com/arm092/ghi-migrations.git v0.2.0
@@ -496,7 +508,7 @@ With a compatible Go toolchain installed (see [go.mod](go.mod)):
 
 ```sh
 go build -o bin/ghi ./cmd/ghi
-go build -o bin/mojave ./cmd/mojave
+go build -ldflags="-X main.version=v0.1.0" -o bin/mojave github.com/arm092/mojave/cmd/mojave
 go test ./...
 go vet ./...
 ```

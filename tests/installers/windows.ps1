@@ -20,9 +20,11 @@ try {
         if (@(($userPath -split ';') | Where-Object { $_ -eq "$installDirectory\bin" }).Count -ne 1) { throw 'Missing or duplicated PATH entry' }
     }
     $version = & "$installDirectory\bin\ghi.exe" version
-    if ($LASTEXITCODE -ne 0 -or $version -ne 'ghi v0.2.0') { throw 'Installed compiler version failed' }
+    if ($LASTEXITCODE -ne 0 -or $version -ne 'ghi v0.2.1') { throw 'Installed compiler version failed' }
     $output = & "$installDirectory\bin\ghi.exe" run (Join-Path $repoRoot 'examples/constraints') 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0 -or $output.Trim() -ne '7 Ada Ada') { throw 'Installed compiler example failed' }
+    $mojaveVersion = & "$installDirectory\bin\mojave.exe" --version
+    if ($LASTEXITCODE -ne 0 -or $mojaveVersion -ne 'mojave v0.1.0') { throw 'Independent Mojave version failed' }
     & "$installDirectory\bin\mojave.exe" help | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Installed Mojave failed' }
     $uninstall = Start-Process -FilePath "$installDirectory\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -PassThru -Wait

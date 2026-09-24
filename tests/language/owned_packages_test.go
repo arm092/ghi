@@ -3,7 +3,7 @@ package language_test
 import (
 	"context"
 	"ghi/internal/compiler"
-	"ghi/internal/mojave"
+	"github.com/arm092/mojave/pkg/mojave"
 	"os"
 	"os/exec"
 	"path/filepath"

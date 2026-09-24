@@ -37,10 +37,10 @@ jobs:
         run: go test ./internal/compiler -run '^$' -fuzz '^FuzzParseFile$' -fuzztime=20s -parallel=2
       - name: Install Task API dependencies with Mojave
         working-directory: examples/task-api
-        run: go run ../../cmd/mojave install
+        run: go run ../.github.com/arm092/mojave/cmd/mojave install
       - name: Install DDD API dependencies with Mojave
         working-directory: examples/ddd-api
-        run: go run ../../cmd/mojave install
+        run: go run ../.github.com/arm092/mojave/cmd/mojave install
       - name: Debug DDD HTTP controller with real Delve
         shell: bash
         run: |
@@ -64,7 +64,7 @@ jobs:
         run: |
           go build -o install/ghi.exe ./cmd/ghi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go build -o install/mojave.exe ./cmd/mojave
+          go build -o install/mojave.exe github.com/arm092/mojave/cmd/mojave
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash install/ghi.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  ghi.exe" | Set-Content install/ghi.sha256
@@ -103,7 +103,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           go build -o install/ghi ./cmd/ghi
-          go build -o install/mojave ./cmd/mojave
+          go build -o install/mojave github.com/arm092/mojave/cmd/mojave
           (cd install && shasum -a 256 ghi > ghi.sha256)
           (cd install && shasum -a 256 mojave > mojave.sha256)
           GHI_NO_PATH=1 GHI_INSTALL_DIR="$RUNNER_TEMP/ghi-installed" sh install/install.sh

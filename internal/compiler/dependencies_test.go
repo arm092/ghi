@@ -4,7 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"ghi/internal/mojave"
+	"github.com/arm092/mojave/pkg/mojave"
 	"net/http"
 	"net/http/httptest"
 	"os"

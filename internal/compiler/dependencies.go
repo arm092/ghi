@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ghi/internal/mojave"
 	"ghi/internal/toolchain"
+	"github.com/arm092/mojave/pkg/mojave"
 )
 
 // stageDependencies keeps the original manifest and lockfile unchanged. Go

@@ -34,9 +34,6 @@ func TestProjectCLI(t *testing.T) {
 				t.Fatalf("%s %s: %v %q", name, flag, err, out)
 			}
 		}
-		if name != "ghi" {
-			continue
-		}
 		project := filepath.Join(empty, "new project")
 		if out, err := invoke(empty, "init", project); err != nil {
 			t.Fatalf("init: %v %s", err, out)

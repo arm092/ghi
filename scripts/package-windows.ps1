@@ -1,10 +1,10 @@
 param(
-    [string]$Version = '0.2.0',
+    [string]$Version = '0.2.1',
     [Parameter(Mandatory)][string]$BundleRoot,
     [string]$ISCC = 'ISCC.exe'
 )
 $ErrorActionPreference = 'Stop'
-if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Use a numeric release version, e.g. 0.2.0.' }
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Use a numeric release version, e.g. 0.2.1.' }
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $bundlePath = (Resolve-Path -LiteralPath $BundleRoot).Path
 foreach ($arch in @('amd64', 'arm64')) {

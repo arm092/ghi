@@ -2,9 +2,9 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
-version=${1:-0.2.0}
+version=${1:-0.2.1}
 archives=${2:-}
-case "$version" in ''|*[!0-9.]* ) echo 'Use a numeric version, e.g. 0.2.0.' >&2; exit 1;; esac
+case "$version" in ''|*[!0-9.]* ) echo 'Use a numeric version, e.g. 0.2.1.' >&2; exit 1;; esac
 if [ "$(uname -s)" != Darwin ]; then echo 'Build this package on macOS with Xcode Command Line Tools.' >&2; exit 1; fi
 for tool in pkgbuild productbuild lipo; do command -v "$tool" >/dev/null; done
 work=$(mktemp -d "${TMPDIR:-/tmp}/ghi-pkg.XXXXXXXX")
