@@ -384,6 +384,29 @@ public class GhiIdeTest extends BasePlatformTestCase {
             +"func main(){new lib.Item()}\n");
         assertNull(GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("lib.Item")+4));
     }
+    public void testReformatUsesCompilerForUnsavedBuffer() throws Exception {
+        String source="namespace main\nfunc main(){println(\"format me\")}\n";
+        var file=myFixture.configureByText("unsaved-format.ghi",source);
+        assertNotNull(com.intellij.formatting.service.FormattingServiceUtil.findService(GhiFormattingService.class));
+        assertTrue(com.intellij.formatting.service.FormattingServiceUtil.findService(file,false,true) instanceof GhiFormattingService);
+        String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler==null||compiler.isBlank())return;
+        Path missing=diskRoot.resolve("unsaved-format.ghi");assertFalse(Files.exists(missing));
+        String formatted=GhiFormattingService.format(compiler,source,missing.toString(),new java.util.concurrent.atomic.AtomicReference<>());
+        assertTrue(formatted,formatted.contains("func main() {\n\tprintln(\"format me\")\n}"));
+        assertFalse(source.equals(formatted));
+        assertFalse(Files.exists(missing));
+        var settings=GhiSettings.get(getProject()).getState();String previous=settings.executable;settings.executable=compiler;
+        try{
+            myFixture.performEditorAction("ReformatCode");
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while(source.equals(myFixture.getEditor().getDocument().getText())&&System.nanoTime()<deadline){
+                com.intellij.util.ui.UIUtil.dispatchAllInvocationEvents();Thread.sleep(20);
+            }
+            assertEquals(formatted,myFixture.getEditor().getDocument().getText());
+            myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO);
+            assertEquals(source,myFixture.getEditor().getDocument().getText());
+        }finally{settings.executable=previous;}
+    }
     public void testAnonymousArrowScopesCapturesAndCalls(){
         String source="namespace main\nclass Counter {\n public value int\n public func make(seed int) func(int) int {\n  return (n int) int => { return this.value + seed + n }\n }\n}\nfunc main(){\n outer := (a int) func(int) int => {\n  inner := (b int) int => { return a+b }\n  return inner\n }\n sum := (a int, b int) int => { return a+b }\n pair := (a int) (int,error) => { return a,nil }\n named := (x int) (result int, err error) => { result=x; return }\n empty := () => { }\n sum(1,2); pair(1); named(2); empty(); outer(2)\n}\n";
         var file=myFixture.configureByText("arrows.ghi",source);

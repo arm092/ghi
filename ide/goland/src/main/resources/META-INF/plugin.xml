@@ -7,9 +7,9 @@
         Recognizes .ghi files, highlights syntax, supports comments and brace matching,
         and builds or runs projects in the IDE console with clickable compiler diagnostics.
         Configure the compiler and project directory under Languages &amp; Frameworks &gt; Ghi.
-        Requires the Ghi compiler. Supports both Class(args) and new Class(args) construction, including qualified and generic classes. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Adds concrete generic parameter hints, coordinated override/structural-interface rename, and native Go SDK or Mojave-pinned cache completion/navigation. Ambiguous structural rename signatures raise conflicts. Selected Ghi type imports and file-local aliases support completion, navigation, hints and safe rename. Completion can insert imports; explicit intentions import unresolved types or shorten qualified type references with collision-safe aliases. Anonymous block arrow functions have scoped parameters, capture navigation and call hints. Debug Project builds with source metadata and debugs .ghi files with GoLand's bundled Delve, including line breakpoints, stepping, call stacks, variables and caught exceptions.
+        Requires the Ghi compiler. Supports both Class(args) and new Class(args) construction, including qualified and generic classes. Includes Ghi declaration navigation, completion, parameter information, symbol rename and saved-file compiler diagnostics. Adds concrete generic parameter hints, coordinated override/structural-interface rename, and native Go SDK or Mojave-pinned cache completion/navigation. Ambiguous structural rename signatures raise conflicts. Selected Ghi type imports and file-local aliases support completion, navigation, hints and safe rename. Completion can insert imports; explicit intentions import unresolved types or shorten qualified type references with collision-safe aliases. Anonymous block arrow functions have scoped parameters, capture navigation and call hints. Reformat Code uses the compiler's canonical ghi fmt for the current editor buffer. Debug Project builds with source metadata and debugs .ghi files with GoLand's bundled Delve, including line breakpoints, stepping, call stacks, variables and caught exceptions.
     ]]></description>
-    <change-notes><![CDATA[Preview 14: support unified Ghi imports for namespaces and selected types, with namespace aliases and path completion. Quoted Ghi namespace imports are no longer supported; quoted go: imports remain available.]]></change-notes>
+    <change-notes><![CDATA[Preview 15: Reformat Code delegates the current unsaved Ghi editor buffer to the canonical compiler formatter through ghi fmt --stdin. Requires a compiler with --stdin support.]]></change-notes>
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.go</depends>
     <extensions defaultExtensionNs="com.intellij">
@@ -24,6 +24,8 @@
         <lang.findUsagesProvider language="Ghi" implementationClass="am.ghi.ide.GhiFindUsages"/>
         <renamePsiElementProcessor implementation="am.ghi.ide.GhiRenameProcessor"/>
         <externalAnnotator language="Ghi" implementationClass="am.ghi.ide.GhiExternalAnnotator"/>
+        <formattingService implementation="am.ghi.ide.GhiFormattingService"/>
+        <notificationGroup id="Ghi Formatter" displayType="BALLOON"/>
         <lang.commenter language="Ghi" implementationClass="am.ghi.ide.GhiCommenter"/>
         <lang.braceMatcher language="Ghi" implementationClass="am.ghi.ide.GhiBraceMatcher"/>
         <colorSettingsPage implementation="am.ghi.ide.GhiColorSettingsPage"/>
