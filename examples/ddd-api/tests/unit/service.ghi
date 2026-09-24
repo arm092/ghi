@@ -18,6 +18,8 @@ class MemoryRepository implements task.Repository {
 		this.creates++
 		this.items[item.Id()] = item
 	}
+	public func CreateBatch(ctx context.Context, items[] task.Task) { for _, item := range items { this.Create(ctx, item) } }
+	public func Page(ctx context.Context, limit int, offset int) [] task.Task { items := this.List(ctx); if offset >= len(items) { return[] task.Task {} }; end := offset + limit; if end > len(items) { end = len(items) }; return items[offset: end] }
 	public func Update(ctx context.Context, item task.Task) {
 		this.lastContext = ctx
 		this.updates++

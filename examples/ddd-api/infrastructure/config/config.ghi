@@ -1,0 +1,38 @@
+namespace infrastructure.config
+
+import os "go:os"
+import net "go:net"
+import strconv "go:strconv"
+import strings "go:strings"
+import time "go:time"
+
+class ConfigurationError extends Exception { constructor(message string) { parent(message, 3002) } }
+type Settings struct { Address string; Database string; Migrations string; LogLevel string; ShutdownTimeout time.Duration; RequestTimeout time.Duration }
+
+func durationSetting(value string, fallback time.Duration, name string) time.Duration {
+	if value == "" { return fallback }
+	var parsed time.Duration
+	try { parsed = time.ParseDuration(value) } catch err GoError { throw new ConfigurationError(name + " must be a duration such as 10s") }
+	if parsed < time.Second || parsed > time.Minute { throw new ConfigurationError(name + " must be between 1s and 1m") }
+	return parsed
+}
+
+func Load(lookup func (string) string) Settings {
+	settings := Settings { Address: lookup("GHI_DDD_ADDR"), Database: lookup("GHI_DDD_DB"), Migrations: lookup("GHI_DDD_MIGRATIONS"), LogLevel: lookup("GHI_DDD_LOG_LEVEL") }
+	if settings.Address == "" { settings.Address = "127.0.0.1:8081" }
+	try {
+		host, port := net.SplitHostPort(settings.Address)
+		number := strconv.Atoi(port)
+		if host == "" || strings.ContainsAny(host, " /\\\r\n\t") || number < 1 || number > 65535 { throw new ConfigurationError("GHI_DDD_ADDR requires host:port with port 1..65535") }
+	} catch err GoError { throw new ConfigurationError("GHI_DDD_ADDR requires host:port with port 1..65535") }
+	if settings.Database == "" { settings.Database = "ddd-tasks.db" }
+	if strings.TrimSpace(settings.Database) != settings.Database || strings.ContainsAny(settings.Database, "\r\n\x00?") { throw new ConfigurationError("GHI_DDD_DB must be a local database path without URI parameters") }
+	if settings.Migrations != "" {
+		try { info := os.Stat(settings.Migrations); if ! info.IsDir() { throw new ConfigurationError("GHI_DDD_MIGRATIONS must be a directory") } } catch err GoError { throw new ConfigurationError("GHI_DDD_MIGRATIONS directory is unavailable") }
+	}
+	if settings.LogLevel == "" { settings.LogLevel = "info" }
+	if settings.LogLevel != "debug" && settings.LogLevel != "info" && settings.LogLevel != "warn" && settings.LogLevel != "error" { throw new ConfigurationError("GHI_DDD_LOG_LEVEL must be debug, info, warn, or error") }
+	settings.ShutdownTimeout = durationSetting(lookup("GHI_DDD_SHUTDOWN_TIMEOUT"), 5 * time.Second, "GHI_DDD_SHUTDOWN_TIMEOUT")
+	settings.RequestTimeout = durationSetting(lookup("GHI_DDD_REQUEST_TIMEOUT"), 15 * time.Second, "GHI_DDD_REQUEST_TIMEOUT")
+	return settings
+}

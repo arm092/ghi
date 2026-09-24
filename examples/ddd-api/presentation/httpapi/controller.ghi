@@ -9,7 +9,7 @@ import io "go:io"
 import strings "go:strings"
 import mime "go:mime"
 import uuid "go:github.com/google/uuid"
-import log "go:log"
+import slog "go:log/slog"
 
 type TaskResponse struct {
 	ID string `json:"id"`
@@ -59,8 +59,9 @@ func guarded(handler func (http.ResponseWriter, * http.Request)) http.HandlerFun
 		} catch err user.ConflictError {
 			failure(w, 409, err.code, "conflict", err.message)
 		} catch err Exception {
-			log.Printf("request failed: %s code=%d message=%s", err.typeName, err.code, err.message)
-			for _, frame := range err.stackTrace { log.Printf("  at %s (%s:%d)", frame.functionName, frame.file, frame.line) }
+			frames := [] map[string] any {}
+			for _, frame := range err.stackTrace { frames = append(frames, map[string] any { "function": frame.functionName, "file": frame.file, "line": frame.line }) }
+			slog.Error("request_failed", "type", err.typeName, "code", err.code, "error", err.message, "stack", frames)
 			failure(w, 500, 500, "internal_error", "An internal error occurred")
 		}
 	}
@@ -104,9 +105,17 @@ class TaskController {
 	private service tasks.Service
 	constructor(service tasks.Service) { this.service = service }
 	public func List(w http.ResponseWriter, r * http.Request) {
+		limit, offset := pagination(w, r)
 		result := [] TaskResponse {}
-		for _, item := range this.service.List(r.Context()) { result = append(result, response(item)) }
+		for _, item := range this.service.Page(r.Context(), limit, offset) { result = append(result, response(item)) }
 		send(w, 200, result)
+	}
+	public func CreateBatch(w http.ResponseWriter, r * http.Request) {
+		var input struct { Titles[] string `json:"titles"` }
+		decodeBody(w, r, & input)
+		result := [] TaskResponse {}
+		for _, item := range this.service.CreateBatch(r.Context(), input.Titles) { result = append(result, response(item)) }
+		send(w, 201, result)
 	}
 	public func Create(w http.ResponseWriter, r * http.Request) {
 		var input struct { Title string `json:"title"`; AssigneeID string `json:"assignee_id"` }

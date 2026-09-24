@@ -1,0 +1,19 @@
+namespace tests.unit
+import testing "go:testing"
+import time "go:time"
+import config "infrastructure.config"
+
+func TestConfigurationValidation(t * testing.T) {
+	defaults := config.Load(func (name string) string { return "" })
+	if defaults.Address != "127.0.0.1:8081" || defaults.RequestTimeout != 15 * time.Second || defaults.ShutdownTimeout != 5 * time.Second { t.Fatal("unexpected configuration defaults") }
+	for _, entry := range[] struct { Key string; Value string } {
+		{ "GHI_DDD_ADDR", "localhost" }, { "GHI_DDD_ADDR", "localhost:70000" }, { "GHI_DDD_ADDR", "bad host:80" },
+		{ "GHI_DDD_DB", "   " }, { "GHI_DDD_DB", "file:db?mode=memory" }, { "GHI_DDD_LOG_LEVEL", "trace" },
+		{ "GHI_DDD_REQUEST_TIMEOUT", "bad" }, { "GHI_DDD_REQUEST_TIMEOUT", "0s" }, { "GHI_DDD_SHUTDOWN_TIMEOUT", "2m" },
+		{ "GHI_DDD_MIGRATIONS", "nonexistent-migration-folder" },
+	} {
+		rejected := false
+		try { config.Load(func (name string) string { if name == entry.Key { return entry.Value }; return "" }) } catch err config.ConfigurationError { rejected = true }
+		if ! rejected { t.Fatalf("accepted invalid setting %s=%s", entry.Key, entry.Value) }
+	}
+}

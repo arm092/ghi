@@ -22,6 +22,7 @@ class MemoryUsers implements user.Repository {
 		return items
 	}
 	public func Delete(ctx context.Context, id string) { delete(this.items, id) }
+	public func Page(ctx context.Context, limit int, offset int) [] user.User { items := this.List(ctx); if offset >= len(items) { return[] user.User {} }; end := offset + limit; if end > len(items) { end = len(items) }; return items[offset: end] }
 }
 
 func TestUserValidationIsAtomic(t * testing.T) {

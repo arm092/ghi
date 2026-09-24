@@ -14,8 +14,9 @@ class UserController {
 	private service users.Service
 	constructor(service users.Service) { this.service = service }
 	public func List(w http.ResponseWriter, r * http.Request) {
+		limit, offset := pagination(w, r)
 		result := [] UserResponse {}
-		for _, item := range this.service.List(r.Context()) { result = append(result, userResponse(item)) }
+		for _, item := range this.service.Page(r.Context(), limit, offset) { result = append(result, userResponse(item)) }
 		send(w, 200, result)
 	}
 	public func Create(w http.ResponseWriter, r * http.Request) {

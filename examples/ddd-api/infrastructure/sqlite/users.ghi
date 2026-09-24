@@ -37,7 +37,11 @@ class UserRepository implements user.Repository {
 		return new user.User(storedID, name, email)
 	}
 	public func List(ctx context.Context) [] user.User {
-		rows := this.db.QueryContext(ctx, "SELECT id, name, email FROM users ORDER BY rowid")
+		return this.Page(ctx, 100, 0)
+	}
+	public func Page(ctx context.Context, limit int, offset int) [] user.User {
+		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 { throw new user.ValidationError("invalid pagination bounds") }
+		rows := this.db.QueryContext(ctx, "SELECT id, name, email FROM users ORDER BY rowid LIMIT ? OFFSET ?", limit, offset)
 		defer rows.Close()
 		items := [] user.User {}
 		for rows.Next() {

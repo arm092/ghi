@@ -18,5 +18,6 @@ class Service {
 	}
 	public func Get(ctx context.Context, id string) user.User { return this.repository.Find(ctx, id) }
 	public func List(ctx context.Context) [] user.User { return this.repository.List(ctx) }
+	public func Page(ctx context.Context, limit int, offset int) [] user.User { return this.repository.Page(ctx, limit, offset) }
 	public func Delete(ctx context.Context, id string) { this.repository.Delete(ctx, id) }
 }

@@ -35,6 +35,14 @@ class Service {
 	}
 
 	public func Get(ctx context.Context, id string) task.Task { return this.repository.Find(ctx, id) }
+	public func CreateBatch(ctx context.Context, titles[] string) [] task.Task {
+		if len(titles) < 1 || len(titles) > 100 { throw new task.ValidationError("batch requires between 1 and 100 titles") }
+		items := [] task.Task {}
+		for _, title := range titles { items = append(items, new task.Task(uuid.NewString(), title)) }
+		this.repository.CreateBatch(ctx, items)
+		return items
+	}
+	public func Page(ctx context.Context, limit int, offset int) [] task.Task { return this.repository.Page(ctx, limit, offset) }
 	public func List(ctx context.Context) [] task.Task { return this.repository.List(ctx) }
 	public func Delete(ctx context.Context, id string) { this.repository.Delete(ctx, id) }
 }

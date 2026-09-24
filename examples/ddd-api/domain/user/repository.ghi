@@ -5,5 +5,6 @@ interface Repository {
 	func Update(ctx context.Context, item User)
 	func Find(ctx context.Context, id string) User
 	func List(ctx context.Context) [] User
+	func Page(ctx context.Context, limit int, offset int) [] User
 	func Delete(ctx context.Context, id string)
 }

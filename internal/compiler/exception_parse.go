@@ -18,6 +18,9 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 	if err != nil {
 		return nil, err
 	}
+	for i := range tokens {
+		tokens[i].Line += baseLine - 1
+	}
 	var out strings.Builder
 	cursor := 0
 	location := func(offset int) string {
@@ -73,7 +76,7 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 		if tokens[begin].Kind != token.LBRACE {
 			return nil, fmt.Errorf("%s:%d: try requires a block", filename, t.Line)
 		}
-		end, err := match(tokens, begin, token.LBRACE, token.RBRACE)
+		end, err := match(filename, tokens, begin, token.LBRACE, token.RBRACE)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +105,7 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 			name, typ := "", ""
 			if kind == "catch" {
 				if tokens[next].Kind != token.IDENT {
-					return nil, fmt.Errorf("catch requires a variable and exception type")
+					return nil, fmt.Errorf("%s:%d: catch requires a variable and exception type", filename, tokens[next].Line)
 				}
 				name = tokens[next].Text
 				next++
@@ -112,13 +115,13 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 				}
 				typ = strings.TrimSpace(string(source[tokens[typeStart].Start:tokens[next].Start]))
 				if typ == "" {
-					return nil, fmt.Errorf("catch requires an exception type")
+					return nil, fmt.Errorf("%s:%d: catch requires an exception type", filename, tokens[typeStart].Line)
 				}
 			}
 			if tokens[next].Kind != token.LBRACE {
-				return nil, fmt.Errorf("%s requires a block", kind)
+				return nil, fmt.Errorf("%s:%d: %s requires a block", filename, tokens[next].Line, kind)
 			}
-			end, err = match(tokens, next, token.LBRACE, token.RBRACE)
+			end, err = match(filename, tokens, next, token.LBRACE, token.RBRACE)
 			if err != nil {
 				return nil, err
 			}
@@ -135,7 +138,7 @@ func normalizeExceptionsAt(filename string, source []byte, baseLine int) ([]byte
 			last = end
 		}
 		if len(handlers) == 0 && !hasFinally {
-			return nil, fmt.Errorf("try requires catch or finally")
+			return nil, fmt.Errorf("%s:%d: try requires catch or finally", filename, t.Line)
 		}
 		catcher := "nil"
 		if len(handlers) > 0 {

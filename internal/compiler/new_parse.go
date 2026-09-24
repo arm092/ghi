@@ -29,7 +29,7 @@ func normalizeNew(filename string, source []byte, tokens []lexeme) ([]byte, erro
 			j += 2
 		}
 		if j < len(tokens) && tokens[j].Kind == token.LBRACK {
-			end, err := match(tokens, j, token.LBRACK, token.RBRACK)
+			end, err := match(filename, tokens, j, token.LBRACK, token.RBRACK)
 			if err != nil {
 				return nil, err
 			}

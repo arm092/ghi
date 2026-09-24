@@ -1,0 +1,24 @@
+namespace tests.integration
+import testing "go:testing"
+import bytes "go:bytes"
+import json "go:encoding/json"
+import slog "go:log/slog"
+import httptest "go:net/http/httptest"
+import filepath "go:path/filepath"
+import sqlite "infrastructure.sqlite"
+import tasks "application.tasks"
+import users "application.users"
+import httpapi "presentation.httpapi"
+
+func TestStructuredRequestLog(t * testing.T) {
+	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "logging.db")); defer repository.Close()
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(& output, nil))
+	router := httpapi.NewRouter(new tasks.Service(repository, repository.Users()), new users.Service(repository.Users()), logger)
+	request := httptest.NewRequest("GET", "/health", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	var record struct { Msg string; Method string; Path string; Status int; RequestID string `json:"request_id"` }
+	json.NewDecoder(& output).Decode(& record)
+	if record.Msg != "http_request" || record.Method != "GET" || record.Path != "/health" || record.Status != 200 || record.RequestID == "" { t.Fatalf("missing structured request fields: %#v", record) }
+}

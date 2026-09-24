@@ -24,6 +24,9 @@ jobs:
           cache: false
       - run: go test ./...
       - run: go vet ./...
+      - name: Fuzz malformed Ghi syntax
+        if: runner.os == 'Linux'
+        run: go test ./internal/compiler -run '^$' -fuzz '^FuzzParseFile$' -fuzztime=20s -parallel=2
       - name: Install Task API dependencies with Mojave
         working-directory: examples/task-api
         run: go run ../../cmd/mojave install
@@ -147,9 +150,9 @@ jobs:
         with:
           name: ghi-distributions
           path: dist
-      - name: Publish preview release
+      - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi $TAG" --notes "Ghi compiler and Mojave package manager preview. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed."
+        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi $TAG" --notes "Ghi compiler and Mojave package manager prerelease. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed. This is a pre-1.0 release; see the release notes for changes and compatibility limits."

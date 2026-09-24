@@ -79,7 +79,7 @@ func lexSource(filename string, source []byte) ([]lexeme, error) {
 	return result, first
 }
 
-func match(tokens []lexeme, start int, open, close token.Token) (int, error) {
+func match(filename string, tokens []lexeme, start int, open, close token.Token) (int, error) {
 	depth := 0
 	for i := start; i < len(tokens); i++ {
 		if tokens[i].Kind == open {
@@ -92,7 +92,7 @@ func match(tokens []lexeme, start int, open, close token.Token) (int, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("line %d: unclosed %s", tokens[start].Line, open)
+	return 0, fmt.Errorf("%s:%d: unclosed %s", filename, tokens[start].Line, open)
 }
 
 func erase(data []byte, start, end int) {
@@ -231,7 +231,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 			class.Name = tokens[i].Text
 			i++
 			if tokens[i].Kind == token.LBRACK {
-				close, err := match(tokens, i, token.LBRACK, token.RBRACK)
+				close, err := match(filename, tokens, i, token.LBRACK, token.RBRACK)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -243,17 +243,31 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 				class.TypeParams = tree.Decls[0].(*ast.GenDecl).Specs[0].(*ast.TypeSpec).TypeParams
 				i = close + 1
 			}
+			clauses := map[string]bool{}
 			for tokens[i].Kind != token.LBRACE {
+				if tokens[i].Kind == token.EOF {
+					return nil, nil, fmt.Errorf("%s:%d: expected class body", filename, t.Line)
+				}
 				keyword := tokens[i].Text
+				if keyword != "extends" && keyword != "implements" {
+					return nil, nil, fmt.Errorf("%s:%d: unexpected class clause %s", filename, tokens[i].Line, keyword)
+				}
+				if clauses[keyword] {
+					return nil, nil, fmt.Errorf("%s:%d: duplicate %s clause", filename, tokens[i].Line, keyword)
+				}
+				clauses[keyword] = true
 				i++
 				start := i
-				for tokens[i].Kind != token.LBRACE && tokens[i].Kind != token.EOF && tokens[i].Text != "implements" {
+				for tokens[i].Kind != token.LBRACE && tokens[i].Kind != token.EOF && tokens[i].Text != "implements" && tokens[i].Text != "extends" {
 					i++
 				}
 				if tokens[i].Kind == token.EOF {
 					return nil, nil, fmt.Errorf("%s:%d: expected class body", filename, t.Line)
 				}
 				value := strings.TrimSpace(string(source[tokens[start].Start:tokens[i].Start]))
+				if value == "" {
+					return nil, nil, fmt.Errorf("%s:%d: %s requires a type name", filename, tokens[start].Line, keyword)
+				}
 				switch keyword {
 				case "extends":
 					class.ParentName = value
@@ -265,7 +279,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 					return nil, nil, fmt.Errorf("%s:%d: unexpected class clause %s", filename, t.Line, keyword)
 				}
 			}
-			close, err := match(tokens, i, token.LBRACE, token.RBRACE)
+			close, err := match(filename, tokens, i, token.LBRACE, token.RBRACE)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -284,7 +298,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 		if depth == 0 && t.Kind == token.FUNC && i+2 < len(tokens) && tokens[i+1].Kind == token.IDENT {
 			open := i + 2
 			if tokens[open].Kind == token.LBRACK {
-				close, err := match(tokens, open, token.LBRACK, token.RBRACK)
+				close, err := match(filename, tokens, open, token.LBRACK, token.RBRACK)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -293,7 +307,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 			if tokens[open].Kind != token.LPAREN {
 				continue
 			}
-			close, err := match(tokens, open, token.LPAREN, token.RPAREN)
+			close, err := match(filename, tokens, open, token.LPAREN, token.RPAREN)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -353,7 +367,7 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			if tokens[i].Kind != token.LPAREN {
 				return fmt.Errorf("%s:%d: expected parameter list", filename, first.Line)
 			}
-			close, err := match(tokens, i, token.LPAREN, token.RPAREN)
+			close, err := match(filename, tokens, i, token.LPAREN, token.RPAREN)
 			if err != nil {
 				return err
 			}
@@ -373,7 +387,7 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 				if tokens[i].Kind != token.LBRACE {
 					return fmt.Errorf("%s:%d: expected method body", filename, first.Line)
 				}
-				bodyEnd, err := match(tokens, i, token.LBRACE, token.RBRACE)
+				bodyEnd, err := match(filename, tokens, i, token.LBRACE, token.RBRACE)
 				if err != nil {
 					return err
 				}

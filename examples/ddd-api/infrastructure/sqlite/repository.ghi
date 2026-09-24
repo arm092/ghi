@@ -13,29 +13,19 @@ func constraintFailure(cause error) bool {
 	return errors.As(cause, & failure) && failure.Code() & 255 == 19
 }
 
-func initializeSchema(db * sql.DB) {
-	db.Exec("PRAGMA foreign_keys = ON")
-	db.Exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE)")
-	db.Exec("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)), assignee_id TEXT REFERENCES users(id) ON DELETE RESTRICT)")
-	rows := db.Query("SELECT name FROM pragma_table_info('tasks') WHERE name = 'assignee_id'")
-	present := rows.Next()
-	rows.Close()
-	rows.Err()
-	if ! present { db.Exec("ALTER TABLE tasks ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE RESTRICT") }
-}
-
 class Repository implements task.Repository {
 	private db * sql.DB
 
-	constructor(path string) {
+	constructor(path string, migrations string = "") {
 		separator := "?"
 		if strings.Contains(path, "?") { separator = "&" }
-		this.db = sql.Open("sqlite", path + separator + "_pragma=foreign_keys(1)")
+		this.db = sql.Open("sqlite", path + separator + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 		this.db.SetMaxOpenConns(1)
 		this.db.SetMaxIdleConns(1)
 		try {
-			initializeSchema(this.db)
-		} catch err GoError {
+			if migrations == "" { migrations = MigrationDirectory() }
+			initializeSchema(this.db, migrations)
+		} catch err Exception {
 			this.db.Close()
 			throw err
 		}
@@ -49,6 +39,19 @@ class Repository implements task.Repository {
 			this.db.ExecContext(ctx, "INSERT INTO tasks (id, title, completed, assignee_id) VALUES (?, ?, ?, NULLIF(?, ''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId())
 		} catch err GoError {
 			if constraintFailure(err.cause) { throw new task.ValidationError("task ID already exists or assignee does not exist") }
+			throw err
+		}
+	}
+
+	public func CreateBatch(ctx context.Context, items[] task.Task) {
+		if len(items) < 1 || len(items) > 100 { throw new task.ValidationError("batch requires between 1 and 100 tasks") }
+		tx := this.db.BeginTx(ctx, nil)
+		defer rollback(tx)
+		try {
+			for _, item := range items { tx.ExecContext(ctx, "INSERT INTO tasks(id,title,completed,assignee_id) VALUES (?,?,?,NULLIF(?,''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId()) }
+			tx.Commit()
+		} catch err GoError {
+			if constraintFailure(err.cause) { throw new task.ValidationError("batch contains duplicate task IDs or invalid assignees") }
 			throw err
 		}
 	}
@@ -78,7 +81,11 @@ class Repository implements task.Repository {
 	}
 
 	public func List(ctx context.Context) [] task.Task {
-		rows := this.db.QueryContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks ORDER BY rowid")
+		return this.Page(ctx, 100, 0)
+	}
+	public func Page(ctx context.Context, limit int, offset int) [] task.Task {
+		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 { throw new task.ValidationError("invalid pagination bounds") }
+		rows := this.db.QueryContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks ORDER BY rowid LIMIT ? OFFSET ?", limit, offset)
 		defer rows.Close()
 		items := [] task.Task {}
 		for rows.Next() {

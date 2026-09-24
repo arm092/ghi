@@ -4,8 +4,10 @@ import context "go:context"
 
 interface Repository {
 	func Create(ctx context.Context, item Task)
+	func CreateBatch(ctx context.Context, items[] Task)
 	func Update(ctx context.Context, item Task)
 	func Find(ctx context.Context, id string) Task
 	func List(ctx context.Context) [] Task
+	func Page(ctx context.Context, limit int, offset int) [] Task
 	func Delete(ctx context.Context, id string)
 }

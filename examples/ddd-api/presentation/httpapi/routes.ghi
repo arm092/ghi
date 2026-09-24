@@ -6,16 +6,19 @@ import http "go:net/http"
 import time "go:time"
 import chi "go:github.com/go-chi/chi/v5"
 import middleware "go:github.com/go-chi/chi/v5/middleware"
+import slog "go:log/slog"
 
-func NewRouter(service tasks.Service, usersService users.Service) http.Handler {
+func NewRouter(service tasks.Service, usersService users.Service, logger * slog.Logger = nil, requestTimeout time.Duration = 15000000000) http.Handler {
+	if logger == nil { logger = slog.Default() }
 	controller := new TaskController(service)
 	userController := new UserController(usersService)
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID, middleware.Recoverer, middleware.Timeout(15 * time.Second))
+	router.Use(middleware.RequestID, requestLog(logger), middleware.Recoverer, middleware.Timeout(requestTimeout))
 	router.Get("/health", guarded(func (w http.ResponseWriter, r * http.Request) { send(w, 200, map[string] string { "status": "ok" }) }))
 	router.Route("/api/v1/tasks", func (routes chi.Router) {
 			routes.Get("/", guarded(controller.List))
 			routes.Post("/", guarded(controller.Create))
+			routes.Post("/batch", guarded(controller.CreateBatch))
 			routes.Route("/{taskID}", func (item chi.Router) {
 					item.Get("/", guarded(func (w http.ResponseWriter, r * http.Request) { controller.Get(w, r, chi.URLParam(r, "taskID")) }))
 					item.Put("/", guarded(func (w http.ResponseWriter, r * http.Request) { controller.Replace(w, r, chi.URLParam(r, "taskID")) }))
