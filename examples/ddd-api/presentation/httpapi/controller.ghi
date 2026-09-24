@@ -2,6 +2,7 @@ namespace presentation.httpapi
 
 import tasks "application.tasks"
 import task "domain.task"
+import user "domain.user"
 import http "go:net/http"
 import json "go:encoding/json"
 import io "go:io"
@@ -14,10 +15,12 @@ type TaskResponse struct {
 	ID string `json:"id"`
 	Title string `json:"title"`
 	Completed bool `json:"completed"`
+	AssigneeID string `json:"assignee_id,omitempty"`
 }
 type TaskInput struct {
 	Title string `json:"title"`
 	Completed bool `json:"completed"`
+	AssigneeID string `json:"assignee_id"`
 }
 type ErrorDetail struct {
 	Code int `json:"code"`
@@ -30,7 +33,7 @@ class RequestError extends Exception {
 }
 
 func response(item task.Task) TaskResponse {
-	return TaskResponse { ID: item.Id(), Title: item.Title(), Completed: item.IsCompleted() }
+	return TaskResponse { ID: item.Id(), Title: item.Title(), Completed: item.IsCompleted(), AssigneeID: item.AssigneeId() }
 }
 func send(w http.ResponseWriter, status int, payload any) {
 	body := json.Marshal(payload)
@@ -49,6 +52,12 @@ func guarded(handler func (http.ResponseWriter, * http.Request)) http.HandlerFun
 			failure(w, 422, err.code, "validation_error", err.message)
 		} catch err task.NotFoundError {
 			failure(w, 404, err.code, "not_found", err.message)
+		} catch err user.ValidationError {
+			failure(w, 422, err.code, "validation_error", err.message)
+		} catch err user.NotFoundError {
+			failure(w, 404, err.code, "not_found", err.message)
+		} catch err user.ConflictError {
+			failure(w, 409, err.code, "conflict", err.message)
 		} catch err Exception {
 			log.Printf("request failed: %s code=%d message=%s", err.typeName, err.code, err.message)
 			for _, frame := range err.stackTrace { log.Printf("  at %s (%s:%d)", frame.functionName, frame.file, frame.line) }
@@ -86,6 +95,10 @@ func decodeBody(w http.ResponseWriter, r * http.Request, target any) {
 func taskID(value string) string {
 	try { id := uuid.Parse(value); return id.String() } catch err GoError { throw new RequestError("Invalid task ID") }
 }
+func assigneeID(value string) string {
+	if value == "" { return "" }
+	try { id := uuid.Parse(value); return id.String() } catch err GoError { throw new RequestError("Invalid assignee ID") }
+}
 
 class TaskController {
 	private service tasks.Service
@@ -96,9 +109,9 @@ class TaskController {
 		send(w, 200, result)
 	}
 	public func Create(w http.ResponseWriter, r * http.Request) {
-		var input struct { Title string `json:"title"` }
+		var input struct { Title string `json:"title"`; AssigneeID string `json:"assignee_id"` }
 		decodeBody(w, r, & input)
-		item := this.service.Create(r.Context(), input.Title)
+		item := this.service.Create(r.Context(), input.Title, assigneeID(input.AssigneeID))
 		w.Header().Set("Location", "/api/v1/tasks/" + item.Id())
 		send(w, 201, response(item))
 	}
@@ -108,7 +121,7 @@ class TaskController {
 	public func Replace(w http.ResponseWriter, r * http.Request, id string) {
 		var input TaskInput
 		decodeBody(w, r, & input)
-		send(w, 200, response(this.service.Replace(r.Context(), taskID(id), input.Title, input.Completed)))
+		send(w, 200, response(this.service.Replace(r.Context(), taskID(id), input.Title, input.Completed, assigneeID(input.AssigneeID))))
 	}
 	public func Delete(w http.ResponseWriter, r * http.Request, id string) {
 		this.service.Delete(r.Context(), taskID(id))

@@ -1,0 +1,45 @@
+namespace domain.user
+
+import strings "go:strings"
+import utf8 "go:unicode/utf8"
+import mail "go:net/mail"
+
+class ValidationError extends Exception { constructor(message string) { parent(message, 2001) } }
+class NotFoundError extends Exception { constructor(id string) { parent("user " + id + " was not found", 2002) } }
+class ConflictError extends Exception { constructor(message string) { parent(message, 2003) } }
+
+func normalizedName(name string) string {
+	name = strings.TrimSpace(name)
+	if utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 {
+		throw new ValidationError("name must contain between 1 and 100 characters")
+	}
+	return name
+}
+func normalizedEmail(email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if len(email) > 254 { throw new ValidationError("email is too long") }
+	try {
+		parsed := mail.ParseAddress(email)
+		if parsed.Address != email { throw new ValidationError("email must be a plain email address") }
+	} catch err GoError { throw new ValidationError("email must be a valid email address") }
+	return email
+}
+class User {
+	private id string
+	private name string
+	private email string
+	constructor(id string, name string, email string) {
+		this.id = id
+		this.name = normalizedName(name)
+		this.email = normalizedEmail(email)
+	}
+	public func Id() string { return this.id }
+	public func Name() string { return this.name }
+	public func Email() string { return this.email }
+	public func Replace(name string, email string) {
+		validName := normalizedName(name)
+		validEmail := normalizedEmail(email)
+		this.name = validName
+		this.email = validEmail
+	}
+}

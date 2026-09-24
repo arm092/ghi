@@ -24,16 +24,20 @@ class Task {
 	private id string
 	private title string
 	private completed bool
+	private assigneeID string
 
-	constructor(id string, title string, completed bool = false) {
+	constructor(id string, title string, completed bool = false, assigneeID string = "") {
 		this.id = id
 		this.title = normalizeTitle(title)
 		this.completed = completed
+		this.assigneeID = assigneeID
 	}
 
 	public func Id() string { return this.id }
 	public func Title() string { return this.title }
 	public func IsCompleted() bool { return this.completed }
+	public func AssigneeId() string { return this.assigneeID }
+	public func Assign(assigneeID string) { this.assigneeID = assigneeID }
 
 	public func Rename(title string) { this.title = normalizeTitle(title) }
 	public func SetCompleted(completed bool) { this.completed = completed }

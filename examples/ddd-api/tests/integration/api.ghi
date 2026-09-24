@@ -12,13 +12,19 @@ import io "go:io"
 import uuid "go:github.com/google/uuid"
 import sqlite "infrastructure.sqlite"
 import tasks "application.tasks"
+import users "application.users"
 import httpapi "presentation.httpapi"
 import task "domain.task"
+
+func routerFor(repository sqlite.Repository) http.Handler {
+	return httpapi.NewRouter(new tasks.Service(repository, repository.Users()), new users.Service(repository.Users()))
+}
 
 type taskResponse struct {
 	ID string
 	Title string
 	Completed bool
+	AssigneeID string `json:"assignee_id"`
 }
 
 type errorResponse struct {
@@ -63,7 +69,7 @@ func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.db")
 	repository := new sqlite.Repository(path)
 	defer repository.Close()
-	server := httptest.NewServer(httpapi.NewRouter(new tasks.Service(repository)))
+	server := httptest.NewServer(routerFor(repository))
 	defer server.Close()
 	client := server.Client()
 	health := send(t, client, "GET", server.URL + "/health", "", 200)
@@ -88,7 +94,7 @@ func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
 
 	reopened := new sqlite.Repository(path)
 	defer reopened.Close()
-	restarted := httptest.NewServer(httpapi.NewRouter(new tasks.Service(reopened)))
+	restarted := httptest.NewServer(routerFor(reopened))
 	defer restarted.Close()
 	url = restarted.URL + "/api/v1/tasks/" + created.ID
 	found = decodeTask(send(t, restarted.Client(), "GET", url, "", 200))
@@ -105,7 +111,7 @@ func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
 func TestValidationRequestLimitsAndSQLBinding(t * testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "validation.db"))
 	defer repository.Close()
-	router := httpapi.NewRouter(new tasks.Service(repository))
+	router := routerFor(repository)
 	cases := [] struct { Method string; Path string; Body string; Status int } {
 		{ "POST", "/api/v1/tasks", `{"title":"   "}`, 422 },
 		{ "POST", "/api/v1/tasks", `{"title":"` + strings.Repeat("a", 201) + `"}`, 422 },

@@ -1,6 +1,7 @@
 namespace main
 
 import tasks "application.tasks"
+import users "application.users"
 import sqlite "infrastructure.sqlite"
 import httpapi "presentation.httpapi"
 import http "go:net/http"
@@ -19,8 +20,9 @@ func main() {
 	if address == "" { address = "127.0.0.1:8081" }
 	repository := new sqlite.Repository(path)
 	defer repository.Close()
-	service := new tasks.Service(repository)
-	server := & http.Server { Addr: address, Handler: httpapi.NewRouter(service), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second }
+	userRepository := repository.Users()
+	service := new tasks.Service(repository, userRepository)
+	server := & http.Server { Addr: address, Handler: httpapi.NewRouter(service, new users.Service(userRepository)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second }
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutdownDone := make(chan struct {})

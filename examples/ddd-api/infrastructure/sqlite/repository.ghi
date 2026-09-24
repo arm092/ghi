@@ -3,17 +3,38 @@ namespace infrastructure.sqlite
 import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
-import _ "go:modernc.org/sqlite"
+import driver "go:modernc.org/sqlite"
+import strings "go:strings"
 import task "domain.task"
+import user "domain.user"
+
+func constraintFailure(cause error) bool {
+	var failure * driver.Error
+	return errors.As(cause, & failure) && failure.Code() & 255 == 19
+}
+
+func initializeSchema(db * sql.DB) {
+	db.Exec("PRAGMA foreign_keys = ON")
+	db.Exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE)")
+	db.Exec("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)), assignee_id TEXT REFERENCES users(id) ON DELETE RESTRICT)")
+	rows := db.Query("SELECT name FROM pragma_table_info('tasks') WHERE name = 'assignee_id'")
+	present := rows.Next()
+	rows.Close()
+	rows.Err()
+	if ! present { db.Exec("ALTER TABLE tasks ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE RESTRICT") }
+}
 
 class Repository implements task.Repository {
 	private db * sql.DB
 
 	constructor(path string) {
-		this.db = sql.Open("sqlite", path)
+		separator := "?"
+		if strings.Contains(path, "?") { separator = "&" }
+		this.db = sql.Open("sqlite", path + separator + "_pragma=foreign_keys(1)")
 		this.db.SetMaxOpenConns(1)
+		this.db.SetMaxIdleConns(1)
 		try {
-			this.db.Exec("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)))")
+			initializeSchema(this.db)
 		} catch err GoError {
 			this.db.Close()
 			throw err
@@ -21,39 +42,52 @@ class Repository implements task.Repository {
 	}
 
 	public func Close() { this.db.Close() }
+	public func Users() user.Repository { return new UserRepository(this.db) }
 
 	public func Create(ctx context.Context, item task.Task) {
-		this.db.ExecContext(ctx, "INSERT INTO tasks (id, title, completed) VALUES (?, ?, ?)", item.Id(), item.Title(), item.IsCompleted())
+		try {
+			this.db.ExecContext(ctx, "INSERT INTO tasks (id, title, completed, assignee_id) VALUES (?, ?, ?, NULLIF(?, ''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId())
+		} catch err GoError {
+			if constraintFailure(err.cause) { throw new task.ValidationError("task ID already exists or assignee does not exist") }
+			throw err
+		}
 	}
 
 	public func Update(ctx context.Context, item task.Task) {
-		result := this.db.ExecContext(ctx, "UPDATE tasks SET title = ?, completed = ? WHERE id = ?", item.Title(), item.IsCompleted(), item.Id())
-		if result.RowsAffected() == 0 { throw new task.NotFoundError(item.Id()) }
+		try {
+			result := this.db.ExecContext(ctx, "UPDATE tasks SET title = ?, completed = ?, assignee_id = NULLIF(?, '') WHERE id = ?", item.Title(), item.IsCompleted(), item.AssigneeId(), item.Id())
+			if result.RowsAffected() == 0 { throw new task.NotFoundError(item.Id()) }
+		} catch err GoError {
+			if constraintFailure(err.cause) { throw new task.ValidationError("assignee does not exist") }
+			throw err
+		}
 	}
 
 	public func Find(ctx context.Context, id string) task.Task {
 		var storedID string
 		var title string
 		var completed bool
+		var assigneeID string
 		try {
-			this.db.QueryRowContext(ctx, "SELECT id, title, completed FROM tasks WHERE id = ?", id).Scan(& storedID, & title, & completed)
+			this.db.QueryRowContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks WHERE id = ?", id).Scan(& storedID, & title, & completed, & assigneeID)
 		} catch err GoError {
 			if errors.Is(err.cause, sql.ErrNoRows) { throw new task.NotFoundError(id) }
 			throw err
 		}
-		return new task.Task(storedID, title, completed)
+		return new task.Task(storedID, title, completed, assigneeID)
 	}
 
 	public func List(ctx context.Context) [] task.Task {
-		rows := this.db.QueryContext(ctx, "SELECT id, title, completed FROM tasks ORDER BY rowid")
+		rows := this.db.QueryContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks ORDER BY rowid")
 		defer rows.Close()
 		items := [] task.Task {}
 		for rows.Next() {
 			var id string
 			var title string
 			var completed bool
-			rows.Scan(& id, & title, & completed)
-			items = append(items, new task.Task(id, title, completed))
+			var assigneeID string
+			rows.Scan(& id, & title, & completed, & assigneeID)
+			items = append(items, new task.Task(id, title, completed, assigneeID))
 		}
 		rows.Err()
 		return items

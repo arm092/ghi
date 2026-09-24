@@ -45,7 +45,7 @@ func TestServiceValidatesBeforePersistence(t * testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	repository := new MemoryRepository()
-	service := new tasks.Service(repository)
+	service := new tasks.Service(repository, new MemoryUsers())
 	item := service.Create(ctx, "  first task  ")
 	parsed := uuid.Parse(item.Id())
 	if parsed.Version() != 4 || item.Title() != "first task" || item.IsCompleted() {

@@ -1,0 +1,22 @@
+namespace application.users
+import context "go:context"
+import uuid "go:github.com/google/uuid"
+import user "domain.user"
+class Service {
+	private repository user.Repository
+	constructor(repository user.Repository) { this.repository = repository }
+	public func Create(ctx context.Context, name string, email string) user.User {
+		item := new user.User(uuid.NewString(), name, email)
+		this.repository.Create(ctx, item)
+		return item
+	}
+	public func Replace(ctx context.Context, id string, name string, email string) user.User {
+		item := this.repository.Find(ctx, id)
+		item.Replace(name, email)
+		this.repository.Update(ctx, item)
+		return item
+	}
+	public func Get(ctx context.Context, id string) user.User { return this.repository.Find(ctx, id) }
+	public func List(ctx context.Context) [] user.User { return this.repository.List(ctx) }
+	public func Delete(ctx context.Context, id string) { this.repository.Delete(ctx, id) }
+}

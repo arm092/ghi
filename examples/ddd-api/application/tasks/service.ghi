@@ -3,22 +3,33 @@ namespace application.tasks
 import context "go:context"
 import uuid "go:github.com/google/uuid"
 import task "domain.task"
+import user "domain.user"
 
 class Service {
 	private repository task.Repository
+	private users user.Repository
 
-	constructor(repository task.Repository) { this.repository = repository }
+	constructor(repository task.Repository, users user.Repository) { this.repository = repository; this.users = users }
+	private func ValidateAssignee(ctx context.Context, id string) {
+		if id == "" { return }
+		try { this.users.Find(ctx, id) } catch err user.NotFoundError {
+			throw new task.ValidationError("assignee does not exist")
+		}
+	}
 
-	public func Create(ctx context.Context, title string) task.Task {
-		item := new task.Task(uuid.NewString(), title)
+	public func Create(ctx context.Context, title string, assigneeID string = "") task.Task {
+		this.ValidateAssignee(ctx, assigneeID)
+		item := new task.Task(uuid.NewString(), title, false, assigneeID)
 		this.repository.Create(ctx, item)
 		return item
 	}
 
-	public func Replace(ctx context.Context, id string, title string, completed bool) task.Task {
+	public func Replace(ctx context.Context, id string, title string, completed bool, assigneeID string = "") task.Task {
 		item := this.repository.Find(ctx, id)
+		this.ValidateAssignee(ctx, assigneeID)
 		item.Rename(title)
 		item.SetCompleted(completed)
+		item.Assign(assigneeID)
 		this.repository.Update(ctx, item)
 		return item
 	}

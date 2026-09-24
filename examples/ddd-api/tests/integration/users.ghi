@@ -1,0 +1,104 @@
+namespace tests.integration
+import testing "go:testing"
+import context "go:context"
+import sql "go:database/sql"
+import filepath "go:path/filepath"
+import httptest "go:net/http/httptest"
+import http "go:net/http"
+import json "go:encoding/json"
+import sqlite "infrastructure.sqlite"
+import user "domain.user"
+import task "domain.task"
+
+type userResponse struct { ID string; Name string; Email string }
+func decodeUser(response * http.Response) userResponse {
+	defer response.Body.Close()
+	var item userResponse
+	json.NewDecoder(response.Body).Decode(& item)
+	return item
+}
+
+func TestUserCRUDAndTaskAssignments(t * testing.T) {
+	path := filepath.Join(t.TempDir(), "linked.db")
+	repository := new sqlite.Repository(path)
+	defer repository.Close()
+	server := httptest.NewServer(routerFor(repository))
+	defer server.Close()
+	client := server.Client()
+	usersURL := server.URL + "/api/v1/users"
+	tasksURL := server.URL + "/api/v1/tasks"
+	person := decodeUser(send(t, client, "POST", usersURL, `{"name":" Ani ","email":" ANI@EXAMPLE.COM "}`, 201))
+	if person.Name != "Ani" || person.Email != "ani@example.com" { t.Fatalf("normalization: %#v", person) }
+	personURL := usersURL + "/" + person.ID
+	found := decodeUser(send(t, client, "GET", personURL, "", 200))
+	if found.ID != person.ID { t.Fatal("user not found after create") }
+	listed := send(t, client, "GET", usersURL, "", 200)
+	var people[] userResponse
+	json.NewDecoder(listed.Body).Decode(& people)
+	listed.Body.Close()
+	if len(people) != 1 || people[0].ID != person.ID { t.Fatal("user list lost created user") }
+	requireError(t, send(t, client, "POST", usersURL, `{"name":"Duplicate","email":"ANI@example.com"}`, 409), 2003, "conflict")
+	requireError(t, send(t, client, "POST", usersURL, `{"name":"","email":"bad"}`, 422), 2001, "validation_error")
+	updated := decodeUser(send(t, client, "PUT", personURL, `{"name":"Anna","email":"anna@example.com"}`, 200))
+	if updated.ID != person.ID || updated.Name != "Anna" || updated.Email != "anna@example.com" { t.Fatal("user replacement lost identity or state") }
+	second := decodeUser(send(t, client, "POST", usersURL, `{"name":"Second","email":"second@example.com"}`, 201))
+	requireError(t, send(t, client, "PUT", usersURL + "/" + second.ID, `{"name":"Overwrite","email":"anna@example.com"}`, 409), 2003, "conflict")
+	if repository.Users().Find(context.Background(), second.ID).Email() != "second@example.com" { t.Fatal("conflicting email update changed storage") }
+
+	created := decodeTask(send(t, client, "POST", tasksURL, `{"title":"Assigned","assignee_id":"` + person.ID + `"}`, 201))
+	if created.AssigneeID != person.ID { t.Fatal("task was not assigned") }
+	requireError(t, send(t, client, "DELETE", personURL, "", 409), 2003, "conflict")
+	requireError(t, send(t, client, "POST", tasksURL, `{"title":"Orphan","assignee_id":"00000000-0000-4000-8000-000000000001"}`, 422), 1001, "validation_error")
+	requireError(t, send(t, client, "POST", tasksURL, `{"title":"Malformed","assignee_id":"bad"}`, 400), 400, "request_error")
+	requireError(t, send(t, client, "PUT", tasksURL + "/" + created.ID, `{"title":"Changed","completed":true,"assignee_id":"00000000-0000-4000-8000-000000000001"}`, 422), 1001, "validation_error")
+	unchanged := repository.Find(context.Background(), created.ID)
+	if unchanged.Title() != "Assigned" || unchanged.IsCompleted() || unchanged.AssigneeId() != person.ID { t.Fatal("invalid reassignment changed persistence") }
+	server.Close()
+	repository.Close()
+
+	reopened := new sqlite.Repository(path)
+	defer reopened.Close()
+	if reopened.Find(context.Background(), created.ID).AssigneeId() != person.ID || reopened.Users().Find(context.Background(), person.ID).Name() != "Anna" { t.Fatal("user/task link did not survive reopening") }
+	restarted := httptest.NewServer(routerFor(reopened))
+	defer restarted.Close()
+	unassigned := decodeTask(send(t, restarted.Client(), "PUT", restarted.URL + "/api/v1/tasks/" + created.ID, `{"title":"Assigned","completed":false}`, 200))
+	if unassigned.AssigneeID != "" { t.Fatal("replacement did not clear assignment") }
+	deleted := send(t, restarted.Client(), "DELETE", restarted.URL + "/api/v1/users/" + person.ID, "", 204)
+	deleted.Body.Close()
+	requireError(t, send(t, restarted.Client(), "GET", restarted.URL + "/api/v1/users/" + person.ID, "", 404), 2002, "not_found")
+	requireError(t, send(t, restarted.Client(), "DELETE", restarted.URL + "/api/v1/users/" + person.ID, "", 404), 2002, "not_found")
+}
+
+func TestLegacyTaskMigrationAndDatabaseLinkGuards(t * testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	old := sql.Open("sqlite", path)
+	old.Exec("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK(completed IN (0,1)))")
+	old.Exec("INSERT INTO tasks(id,title,completed) VALUES ('legacy','Existing task',1)")
+	old.Close()
+	repository := new sqlite.Repository(path)
+	defer repository.Close()
+	item := repository.Find(ctx, "legacy")
+	if item.Title() != "Existing task" || ! item.IsCompleted() || item.AssigneeId() != "" { t.Fatal("migration changed existing task") }
+	people := repository.Users()
+	people.Create(ctx, new user.User("owner", "Owner", "owner@example.com"))
+	item.Assign("owner")
+	repository.Update(ctx, item)
+	rejected := false
+	try { people.Delete(ctx, "owner") } catch err user.ConflictError { rejected = true; if err.code != 2003 { t.Fatal("wrong foreign-key conflict code") } }
+	if ! rejected { t.Fatal("database allowed deleting a referenced user") }
+	rejected = false
+	try { repository.Create(ctx, new task.Task("orphan", "Orphan", false, "absent")) } catch err task.ValidationError { rejected = true }
+	if ! rejected { t.Fatal("database allowed inserting orphan task") }
+	item.Assign("absent")
+	rejected = false
+	try { repository.Update(ctx, item) } catch err task.ValidationError { rejected = true }
+	if ! rejected || repository.Find(ctx, "legacy").AssigneeId() != "owner" { t.Fatal("database accepted invalid task update") }
+	repository.Close()
+	reopened := new sqlite.Repository(path)
+	defer reopened.Close()
+	if reopened.Find(ctx, "legacy").AssigneeId() != "owner" { t.Fatal("migration was not persistent or idempotent") }
+	reopened.Delete(ctx, "legacy")
+	reopened.Users().Delete(ctx, "owner")
+	if len(reopened.Users().List(ctx)) != 0 { t.Fatal("unreferenced user could not be removed") }
+}
