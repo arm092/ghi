@@ -11,7 +11,7 @@ import (
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Mojave – Ghi and Go dependencies\nUsage: mojave add NAMESPACE REPOSITORY [REF]\n       mojave add go:MODULE[@VERSION]\n       mojave install\n       mojave update\n       mojave remove NAMESPACE|go:MODULE\nRun in the directory containing mojave.json. Git REF defaults to HEAD; Go VERSION defaults to latest.")
+		fmt.Println("Mojave – Ghi and Go dependencies\nUsage: mojave add OWNER/PACKAGE REPOSITORY [REF]\n       mojave add NAMESPACE REPOSITORY [REF]\n       mojave add go:MODULE[@VERSION]\n       mojave install\n       mojave update\n       mojave remove OWNER/PACKAGE|NAMESPACE|go:MODULE\nRun in the directory containing mojave.json. Git REF defaults to HEAD; Go VERSION defaults to latest.")
 		return nil
 	}
 	root, e := os.Getwd()
@@ -26,7 +26,7 @@ func run(ctx context.Context, args []string) error {
 			break
 		}
 		if len(args) != 3 && len(args) != 4 {
-			return fmt.Errorf("usage: mojave add NAMESPACE REPOSITORY [REF] or mojave add go:MODULE[@VERSION]")
+			return fmt.Errorf("usage: mojave add OWNER/PACKAGE|NAMESPACE REPOSITORY [REF] or mojave add go:MODULE[@VERSION]")
 		}
 		ref := "HEAD"
 		if len(args) == 4 {
@@ -45,7 +45,7 @@ func run(ctx context.Context, args []string) error {
 		e = mojave.Update(ctx, root)
 	case "remove":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: mojave remove NAMESPACE")
+			return fmt.Errorf("usage: mojave remove OWNER/PACKAGE|NAMESPACE|go:MODULE")
 		}
 		if strings.HasPrefix(args[1], "go:") {
 			e = mojave.RemoveGo(ctx, root, strings.TrimPrefix(args[1], "go:"))

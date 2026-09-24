@@ -123,6 +123,109 @@ func TestTransitiveTagsConflictAndRemove(t *testing.T) {
 	}
 }
 
+func TestQualifiedIdentitiesInstallAndReplay(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	first := repo(t, "arm092.migrations", nil)
+	second := repo(t, "someone.migrations", nil)
+	if e := Add(ctx, root, "arm092/migrations", first, "v1.0.0"); e != nil {
+		t.Fatal(e)
+	}
+	if e := Add(ctx, root, "someone/migrations", second, "v1.0.0"); e != nil {
+		t.Fatal(e)
+	}
+	manifest, e := readManifest(root)
+	if e != nil || len(manifest.Dependencies) != 2 {
+		t.Fatalf("qualified manifest: %v %v", manifest, e)
+	}
+	before, e := os.ReadFile(filepath.Join(root, "mojave.lock"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var lock Lock
+	if e = json.Unmarshal(before, &lock); e != nil || len(lock.Packages) != 2 {
+		t.Fatalf("qualified lock: %v %v", lock, e)
+	}
+	for _, p := range lock.Packages {
+		if p.Identity == "" || p.Namespace != strings.ReplaceAll(p.Identity, "/", ".") {
+			t.Fatalf("identity lost in lock: %+v", p)
+		}
+	}
+	if e = os.RemoveAll(filepath.Join(root, ".ghi", "packages")); e != nil {
+		t.Fatal(e)
+	}
+	if e = Install(ctx, root); e != nil {
+		t.Fatal(e)
+	}
+	after, e := os.ReadFile(filepath.Join(root, "mojave.lock"))
+	if e != nil || string(before) != string(after) {
+		t.Fatal("locked replay changed qualified graph", e)
+	}
+	roots, e := SourceRoots(root)
+	if e != nil || len(roots) != 2 || roots[0].Namespace != "arm092.migrations" || roots[1].Namespace != "someone.migrations" {
+		t.Fatalf("qualified source roots: %v %v", roots, e)
+	}
+	for _, source := range roots {
+		if filepath.Base(source.Path) != source.Namespace {
+			t.Fatalf("unexpected package path: %+v", source)
+		}
+	}
+}
+
+func TestQualifiedTransitiveIdentityAndLegacyCollision(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	leaf := repo(t, "arm092.migrations", nil)
+	parent := repo(t, "vendor.bundle", map[string]Dependency{"arm092/migrations": {Repository: leaf, Ref: "v1.0.0"}})
+	if e := Add(ctx, root, "vendor/bundle", parent, "v1.0.0"); e != nil {
+		t.Fatal(e)
+	}
+	roots, e := SourceRoots(root)
+	if e != nil || len(roots) != 2 || roots[0].Namespace != "arm092.migrations" {
+		t.Fatalf("transitive identity: %v %v", roots, e)
+	}
+	if e = Add(ctx, root, "arm092.migrations", leaf, "v1.0.0"); e == nil || !strings.Contains(e.Error(), "conflict") {
+		t.Fatalf("legacy alias collision accepted: %v", e)
+	}
+	if e = Remove(ctx, root, "vendor/bundle"); e != nil {
+		t.Fatal(e)
+	}
+	if roots, e = SourceRoots(root); e != nil || len(roots) != 0 {
+		t.Fatalf("transitive remove failed: %v %v", roots, e)
+	}
+	if e = Add(ctx, root, "arm092.migrations", leaf, "v1.0.0"); e != nil {
+		t.Fatalf("legacy namespace rejected: %v", e)
+	}
+}
+
+func TestQualifiedIdentityRejectsAmbiguityAndLockTampering(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	library := repo(t, "arm092.migrations", nil)
+	for _, identity := range []string{"arm-092/migrations", "arm092/migrations-more", "arm092/../migrations", "arm092\\migrations", "/migrations", "arm092/", "arm092/migrations/extra"} {
+		if e := Add(ctx, root, identity, library, "v1.0.0"); e == nil || !strings.Contains(e.Error(), "invalid") {
+			t.Fatalf("accepted ambiguous identity %q: %v", identity, e)
+		}
+	}
+	if e := Add(ctx, root, "arm092/migrations", library, "v1.0.0"); e != nil {
+		t.Fatal(e)
+	}
+	if e := Add(ctx, root, "ARM092/migrations", library, "v1.0.0"); e == nil || !strings.Contains(e.Error(), "conflict") {
+		t.Fatalf("case collision accepted: %v", e)
+	}
+	var lock Lock
+	if e := readJSON(filepath.Join(root, "mojave.lock"), &lock); e != nil {
+		t.Fatal(e)
+	}
+	lock.Packages[0].Identity = "someone/migrations"
+	if e := writeJSON(filepath.Join(root, "mojave.lock"), lock); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := SourceRoots(root); e == nil || !strings.Contains(e.Error(), "identity") {
+		t.Fatalf("lock identity tampering accepted: %v", e)
+	}
+}
+
 func TestInvalidInputsAndCancellation(t *testing.T) {
 	p := t.TempDir()
 	if roots, e := SourceRoots(p); e != nil || len(roots) != 0 {

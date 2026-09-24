@@ -27,6 +27,7 @@ type Manifest struct {
 	GoDependencies map[string]string     `json:"goDependencies,omitempty"`
 }
 type LockedPackage struct {
+	Identity       string                `json:"identity,omitempty"`
 	Namespace      string                `json:"namespace"`
 	Repository     string                `json:"repository"`
 	Ref            string                `json:"ref"`
@@ -49,6 +50,7 @@ type SourceRoot struct {
 var namespaceRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 var refRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 var commitRE = regexp.MustCompile(`^[a-f0-9]{40}([a-f0-9]{24})?$`)
+var identityPartRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateName(name string) error {
 	if !namespaceRE.MatchString(name) || strings.EqualFold(strings.Split(name, ".")[0], "main") || strings.EqualFold(strings.Split(name, ".")[0], "ghi") {
@@ -61,6 +63,23 @@ func validateName(name string) error {
 		}
 	}
 	return nil
+}
+func identityNamespace(identity string) (string, error) {
+	if !strings.Contains(identity, "/") {
+		if e := validateName(identity); e != nil {
+			return "", e
+		}
+		return identity, nil
+	}
+	parts := strings.Split(identity, "/")
+	if len(parts) != 2 || !identityPartRE.MatchString(parts[0]) || !identityPartRE.MatchString(parts[1]) {
+		return "", fmt.Errorf("invalid package identity %q: use owner/package with Ghi identifier segments", identity)
+	}
+	namespace := parts[0] + "." + parts[1]
+	if e := validateName(namespace); e != nil {
+		return "", fmt.Errorf("invalid package identity %q: %w", identity, e)
+	}
+	return namespace, nil
 }
 func validateDependency(d Dependency) error {
 	if d.Repository == "" || strings.HasPrefix(d.Repository, "-") || strings.ContainsAny(d.Repository, "\x00\r\n") || strings.Contains(d.Repository, "::") {
@@ -113,7 +132,7 @@ func readManifest(root string) (Manifest, error) {
 		return m, fmt.Errorf("unsupported mojave.json version %d", m.Version)
 	}
 	for name, d := range m.Dependencies {
-		if e = validateName(name); e != nil {
+		if _, e = identityNamespace(name); e != nil {
 			return m, e
 		}
 		if e = validateDependency(d); e != nil {
@@ -154,9 +173,20 @@ func readLock(root string, m Manifest) (Lock, error) {
 		if e = validateName(p.Namespace); e != nil {
 			return l, e
 		}
+		if p.Identity != "" {
+			resolved, e := identityNamespace(p.Identity)
+			if e != nil || !strings.Contains(p.Identity, "/") || resolved != p.Namespace {
+				return l, fmt.Errorf("invalid locked identity %q for namespace %s", p.Identity, p.Namespace)
+			}
+		}
 		key := strings.ToLower(p.Namespace)
 		if seen[key] {
 			return l, fmt.Errorf("duplicate locked namespace %s", p.Namespace)
+		}
+		for other := range seen {
+			if strings.HasPrefix(key, other+".") || strings.HasPrefix(other, key+".") {
+				return l, fmt.Errorf("locked namespace conflict for %s", p.Namespace)
+			}
 		}
 		seen[key] = true
 		if e = validateDependency(Dependency{p.Repository, p.Ref}); e != nil {
@@ -176,15 +206,23 @@ func readLock(root string, m Manifest) (Lock, error) {
 	}
 	visited := map[string]bool{}
 	var visit func(string, Dependency) error
-	visit = func(n string, d Dependency) error {
-		p, ok := packages[n]
-		if !ok || p.Repository != normalizeRepository(root, d.Repository) || p.Ref != d.Ref {
-			return fmt.Errorf("lock dependency mismatch for %s; run mojave update", n)
+	visit = func(identity string, d Dependency) error {
+		namespace, e := identityNamespace(identity)
+		if e != nil {
+			return e
 		}
-		if visited[n] {
+		p, ok := packages[namespace]
+		lockedIdentity := ""
+		if strings.Contains(identity, "/") {
+			lockedIdentity = identity
+		}
+		if !ok || p.Identity != lockedIdentity || p.Repository != normalizeRepository(root, d.Repository) || p.Ref != d.Ref {
+			return fmt.Errorf("lock dependency mismatch for %s; run mojave update", identity)
+		}
+		if visited[namespace] {
 			return nil
 		}
-		visited[n] = true
+		visited[namespace] = true
 		for _, child := range names(p.Dependencies) {
 			if e := visit(child, p.Dependencies[child]); e != nil {
 				return e
@@ -249,7 +287,7 @@ func Add(ctx context.Context, root, name, repository, ref string) error {
 	if ref == "" {
 		ref = "HEAD"
 	}
-	if e := validateName(name); e != nil {
+	if _, e := identityNamespace(name); e != nil {
 		return e
 	}
 	d := Dependency{repository, ref}
@@ -403,36 +441,41 @@ func resolve(ctx context.Context, root string, m Manifest, old *Lock) error {
 		if e := ctx.Err(); e != nil {
 			return e
 		}
-		if e := validateName(name); e != nil {
+		namespace, e := identityNamespace(name)
+		if e != nil {
 			return e
 		}
 		if e := validateDependency(d); e != nil {
 			return e
 		}
 		d.Repository = normalizeRepository(root, d.Repository)
-		key := strings.ToLower(name)
+		key := strings.ToLower(namespace)
 		for other, original := range claimed {
 			if other != key && (strings.HasPrefix(key, other+".") || strings.HasPrefix(other, key+".")) {
 				return fmt.Errorf("namespace conflict: %s overlaps %s", name, original)
 			}
 		}
 		if original, ok := claimed[key]; ok && original != name {
-			return fmt.Errorf("namespace conflict: %s and %s differ only by case", name, original)
+			return fmt.Errorf("namespace conflict: %s and %s select the same namespace", name, original)
 		}
 		claimed[key] = name
-		if p, ok := selected[name]; ok {
+		if p, ok := selected[namespace]; ok {
 			if p.Repository != d.Repository || p.Ref != d.Ref {
 				return fmt.Errorf("dependency conflict for %s: %s@%s versus %s@%s", name, p.Repository, p.Ref, d.Repository, d.Ref)
 			}
 			return nil
 		}
-		path := filepath.Join(stage, name)
+		path := filepath.Join(stage, namespace)
 		if e := os.Mkdir(path, 0755); e != nil {
 			return e
 		}
 		ref := d.Ref
-		prev, keep := locked[name]
-		keep = keep && prev.Repository == d.Repository && prev.Ref == d.Ref
+		prev, keep := locked[namespace]
+		identity := ""
+		if strings.Contains(name, "/") {
+			identity = name
+		}
+		keep = keep && prev.Identity == identity && prev.Repository == d.Repository && prev.Ref == d.Ref
 		if keep {
 			ref = prev.Commit
 		}
@@ -461,7 +504,7 @@ func resolve(ctx context.Context, root string, m Manifest, old *Lock) error {
 				child.Dependencies[n] = dep
 			}
 		}
-		selected[name] = LockedPackage{Namespace: name, Repository: d.Repository, Ref: d.Ref, Commit: commit, Integrity: integrity, Dependencies: child.Dependencies, GoDependencies: child.GoDependencies}
+		selected[namespace] = LockedPackage{Identity: identity, Namespace: namespace, Repository: d.Repository, Ref: d.Ref, Commit: commit, Integrity: integrity, Dependencies: child.Dependencies, GoDependencies: child.GoDependencies}
 		for _, n := range names(child.Dependencies) {
 			if e = visit(n, child.Dependencies[n]); e != nil {
 				return e
