@@ -8,6 +8,8 @@ import json "go:encoding/json"
 import os "go:os"
 import sql "go:database/sql"
 import strings "go:strings"
+import sha256 "go:crypto/sha256"
+import fmt "go:fmt"
 import sqlite "infrastructure.sqlite"
 import task "domain.task"
 import user "domain.user"
@@ -79,4 +81,28 @@ func TestVersionedMigrationsRejectChangedHistory(t * testing.T) {
 	rejected := false
 	try { repository = new sqlite.Repository(path, directory); repository.Close() } catch err Exception { rejected = true }
 	if ! rejected { t.Fatal("changed applied migration accepted") }
+}
+
+func TestExistingFilenameChecksumLedgerIsPreserved(t * testing.T) {
+	path := filepath.Join(t.TempDir(), "existing-ledger.db")
+	database := sql.Open("sqlite", path)
+	data := os.ReadFile(filepath.Join(sqlite.MigrationDirectory(), "001_initial.sql"))
+	checksum := fmt.Sprintf("%x", sha256.Sum256([] byte(strings.ReplaceAll(string(data), "\r\n", "\n"))))
+	database.Exec(string(data))
+	database.Exec("CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL)")
+	database.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (?,?)", "001_initial.sql", checksum)
+	database.Exec("INSERT INTO tasks(id,title,completed) VALUES ('kept','Existing record',1)")
+	database.Close()
+	repository := new sqlite.Repository(path)
+	item := repository.Find(context.Background(), "kept")
+	if item.Title() != "Existing record" || ! item.IsCompleted() { t.Fatal("migration changed existing data") }
+	repository.Close()
+	database = sql.Open("sqlite", path)
+	defer database.Close()
+	var recorded string
+	database.QueryRow("SELECT checksum FROM schema_migrations WHERE version='001_initial.sql'").Scan(& recorded)
+	if recorded != checksum { t.Fatal("migration rewrote historical checksum") }
+	var versions int
+	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(& versions)
+	if versions != 3 { t.Fatal("migration did not extend existing filename ledger") }
 }
