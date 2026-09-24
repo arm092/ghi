@@ -112,7 +112,7 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var library=myFixture.addFileToProject("models/box.ghi","namespace app.models\nclass Box[T any] { public value T\n constructor(value T, count int = 1){ this.value=value }\n}\nfunc build() {}\ninterface Reader {}\n");
         var file=myFixture.configureByText("construct.ghi","namespace main\nimport models \"app.models\"\nfunc main(){ value := new models.Box[string](\"hello\", <caret>2); value.value = \"world\" }\n");
         var model=GhiSymbols.forFile(file);var call=model.callAt(file,myFixture.getCaretOffset());assertNotNull(call);
-        assertEquals("constructor",call.symbol().name);assertEquals(1,call.parameter());assertEquals(java.util.List.of("value T","count int = 1"),call.symbol().parameters);
+        assertEquals("constructor",call.symbol().name);assertEquals(1,call.parameter());assertEquals(java.util.List.of("value string","count int = 1"),call.symbol().parameters);
         var target=model.resolve(file,file.getText().indexOf("Box"));assertNotNull(target);assertEquals(library,target.getContainingFile());
         assertEquals("value",model.resolve(file,file.getText().indexOf("value.value")+6).getText());
         file=myFixture.configureByText("construct-complete.ghi","namespace main\nimport models \"app.models\"\nfunc main(){ value := new models.<caret> }\n");
@@ -131,4 +131,97 @@ public class GhiIdeTest extends BasePlatformTestCase {
         file=myFixture.configureByText("bare-construction.ghi","namespace main\nclass User {constructor(name string){}}\nfunc main(){User(<caret>)}\n");
         var bare=GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset());assertNotNull(bare);assertEquals(java.util.List.of("name string"),bare.symbol().parameters);        file=myFixture.configureByText("bare-exception.ghi","namespace main\nfunc main(){throw Exception(\"failure\", <caret>2)}\n");
         assertEquals(call.symbol().parameters,GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset()).symbol().parameters);
+    }
+    public void testGenericFunctionAndReceiverHintSubstitution(){
+        var file=myFixture.configureByText("generic-hints.ghi","namespace main\nclass Box[T any] {public func put(value []T, label string = \"T\") {}}\nfunc pair[K comparable,V any](key K,value map[K][]V) {}\nfunc main(){pair[string,int](\"key\", <caret>nil)}\n");
+        var call=GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset());assertNotNull(call);
+        assertEquals(java.util.List.of("key string","value map[string][]int"),call.symbol().parameters);
+        file=myFixture.configureByText("generic-member.ghi","namespace main\nclass Box[T any] {public func put(value []T, label string = \"T\") {}}\nfunc main(){box:=new Box[string]();box.put(<caret>nil)}\n");
+        call=GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset());assertNotNull(call);
+        assertEquals(java.util.List.of("value []string","label string = \"T\""),call.symbol().parameters);
+    }
+    public void testCoordinatedContractRenamePreservesUnrelatedMethods(){
+        var contract=myFixture.addFileToProject("contract.ghi","namespace main\ninterface Reader {func read() string}\nclass Base {public func read() string{return \"read\"}}\nclass Child extends Base implements Reader {}\nclass Other {public func read() int{return 1}}\n");
+        var file=myFixture.configureByText("rename-family.ghi","namespace main\nclass Override extends Child {public override func read() string{return parent.read()}}\nfunc use(value Reader, other Other){value.<caret>read();other.read()} // read\n");
+        myFixture.renameElementAtCaret("fetch");
+        assertTrue(contract.getText(),contract.getText().contains("interface Reader {func fetch()"));
+        assertTrue(contract.getText(),contract.getText().contains("class Base {public func fetch()"));
+        assertTrue(contract.getText(),contract.getText().contains("class Other {public func read()"));
+        assertTrue(contract.getText().contains("return \"read\""));
+        assertTrue(file.getText(),file.getText().contains("override func fetch()"));
+        assertTrue(file.getText().contains("parent.fetch()"));
+        assertTrue(file.getText().contains("value.fetch();other.read()"));assertTrue(file.getText().endsWith("// read\n"));
+    }
+    public void testNativeGoSdkSymbolsAndNavigation(){
+        String root=System.getenv("GHI_TEST_GO_ROOT");assertNotNull("Set GHI_TEST_GO_ROOT to exercise real Go SDK PSI",root);
+        com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),root);
+        var sdk=com.goide.sdk.GoSdkService.getInstance(getProject());sdk.setSdk(com.goide.sdk.GoSdk.fromHomePath(root));
+        var file=myFixture.configureByText("native.ghi","namespace main\nimport fmt \"go:fmt\"\nimport bytes \"go:bytes\"\nfunc main(){fmt.Println(\"hello\");var buffer bytes.Buffer;buffer.<caret>}\n");
+        var model=GhiSymbols.forFile(file);var target=model.resolve(file,file.getText().indexOf("Println"));assertNotNull("native function navigation",target);
+        assertTrue(target instanceof com.goide.psi.GoFunctionDeclaration);assertTrue(target.getContainingFile().getVirtualFile().getPath().endsWith("/fmt/print.go"));
+        var names=model.complete(file,myFixture.getCaretOffset()).stream().map(symbol->symbol.name).toList();assertTrue(names.toString(),names.contains("WriteString"));assertFalse(names.contains("grow"));
+        file=myFixture.configureByText("native-method.ghi","namespace main\nimport bytes \"go:bytes\"\nfunc main(){buffer:=bytes.NewBufferString(\"x\");buffer.WriteString(<caret>\"y\")}\n");
+        model=GhiSymbols.forFile(file);target=model.resolve(file,file.getText().indexOf("WriteString"));assertNotNull(target);assertTrue(target instanceof com.goide.psi.GoMethodDeclaration);
+        assertEquals(java.util.List.of("s string"),model.callAt(file,myFixture.getCaretOffset()).symbol().parameters);
+        assertTrue(GhiGoSymbols.importPaths(file,"go:net/h").contains("go:net/http"));
+        file=myFixture.configureByText("native-import.ghi","namespace main\nimport \"go:net/h<caret>\"\n");
+        var variants=myFixture.completeBasic();
+        if(variants!=null){var item=java.util.Arrays.stream(variants).filter(candidate->candidate.getLookupString().equals("go:net/http")).findFirst().orElseThrow();myFixture.getLookup().setCurrentItem(item);myFixture.finishLookup(com.intellij.codeInsight.lookup.Lookup.NORMAL_SELECT_CHAR);}
+        assertEquals("namespace main\nimport \"go:net/http\"\n",file.getText());
+    }
+
+    public void testPinnedMojaveGoModuleWithoutGoMod(){
+        String root=System.getenv("GHI_TEST_GO_ROOT"),cache=System.getenv("GOMODCACHE");assertNotNull(root);assertNotNull(cache);
+        com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(getTestRootDisposable(),root,cache);
+        com.goide.sdk.GoSdkService.getInstance(getProject()).setSdk(com.goide.sdk.GoSdk.fromHomePath(root));
+        var lock=myFixture.addFileToProject("mojave.lock","{\"version\":1,\"go\":{\"modules\":[{\"path\":\"github.com/go-chi/chi/v5\",\"version\":\"v5.3.2\"}]}}");
+        var file=myFixture.configureByText("chi.ghi","namespace main\nimport chi \"go:github.com/go-chi/chi/v5\"\nfunc main(){router:=chi.NewRouter();router.<caret>}\n");
+        assertNull(file.getContainingDirectory().findFile("go.mod"));
+        assertTrue(GhiGoSymbols.importPaths(file,"go:github.com/go-chi/chi/v5/m").contains("go:github.com/go-chi/chi/v5/middleware"));
+        var target=GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("NewRouter"));assertNotNull("locked Chi function",target);
+        assertTrue(target.getContainingFile().getVirtualFile().getPath(),target.getContainingFile().getVirtualFile().getPath().contains("chi/v5@v5.3.2/"));
+        var names=GhiSymbols.forFile(file).complete(file,myFixture.getCaretOffset()).stream().map(symbol->symbol.name).toList();assertTrue(names.toString(),names.contains("Get"));assertTrue(names.contains("Route"));
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(getProject(),()->{
+            var document=com.intellij.psi.PsiDocumentManager.getInstance(getProject()).getDocument(lock);document.setText("{\"version\":1,\"go\":{\"modules\":[{\"path\":\"github.com/go-chi/chi/v5\",\"version\":\"v99.0.0\"}]}}");com.intellij.psi.PsiDocumentManager.getInstance(getProject()).commitDocument(document);com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveDocument(document);
+        });
+        assertNull("missing pinned version must not select another cache version",GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("NewRouter")));
+    }
+
+    public void testStructuralInterfaceRenameUpdatesImplementation() throws Exception {
+        var file=myFixture.configureByText("structural.ghi","namespace main\ninterface Reader {func read() string}\nclass File {public func read() string{return \"x\"}}\nclass Different {public func read() int{return 1}}\nfunc use(r Reader){r.<caret>read()}\nfunc main(){use(new File());new File().read();new Different().read()}\n");
+        myFixture.renameElementAtCaret("fetch");
+        assertTrue(file.getText(),file.getText().contains("class File {public func fetch()"));
+        assertTrue(file.getText().contains("interface Reader {func fetch()"));assertTrue(file.getText().contains("r.fetch()"));
+        assertTrue(file.getText().contains("new File().fetch()"));assertTrue(file.getText().contains("new Different().read()"));
+        String compiler=System.getenv("GHI_TEST_COMPILER");if(compiler!=null&&!compiler.isBlank()){
+            Path project=Files.createDirectory(diskRoot.resolve("renamed-structural"));Files.writeString(project.resolve("main.ghi"),file.getText());
+            var process=GhiCommand.create(compiler,project,"check","").withRedirectErrorStream(true).createProcess();
+            try{assertTrue(process.waitFor(30,TimeUnit.SECONDS));String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);assertEquals(output,0,process.exitValue());}finally{process.destroyForcibly();}
+        }
+    }
+
+    public void testGenericStructuralRenameReportsConflict(){
+        var file=myFixture.configureByText("generic-contract.ghi","namespace main\ninterface Reader[T any] {func read() T}\nclass File {public func read() string{return \"x\"}}\n");
+        var target=GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("read"));
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();
+        new GhiRenameProcessor().findExistingNameConflicts(target,"fetch",conflicts);assertFalse(conflicts.isEmpty());
+        assertTrue(file.getText().contains("func read()"));
+    }
+
+    public void testStructuralSliceSpellingAndScalarIsolation(){
+        var file=myFixture.configureByText("slice-contract.ghi","namespace main\ninterface Reader {func read(value[] string) string}\nclass Sliced {public func read(value []string) string{return \"slice\"}}\nclass Scalar {public func read(value string) string{return value}}\nfunc use(reader Reader){reader.<caret>read(nil)}\nfunc main(){use(new Sliced());new Sliced().read(nil);new Scalar().read(\"x\")}\n");
+        myFixture.renameElementAtCaret("fetch");
+        assertTrue(file.getText(),file.getText().contains("interface Reader {func fetch(value[] string)"));
+        assertTrue(file.getText().contains("class Sliced {public func fetch(value []string)"));
+        assertTrue(file.getText().contains("new Sliced().fetch(nil)"));assertTrue(file.getText().contains("new Scalar().read(\"x\")"));
+    }
+    public void testNamedResultStructuralRenameReportsConflict(){
+        var file=myFixture.configureByText("named-result.ghi","namespace main\ninterface Reader {func read() string}\nclass File {public func read() (result string){return \"x\"}}\n");
+        var target=GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("read"));
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();new GhiRenameProcessor().findExistingNameConflicts(target,"fetch",conflicts);assertFalse(conflicts.isEmpty());
+    }
+    public void testGenericClassStructuralRenameReportsConflict(){
+        var file=myFixture.configureByText("generic-implementation.ghi","namespace main\ninterface Reader {func read() string}\nclass Box[T any] {public func read() T{panic(\"unused\")}}\nfunc use(reader Reader){reader.read()}\nfunc main(){use(new Box[string]())}\n");
+        var target=GhiSymbols.forFile(file).resolve(file,file.getText().indexOf("read"));
+        var conflicts=new com.intellij.util.containers.MultiMap<com.intellij.psi.PsiElement,String>();new GhiRenameProcessor().findExistingNameConflicts(target,"fetch",conflicts);assertFalse(conflicts.isEmpty());
     }}

@@ -26,6 +26,13 @@ jobs:
         run: |
           go build -o "$RUNNER_TEMP/ghi" ./cmd/ghi
           echo "GHI_TEST_COMPILER=$RUNNER_TEMP/ghi" >> "$GITHUB_ENV"
+          echo "GHI_TEST_GO_ROOT=$(go env GOROOT)" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$(go env GOMODCACHE)" >> "$GITHUB_ENV"
+      - name: Prepare pinned native Go assistance fixture
+        working-directory: ${{ runner.temp }}
+        env:
+          GOWORK: 'off'
+        run: go mod download github.com/go-chi/chi/v5@v5.3.2
       - uses: gradle/actions/setup-gradle@v4
       - name: Test, package and verify against GoLand
         working-directory: ide/goland
@@ -64,4 +71,4 @@ jobs:
             echo "Release $TAG is already published; preserving its assets."
             exit 0
           fi
-          gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi for GoLand $TAG" --notes "Ghi support for GoLand 2026.2. Install the ZIP through Settings > Plugins > Install Plugin from Disk. Requires the Ghi compiler. Includes syntax highlighting, scoped Ghi completion, declaration navigation, parameter hints, safe symbol rename, saved-file compiler diagnostics and Build/Run actions. Native Go symbol intelligence and debugging are not included; unsafe method-family rename is rejected."
+          gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi for GoLand $TAG" --notes "Ghi support for GoLand 2026.2. Install the ZIP through Settings > Plugins > Install Plugin from Disk. Requires the Ghi compiler. Includes syntax highlighting, scoped Ghi completion, declaration navigation, concrete generic parameter hints, coordinated method-family rename, saved-file compiler diagnostics and Build/Run actions. Native Go assistance uses the configured SDK and locally installed dependencies. Debugging is not included."
