@@ -24,6 +24,14 @@ jobs:
           cache: false
       - run: go test ./...
       - run: go vet ./...
+      - name: Install pinned Delve
+        run: go install github.com/go-delve/delve/cmd/dlv@v1.27.2
+      - name: Debug original Ghi sources with real Delve
+        shell: bash
+        run: |
+          export GHI_TEST_DLV="$(go env GOPATH)/bin/dlv"
+          if [ "$RUNNER_OS" = Windows ]; then export GHI_TEST_DLV="$GHI_TEST_DLV.exe"; fi
+          go test ./tests/debugger -v -count=1
       - name: Fuzz malformed Ghi syntax
         if: runner.os == 'Linux'
         run: go test ./internal/compiler -run '^$' -fuzz '^FuzzParseFile$' -fuzztime=20s -parallel=2
@@ -33,6 +41,13 @@ jobs:
       - name: Install DDD API dependencies with Mojave
         working-directory: examples/ddd-api
         run: go run ../../cmd/mojave install
+      - name: Debug DDD HTTP controller with real Delve
+        shell: bash
+        run: |
+          export GHI_TEST_DLV="$(go env GOPATH)/bin/dlv"
+          if [ "$RUNNER_OS" = Windows ]; then export GHI_TEST_DLV="$GHI_TEST_DLV.exe"; fi
+          export GHI_TEST_DDD="$GITHUB_WORKSPACE/examples/ddd-api"
+          go test ./tests/debugger -run '^TestDelveDDDController$' -v -count=1
       - name: Verify Ghi developer tools and database API
         run: |
           go run ./cmd/ghi fmt --check ./examples/task-api

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"debug/buildinfo"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,27 @@ func main() { fmt.Println(os.Args[1]); os.Exit(7) }
 		if !ok || exit.ExitCode() != 2 {
 			t.Fatalf("invalid check arguments: %v; %s", err, out)
 		}
+	}
+	debugBinary := filepath.Join(dir, "debug-program")
+	if runtime.GOOS == "windows" {
+		debugBinary += ".exe"
+	}
+	out, err = exec.Command(binary, "build", "--debug", "-o", debugBinary, project).CombinedOutput()
+	if err != nil {
+		t.Fatalf("debug build: %v; %s", err, out)
+	}
+	info, err := buildinfo.ReadFile(debugBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	debugFlags := ""
+	for _, setting := range info.Settings {
+		if setting.Key == "-gcflags" {
+			debugFlags = setting.Value
+		}
+	}
+	if debugFlags != "all=-N -l" {
+		t.Fatalf("debug build flags: %q", debugFlags)
 	}
 	out, err = exec.Command(binary, "run", project, "--", "argument with spaces").CombinedOutput()
 	exit, ok := err.(*exec.ExitError)

@@ -125,7 +125,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 											// Taking the field address evaluates the receiver once and
 											// lets Go perform the compound operation directly.
 											address := &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldRef(field))}}
-											n.Lhs[0] = &ast.StarExpr{X: address}
+											n.Lhs[0] = &ast.StarExpr{Star: selector.Pos(), X: address}
 											changed = true
 											return n
 										}

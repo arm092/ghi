@@ -43,7 +43,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [-o executable] [project-directory]\n  ghi run [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
 		return 0
 	}
 	if args[0] == "version" {
@@ -84,6 +84,7 @@ func run(args []string) int {
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	output := flags.String("o", "", "output executable path")
+	debug := flags.Bool("debug", false, "disable optimization and inlining for debugging")
 	var compilerArgs, programArgs []string
 	compilerArgs = args[1:]
 	for i, arg := range compilerArgs {
@@ -110,7 +111,7 @@ func run(args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	result, err := compiler.Build(ctx, compiler.Options{Dir: dir, Output: *output, Log: os.Stderr})
+	result, err := compiler.Build(ctx, compiler.Options{Dir: dir, Output: *output, Debug: *debug, Log: os.Stderr})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

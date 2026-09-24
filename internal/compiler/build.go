@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"ghi/internal/toolchain"
 	"io"
@@ -16,6 +17,7 @@ type Options struct {
 	Dir    string
 	Output string
 	Log    io.Writer
+	Debug  bool
 }
 
 type Result struct{ Executable string }
@@ -54,7 +56,12 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	defer os.Remove(staging)
-	command := exec.CommandContext(ctx, goPath, "build", "-mod=readonly", "-o", staging, ".")
+	args := []string{"build", "-mod=readonly"}
+	if options.Debug {
+		args = append(args, "-gcflags=all=-N -l")
+	}
+	args = append(args, "-o", staging, ".")
+	command := exec.CommandContext(ctx, goPath, args...)
 	command.Dir = workspace
 	command.Env = toolchain.Env()
 	log, err := command.CombinedOutput()
@@ -63,6 +70,15 @@ func Build(ctx context.Context, options Options) (Result, error) {
 	}
 	if err := os.Rename(staging, output); err != nil {
 		return Result{}, fmt.Errorf("install executable: %w", err)
+	}
+	if options.Debug {
+		metadata, err := json.MarshalIndent(prepared.program.debugMetadata(), "", "  ")
+		if err != nil {
+			return Result{}, fmt.Errorf("debug metadata: %w", err)
+		}
+		if err := os.WriteFile(output+".ghi-debug.json", append(metadata, '\n'), 0644); err != nil {
+			return Result{}, fmt.Errorf("write debug metadata: %w", err)
+		}
 	}
 	return Result{Executable: output}, nil
 }
