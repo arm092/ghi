@@ -2,7 +2,7 @@
   "version": 1,
   "dependencies": {
     "migrations": {
-      "repository": "git@github.com:arm092/ghi-migrations.git",
+      "repository": "https://github.com/arm092/ghi-migrations.git",
       "ref": "v0.1.0"
     }
   },

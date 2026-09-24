@@ -30,33 +30,6 @@ jobs:
       - name: Install Task API dependencies with Mojave
         working-directory: examples/task-api
         run: go run ../../cmd/mojave install
-      - name: Configure read-only migrations package access
-        shell: python {0}
-        env:
-          GHI_MIGRATIONS_DEPLOY_KEY: ${{ secrets.GHI_MIGRATIONS_DEPLOY_KEY }}
-        run: |
-          import json, os, pathlib, shutil, subprocess, urllib.request
-          private_key = os.environ.get('GHI_MIGRATIONS_DEPLOY_KEY', '').strip()
-          if not private_key:
-              raise SystemExit('GHI_MIGRATIONS_DEPLOY_KEY is required for the private migrations package')
-          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'ghi-migrations-access'
-          directory.mkdir(mode=0o700, exist_ok=True)
-          key = directory / 'key'
-          hosts = directory / 'known_hosts'
-          key.write_text(private_key + '\n', encoding='utf-8', newline='\n')
-          key.chmod(0o600)
-          request = urllib.request.Request('https://api.github.com/meta', headers={'User-Agent': 'ghi-ci'})
-          with urllib.request.urlopen(request, timeout=30) as response:
-              host_keys = json.load(response)['ssh_keys']
-          hosts.write_text(''.join('github.com ' + value + '\n' for value in host_keys), encoding='utf-8', newline='\n')
-          ssh = 'ssh'
-          if os.name == 'nt':
-              ssh = (pathlib.Path(shutil.which('git')).parent.parent / 'usr/bin/ssh.exe').as_posix()
-              if not pathlib.Path(ssh).is_file():
-                  raise SystemExit('Git for Windows SSH executable not found')
-          command = f'"{ssh}" -i "{key.as_posix()}" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="{hosts.as_posix()}"'
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
-              environment.write('GIT_SSH_COMMAND=' + command + '\n')
       - name: Install DDD API dependencies with Mojave
         working-directory: examples/ddd-api
         run: go run ../../cmd/mojave install
@@ -146,15 +119,6 @@ jobs:
           /bin/zsh -ic 'command -v mojave; mojave help'
           /bin/zsh -ic 'ghi run ./examples/objects'
           test "$(grep -Fc '# Ghi compiler' "$HOME/.zshrc")" = 1
-
-      - name: Remove temporary migrations credentials
-        if: always()
-        shell: python {0}
-        run: |
-          import os, pathlib
-          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'ghi-migrations-access'
-          for name in ('key', 'known_hosts'):
-              (directory / name).unlink(missing_ok=True)
 
   package:
     needs: test

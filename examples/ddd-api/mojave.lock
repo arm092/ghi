@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "manifestHash": "a4b970232020908760283f8ec99a12f12701037e25122c27d23cc6f7da1464f0",
+  "manifestHash": "41ce848c6449c83dbf4cb908ebee87a9ed1a9a916f23045790faf55c4980b8bb",
   "packages": [
     {
       "namespace": "migrations",
-      "repository": "git@github.com:arm092/ghi-migrations.git",
+      "repository": "https://github.com/arm092/ghi-migrations.git",
       "ref": "v0.1.0",
       "commit": "ce723de31c14eacfb1b5b8a023a21851c2b2bbe6",
       "integrity": "955f48777a23380b256bef0169bc2fa0271c2cb6c4ffaf99e51c6339da53fa29",
