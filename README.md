@@ -68,7 +68,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-The v0.2.1 macOS `.pkg` is awaiting a fresh native build. Download the [v0.2.1 installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) to build it on a Mac. The previous [v0.2.0 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.0/ghi_v0.2.0_macos_universal.pkg) remains available but does not contain the new CLI commands. It contains Intel and Apple silicon binaries and prepares Go for the signed-in user before installing Ghi and Mojave. Installation and command startup were verified on an Apple silicon Mac, including managed Go 1.26.8 setup. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The build recipe is in `scripts/package-macos.sh`.
+Download the [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg). It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -91,7 +91,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The full release test suite was run locally on Windows. The native macOS package was built on a Mac, and installation plus `ghi version`, `ghi setup` and `mojave help` were verified on Apple silicon. Native Intel macOS execution, macOS compilation of Ghi projects and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
+The full release test suite was run locally on Windows. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -500,7 +500,7 @@ Native Go assistance uses the configured SDK and locally installed dependencies.
 
 From a cloned checkout, use `ghi run examples/hello`. For projects with dependencies, run `mojave install` inside that example first.
 
-Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation and command checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
+Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 
 ### Building the tools from source
 
