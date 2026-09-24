@@ -140,6 +140,43 @@ public class GhiIdeTest extends BasePlatformTestCase {
         call=GhiSymbols.forFile(file).callAt(file,myFixture.getCaretOffset());assertNotNull(call);
         assertEquals(java.util.List.of("value []string","label string = \"T\""),call.symbol().parameters);
     }
+    public void testGenericInheritanceNavigationCompletionAndHints(){
+        String source="namespace main\n"
+            +"class Base[T any] {public value T\nconstructor(value T){this.value=value}\n"
+            +"public func take(input T) T{return input}}\n"
+            +"class IntChild extends Base[int] {constructor(){parent(1)}\n"
+            +"public func fromParent() int{return parent.take(2)}}\n"
+            +"class GenericChild[U any] extends Base[U] {}\n"
+            +"class SliceMid[V any] extends Base[[]V] {}\n"
+            +"class Leaf extends SliceMid[string] {}\n"
+            +"class OverrideChild extends Base[int] {public override func take(input int) int{return parent.take(input)}}\n"
+            +"func use(number IntChild, generic GenericChild[string], leaf Leaf, over OverrideChild){\n"
+            +" number.take(3);number.value;generic.take(\"text\");leaf.take(nil);leaf.value;over.take(4)\n}\n";
+        var file=myFixture.configureByText("generic-inheritance.ghi",source);var model=GhiSymbols.forFile(file);
+        var baseTake=model.resolve(file,source.indexOf("func take")+5);
+        var baseValue=model.resolve(file,source.indexOf("value T"));
+        assertEquals(baseTake,model.resolve(file,source.indexOf("number.take")+7));
+        assertEquals(baseTake,model.resolve(file,source.indexOf("generic.take")+8));
+        assertEquals(baseTake,model.resolve(file,source.indexOf("leaf.take")+5));
+        assertEquals(baseTake,model.resolve(file,source.indexOf("parent.take")+7));
+        assertEquals(baseValue,model.resolve(file,source.indexOf("number.value")+7));
+        assertEquals(baseValue,model.resolve(file,source.indexOf("leaf.value")+5));
+        assertEquals(baseTake,model.resolve(file,source.indexOf("parent.take(input)")+7));
+        assertEquals("take",model.resolve(file,source.indexOf("over.take")+5).getText());
+        assertEquals(java.util.List.of("input int"),model.callAt(file,source.indexOf("number.take(3)")+13).symbol().parameters);
+        assertEquals(java.util.List.of("input string"),model.callAt(file,source.indexOf("generic.take(\"text\")")+19).symbol().parameters);
+        assertEquals(java.util.List.of("input []string"),model.callAt(file,source.indexOf("leaf.take(nil)")+13).symbol().parameters);
+        assertEquals(java.util.List.of("input int"),model.callAt(file,source.indexOf("parent.take(2)")+13).symbol().parameters);
+        assertEquals(java.util.List.of("value int"),model.callAt(file,source.indexOf("parent(1)")+8).symbol().parameters);
+        assertEquals(java.util.List.of("input int"),model.callAt(file,source.indexOf("parent.take(input)")+17).symbol().parameters);
+        var completed=model.complete(file,source.indexOf("number.value")+7);
+        assertEquals("int",completed.stream().filter(symbol->symbol.name.equals("value")).findFirst().orElseThrow().type);
+        assertEquals(java.util.List.of("input int"),completed.stream().filter(symbol->symbol.name.equals("take")).findFirst().orElseThrow().parameters);
+        completed=model.complete(file,source.indexOf("leaf.value")+5);
+        assertEquals("[]string",completed.stream().filter(symbol->symbol.name.equals("value")).findFirst().orElseThrow().type);
+        completed=model.complete(file,source.indexOf("over.take")+5);
+        assertEquals(java.util.List.of("input int"),completed.stream().filter(symbol->symbol.name.equals("take")).findFirst().orElseThrow().parameters);
+    }
     public void testCoordinatedContractRenamePreservesUnrelatedMethods(){
         var contract=myFixture.addFileToProject("contract.ghi","namespace main\ninterface Reader {func read() string}\nclass Base {public func read() string{return \"read\"}}\nclass Child extends Base implements Reader {}\nclass Other {public func read() int{return 1}}\n");
         var file=myFixture.configureByText("rename-family.ghi","namespace main\nclass Override extends Child {public override func read() string{return parent.read()}}\nfunc use(value Reader, other Other){value.<caret>read();other.read()} // read\n");

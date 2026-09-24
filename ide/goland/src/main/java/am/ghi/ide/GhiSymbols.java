@@ -261,7 +261,7 @@ final class GhiSymbols {
             Symbol type=asType(receiver,s.file);return member(type,token.text,new HashSet<>());
         }
         if(token.text.equals("this")||token.text.equals("parent")){
-            Symbol owner=enclosingClass(s.scope(token.start));return token.text.equals("parent")&&owner!=null?type(owner.base,s.file):owner;
+            Symbol owner=enclosingClass(s.scope(token.start));return token.text.equals("parent")&&owner!=null?baseView(owner):owner;
         }
         Scope scope=s.scope(token.start);
         for(Scope at=scope;at!=null;at=at.parent){
@@ -276,8 +276,8 @@ final class GhiSymbols {
     }
     private Symbol receiver(Source s,int index,Set<Integer> visited){
         if(index<0)return null;
-        if(is(s.tokens,index,")")){int depth=1;for(int i=index-1;i>=0;i--){if(is(s.tokens,i,")"))depth++;if(is(s.tokens,i,"(")&&--depth==0){Symbol call=resolveToken(s,calleeIndex(s.tokens,i-1),visited);if(call==null)return null;Symbol result=asType(call,s.file);
-            if(result!=null&&(call.kind.equals("class")||call.kind.equals("typeImport"))){Symbol concrete=new Symbol(result.name,result.kind,result.offset,result.file,result.scope);concrete.body=result.body;concrete.base=result.base;concrete.type=typeAt(s.tokens,calleeIndex(s.tokens,i-1));return concrete;}return result;}}return null;}
+        if(is(s.tokens,index,")")){int depth=1;for(int i=index-1;i>=0;i--){if(is(s.tokens,i,")"))depth++;if(is(s.tokens,i,"(")&&--depth==0){int callee=calleeIndex(s.tokens,i-1);Symbol call=resolveToken(s,callee,visited);if(call==null)return null;Symbol result=asType(call,s.file);
+            if(result!=null&&(call.kind.equals("class")||call.kind.equals("typeImport"))){String expression=typeAt(s.tokens,callee);return expression.isEmpty()?result:instantiate(result,expression);}return result;}}return null;}
         return resolveToken(s,index,visited);
     }
     private Symbol imported(Source s,Symbol alias,String name){
@@ -322,9 +322,27 @@ final class GhiSymbols {
         if(symbol.kind.equals("typeImport"))return selectedTarget(symbol);
         if(symbol.external!=null)return GhiGoSymbols.resultType(symbol);
         if(Set.of("class","interface","type").contains(symbol.kind))return symbol;
-        Symbol result=type(symbol.type,context);return result!=null&&result.external!=null?GhiGoSymbols.resultType(result):result;
+        Symbol result=type(symbol.type,context);return result!=null&&result.external!=null?GhiGoSymbols.resultType(result):instantiate(result,symbol.type);
     }
-    private Symbol member(Symbol type,String name,Set<Symbol> visited){if(type==null||!visited.add(type))return null;if(type.external!=null)return GhiGoSymbols.members(type).stream().filter(symbol->symbol.name.equals(name)).findFirst().orElse(null);for(Symbol symbol:symbols)if(symbol.scope==type.body&&symbol.name.equals(name))return symbol;return member(type(type.base,type.file),name,visited);}
+    private static Symbol declaration(Symbol view){return view.body!=null&&view.body.owner!=null?view.body.owner:view;}
+    private static Symbol instantiate(Symbol declared,String expression){
+        if(declared==null||expression.isEmpty())return declared;
+        Symbol view=new Symbol(declared.name,declared.kind,declared.offset,declared.file,declared.scope);
+        view.body=declared.body;view.base=declared.base;view.type=expression;view.typeParameters=declared.typeParameters;
+        return view;
+    }
+    private Symbol baseView(Symbol view){
+        if(view==null)return null;
+        Symbol declared=declaration(view);
+        String base=GhiGenericTypes.substitute(declared.base,GhiGenericTypes.bind(declared.typeParameters,GhiGenericTypes.arguments(view.type)));
+        return instantiate(type(base,declared.file),base);
+    }
+    private Symbol ownerView(Symbol view,Symbol owner){
+        Set<Symbol> visited=new HashSet<>();
+        for(;view!=null&&visited.add(declaration(view));view=baseView(view))if(declaration(view)==owner)return view;
+        return null;
+    }
+    private Symbol member(Symbol view,String name,Set<Symbol> visited){if(view==null||!visited.add(declaration(view)))return null;if(view.external!=null)return GhiGoSymbols.members(view).stream().filter(symbol->symbol.name.equals(name)).findFirst().orElse(null);for(Symbol symbol:symbols)if(symbol.scope==view.body&&symbol.name.equals(name))return symbol;return member(baseView(view),name,visited);}
     private static Symbol enclosingClass(Scope scope){for(;scope!=null;scope=scope.parent)if(scope.owner!=null&&scope.owner.kind.equals("class"))return scope.owner;return null;}
     private boolean inherits(Symbol child,Symbol parent,Set<Symbol> visited){
         if(child==null||!visited.add(child))return false;
@@ -417,8 +435,13 @@ final class GhiSymbols {
                 return completionValues(result,construction,file);
             }
             Symbol cls=asType(receiver,file);if(cls!=null&&cls.external!=null)return GhiGoSymbols.members(cls);Set<Symbol> visited=new HashSet<>();Symbol current=enclosingClass(s.scope(offset));
-            while(cls!=null&&visited.add(cls)){for(Symbol symbol:symbols)if(symbol.scope==cls.body&&!symbol.kind.equals("constructor")
-                &&(!symbol.visibility.equals("private")||cls==current)&&(!symbol.visibility.equals("protected")||inherits(current,cls,new HashSet<>())))result.putIfAbsent(symbol.name,symbol);cls=type(cls.base,cls.file);}
+            while(cls!=null&&visited.add(declaration(cls))){
+                Map<String,String> bindings=GhiGenericTypes.bind(declaration(cls).typeParameters,GhiGenericTypes.arguments(cls.type));
+                for(Symbol symbol:symbols)if(symbol.scope==cls.body&&!symbol.kind.equals("constructor")
+                    &&(!symbol.visibility.equals("private")||declaration(cls)==current)&&(!symbol.visibility.equals("protected")||inherits(current,declaration(cls),new HashSet<>())))
+                    result.putIfAbsent(symbol.name,bindings.isEmpty()?symbol:substituted(symbol,bindings));
+                cls=baseView(cls);
+            }
         }else{
 
             for(Scope scope=s.scope(offset);scope!=null;scope=scope.parent)for(Symbol symbol:symbols)if(symbol.file==file&&symbol.scope==scope&&(!symbol.kind.equals("local")||symbol.offset<offset))result.putIfAbsent(symbol.name,symbol);
@@ -486,22 +509,38 @@ final class GhiSymbols {
         if(callable==null)return null;
         Map<String,String> bindings=new LinkedHashMap<>();
         if(callable.kind.equals("class")){
-            bindings.putAll(GhiGenericTypes.bind(callable.typeParameters,GhiGenericTypes.arguments(typeAt(s.tokens,callee))));
-            Symbol ctor=member(callable,"constructor",new HashSet<>());if(ctor!=null)callable=ctor;
+            Symbol view=callable;
+            String expression=typeAt(s.tokens,callee);
+            if(!expression.isEmpty())view=instantiate(callable,expression);
+            bindings.putAll(GhiGenericTypes.bind(declaration(view).typeParameters,GhiGenericTypes.arguments(view.type)));
+            Symbol ctor=member(view,"constructor",new HashSet<>());
+            if(ctor!=null){
+                Symbol owner=ctor.scope==null?null:ctor.scope.owner;
+                Symbol inherited=ownerView(view,owner);
+                if(inherited!=null)bindings.putAll(GhiGenericTypes.bind(owner.typeParameters,GhiGenericTypes.arguments(inherited.type)));
+                callable=ctor;
+            }
         }else{
             bindings.putAll(GhiGenericTypes.bind(callable.typeParameters,GhiGenericTypes.arguments(typeAt(s.tokens,callee))));
             if(callable.scope!=null&&callable.scope.owner!=null&&is(s.tokens,callee-1,".")){
                 Symbol receiver=receiver(s,callee-2,new HashSet<>());
-                if(receiver!=null)bindings.putAll(GhiGenericTypes.bind(callable.scope.owner.typeParameters,GhiGenericTypes.arguments(receiver.type)));
+                Symbol owner=callable.scope.owner;
+                Symbol inherited=ownerView(receiver==null?null:asType(receiver,file),owner);
+                if(inherited!=null)bindings.putAll(GhiGenericTypes.bind(owner.typeParameters,GhiGenericTypes.arguments(inherited.type)));
             }
         }
         if(!bindings.isEmpty()){
-            Symbol concrete=new Symbol(callable.name,callable.kind,callable.offset,callable.file,callable.scope);
-            concrete.parameters=callable.parameters.stream().map(parameter->GhiGenericTypes.parameter(parameter,bindings)).toList();
-            concrete.type=GhiGenericTypes.substitute(callable.type,bindings);concrete.external=callable.external;callable=concrete;
+            callable=substituted(callable,bindings);
         }
         int parameter=0,depth=0;for(int i=open+1;i<s.tokens.size()&&s.tokens.get(i).start<offset;i++){String token=s.tokens.get(i).text;if(Set.of("(","[","{").contains(token))depth++;if(Set.of(")","]","}").contains(token))depth--;if(token.equals(",")&&depth==0)parameter++;}
         return new Call(callable,s.tokens.get(open).start,parameter);
+    }
+    private static Symbol substituted(Symbol symbol,Map<String,String> bindings){
+        Symbol result=new Symbol(symbol.name,symbol.kind,symbol.offset,symbol.file,symbol.scope);
+        result.parameters=symbol.parameters.stream().map(parameter->GhiGenericTypes.parameter(parameter,bindings)).toList();
+        result.type=GhiGenericTypes.substitute(symbol.type,bindings);result.external=symbol.external;
+        result.visibility=symbol.visibility;result.resultSignature=GhiGenericTypes.substitute(symbol.resultSignature,bindings);
+        return result;
     }
 }
 
