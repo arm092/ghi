@@ -1,40 +1,59 @@
 namespace infrastructure.sqlite
+import arm092.migrations.Migrator
 
 import sql "go:database/sql"
 import errors "go:errors"
+import slog "go:log/slog"
 import os "go:os"
 import filepath "go:path/filepath"
 import runtime "go:runtime"
-import slog "go:log/slog"
-import arm092.migrations.Migrator
 
 func MigrationDirectory() string {
 	configured := os.Getenv("GHI_DDD_MIGRATIONS")
-	if configured != "" { return configured }
+	if configured != "" {
+		return configured
+	}
 	executable := os.Executable()
 	packaged := filepath.Join(filepath.Dir(executable), "migrations")
-	try { info := os.Stat(packaged); if info.IsDir() { return packaged } } catch err GoError {}
+	try {
+		info := os.Stat(packaged)
+		if info.IsDir() {
+			return packaged
+		}
+	} catch err GoError {}
 	_, source, _, ok := runtime.Caller(0)
-	if ! ok { throw new Exception("Set GHI_DDD_MIGRATIONS to the SQL migration directory", 3001) }
+	if !ok {
+		throw new Exception("Set GHI_DDD_MIGRATIONS to the SQL migration directory", 3001)
+	}
+
 	return filepath.Join(filepath.Dir(source), "migrations")
 }
 
-func rollback(tx * sql.Tx) {
-	try { tx.Rollback() } catch err GoError {
-		if ! errors.Is(err.cause, sql.ErrTxDone) { slog.Error("transaction rollback failed", "error", err.message) }
+func rollback(tx *sql.Tx) {
+	try {
+		tx.Rollback()
+	} catch err GoError {
+		if !errors.Is(err.cause, sql.ErrTxDone) {
+			slog.Error("transaction rollback failed", "error", err.message)
+		}
 	}
 }
 
-func initializeSchema(db * sql.DB, directory string) {
+func initializeSchema(db *sql.DB, directory string) {
 	db.Exec("PRAGMA foreign_keys = ON")
 	db.Exec("PRAGMA busy_timeout = 5000")
 	migrator := new Migrator(db, directory)
-	applied := migrator.UpWithAdoption(func (tx * sql.Tx, name string) bool {
-			// Older DDD versions added this column before the migration ledger existed.
-			if name != "002_task_assignee.sql" { return false }
-			var columns int
-			tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='assignee_id'").Scan(& columns)
-			return columns == 1
-		})
-	if applied > 0 { slog.Info("database migrations applied", "count", applied) }
+	applied := migrator.UpWithAdoption(func(tx *sql.Tx, name string) bool {
+		// Older DDD versions added this column before the migration ledger existed.
+		if name != "002_task_assignee.sql" {
+			return false
+		}
+		var columns int
+		tx.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='assignee_id'").Scan(&columns)
+
+		return columns == 1
+	})
+	if applied > 0 {
+		slog.Info("database migrations applied", "count", applied)
+	}
 }

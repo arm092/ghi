@@ -3,5 +3,5 @@ namespace main
 import fmt "go:fmt"
 
 func main() {
-    fmt.Println("Hello from Ghi!")
+	fmt.Println("Hello from Ghi!")
 }

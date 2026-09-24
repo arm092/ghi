@@ -1,95 +1,157 @@
 namespace tests.integration
-
-import testing "go:testing"
-import context "go:context"
-import filepath "go:path/filepath"
-import httptest "go:net/http/httptest"
-import json "go:encoding/json"
-import os "go:os"
-import sql "go:database/sql"
-import strings "go:strings"
-import sha256 "go:crypto/sha256"
-import fmt "go:fmt"
-import infrastructure.sqlite
+import arm092.migrations.MigrationError
+import arm092.migrations.Migrator
 import domain.task
 import domain.user
-import arm092.migrations.Migrator
-import arm092.migrations.MigrationError
+import context "go:context"
+import sha256 "go:crypto/sha256"
+import sql "go:database/sql"
+import json "go:encoding/json"
+import fmt "go:fmt"
+import httptest "go:net/http/httptest"
+import os "go:os"
+import filepath "go:path/filepath"
+import strings "go:strings"
 
-func TestBatchTransactionRollbackAndPagination(t * testing.T) {
+import testing "go:testing"
+import infrastructure.sqlite
+
+func TestBatchTransactionRollbackAndPagination(t *testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "atomic.db"))
 	defer repository.Close()
 	ctx := context.Background()
 	repository.Create(ctx, new task.Task("existing", "Original"))
 	rejected := false
-	try { repository.CreateBatch(ctx, [] task.Task { new task.Task("first", "Must roll back"), new task.Task("existing", "Duplicate") }) } catch err task.ValidationError { rejected = true }
-	if ! rejected || len(repository.List(ctx)) != 1 { t.Fatal("failed batch left a partial insert") }
-	for _, name := range[] string { "First", "Second", "Third" } { repository.Users().Create(ctx, new user.User(name, name, name + "@example.com")) }
+	try {
+		repository.CreateBatch(ctx, []task.Task{
+			new task.Task("first", "Must roll back"),
+			new task.Task("existing", "Duplicate"),
+		})
+	} catch err task.ValidationError {
+		rejected = true
+	}
+	if !rejected || len(repository.List(ctx)) != 1 {
+		t.Fatal("failed batch left a partial insert")
+	}
+	for _, name := range []string{
+		"First",
+		"Second",
+		"Third",
+	} {
+		repository.Users().Create(ctx, new user.User(name, name, name + "@example.com"))
+	}
 	server := httptest.NewServer(routerFor(repository))
 	defer server.Close()
 	created := send(t, server.Client(), "POST", server.URL + "/api/v1/tasks/batch", `{"titles":["Second","Third","Fourth"]}`, 201)
-	var batch[] taskResponse
-	json.NewDecoder(created.Body).Decode(& batch); created.Body.Close()
-	if len(batch) != 3 { t.Fatal("batch did not create every task") }
-	response := send(t, server.Client(), "GET", server.URL + "/api/v1/tasks?limit=2&offset=1", "", 200)
-	var page[] taskResponse
-	json.NewDecoder(response.Body).Decode(& page); response.Body.Close()
-	if len(page) != 2 || page[0].Title != "Second" || page[1].Title != "Third" || response.Header.Get("X-Limit") != "2" || response.Header.Get("X-Offset") != "1" { t.Fatalf("invalid page: %#v", page) }
-	people := send(t, server.Client(), "GET", server.URL + "/api/v1/users?limit=1&offset=1", "", 200)
-	var userPage[] userResponse
-	json.NewDecoder(people.Body).Decode(& userPage); people.Body.Close()
-	if len(userPage) != 1 || userPage[0].Name != "Second" { t.Fatalf("invalid user page: %#v", userPage) }
-	for _, query := range[] string { "limit=0", "limit=101", "limit=abc", "offset=-1", "offset=1000001", "limit=2&limit=3" } {
-		response = send(t, server.Client(), "GET", server.URL + "/api/v1/tasks?" + query, "", 400); response.Body.Close()
-		response = send(t, server.Client(), "GET", server.URL + "/api/v1/users?" + query, "", 400); response.Body.Close()
+	var batch []taskResponse
+	json.NewDecoder(created.Body).Decode(&batch)
+	created.Body.Close()
+	if len(batch) != 3 {
+		t.Fatal("batch did not create every task")
 	}
-	response = send(t, server.Client(), "POST", server.URL + "/api/v1/tasks/batch", `{"titles":["Would be partial"," "]}`, 422); response.Body.Close()
-	if len(repository.List(ctx)) != 4 { t.Fatal("invalid batch changed database") }
+	response := send(t, server.Client(), "GET", server.URL + "/api/v1/tasks?limit=2&offset=1", "", 200)
+	var page []taskResponse
+	json.NewDecoder(response.Body).Decode(&page)
+	response.Body.Close()
+	if len(page) != 2 || page[0].Title != "Second" || page[1].Title != "Third" || response.Header.Get("X-Limit") != "2" || response.Header.Get("X-Offset") != "1" {
+		t.Fatalf("invalid page: %#v", page)
+	}
+	people := send(t, server.Client(), "GET", server.URL + "/api/v1/users?limit=1&offset=1", "", 200)
+	var userPage []userResponse
+	json.NewDecoder(people.Body).Decode(&userPage)
+	people.Body.Close()
+	if len(userPage) != 1 || userPage[0].Name != "Second" {
+		t.Fatalf("invalid user page: %#v", userPage)
+	}
+	for _, query := range []string{
+		"limit=0",
+		"limit=101",
+		"limit=abc",
+		"offset=-1",
+		"offset=1000001",
+		"limit=2&limit=3",
+	} {
+		response = send(t, server.Client(), "GET", server.URL + "/api/v1/tasks?" + query, "", 400)
+		response.Body.Close()
+		response = send(t, server.Client(), "GET", server.URL + "/api/v1/users?" + query, "", 400)
+		response.Body.Close()
+	}
+	response = send(t, server.Client(), "POST", server.URL + "/api/v1/tasks/batch", `{"titles":["Would be partial"," "]}`, 422)
+	response.Body.Close()
+	if len(repository.List(ctx)) != 4 {
+		t.Fatal("invalid batch changed database")
+	}
 }
 
-func TestVersionedMigrationsRejectChangedHistory(t * testing.T) {
+func TestVersionedMigrationsRejectChangedHistory(t *testing.T) {
 	directory := t.TempDir()
 	for _, entry := range os.ReadDir(sqlite.MigrationDirectory()) {
-		if entry.IsDir() { continue }
+		if entry.IsDir() {
+			continue
+		}
 		data := os.ReadFile(filepath.Join(sqlite.MigrationDirectory(), entry.Name()))
 		os.WriteFile(filepath.Join(directory, entry.Name()), data, 0600)
 	}
 	path := filepath.Join(t.TempDir(), "migrations.db")
-	repository := new sqlite.Repository(path, directory); repository.Close()
+	repository := new sqlite.Repository(path, directory)
+	repository.Close()
 	database := sql.Open("sqlite", path)
 	var versions int
-	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(& versions)
-	if versions != 3 { t.Fatalf("expected three recorded migrations, got %d", versions) }
+	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&versions)
+	if versions != 3 {
+		t.Fatalf("expected three recorded migrations, got %d", versions)
+	}
 	database.Close()
 	for _, entry := range os.ReadDir(directory) {
 		data := os.ReadFile(filepath.Join(directory, entry.Name()))
 		windows := strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n", "\r\n")
-		os.WriteFile(filepath.Join(directory, entry.Name()), [] byte(windows), 0600)
+		os.WriteFile(filepath.Join(directory, entry.Name()), []byte(windows), 0600)
 	}
-	repository = new sqlite.Repository(path, directory); repository.Close()
-	os.WriteFile(filepath.Join(directory, "004_atomic.sql"), [] byte("CREATE TABLE incomplete(id INTEGER); INSERT INTO nonexistent VALUES (1);"), 0600)
+	repository = new sqlite.Repository(path, directory)
+	repository.Close()
+	os.WriteFile(filepath.Join(directory, "004_atomic.sql"), []byte("CREATE TABLE incomplete(id INTEGER); INSERT INTO nonexistent VALUES (1);"), 0600)
 	failed := false
-	try { repository = new sqlite.Repository(path, directory); repository.Close() } catch err MigrationError { failed = true; if err.code != 0 { t.Fatal("unexpected migration error code") } }
-	if ! failed { t.Fatal("broken migration succeeded") }
+	try {
+		repository = new sqlite.Repository(path, directory)
+		repository.Close()
+	} catch err MigrationError {
+		failed = true
+		if err.code != 0 {
+			t.Fatal("unexpected migration error code")
+		}
+	}
+	if !failed {
+		t.Fatal("broken migration succeeded")
+	}
 	database = sql.Open("sqlite", path)
 	var incomplete int
-	database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='incomplete'").Scan(& incomplete)
-	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(& versions)
+	database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='incomplete'").Scan(&incomplete)
+	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&versions)
 	database.Close()
-	if incomplete != 0 || versions != 3 { t.Fatal("failed migration left schema changes or a ledger record") }
-	os.WriteFile(filepath.Join(directory, "004_atomic.sql"), [] byte("CREATE TABLE complete(id INTEGER);"), 0600)
-	repository = new sqlite.Repository(path, directory); repository.Close()
-	os.WriteFile(filepath.Join(directory, "001_initial.sql"), [] byte("SELECT 1;"), 0600)
+	if incomplete != 0 || versions != 3 {
+		t.Fatal("failed migration left schema changes or a ledger record")
+	}
+	os.WriteFile(filepath.Join(directory, "004_atomic.sql"), []byte("CREATE TABLE complete(id INTEGER);"), 0600)
+	repository = new sqlite.Repository(path, directory)
+	repository.Close()
+	os.WriteFile(filepath.Join(directory, "001_initial.sql"), []byte("SELECT 1;"), 0600)
 	rejected := false
-	try { repository = new sqlite.Repository(path, directory); repository.Close() } catch err Exception { rejected = true }
-	if ! rejected { t.Fatal("changed applied migration accepted") }
+	try {
+		repository = new sqlite.Repository(path, directory)
+		repository.Close()
+	} catch err Exception {
+		rejected = true
+	}
+	if !rejected {
+		t.Fatal("changed applied migration accepted")
+	}
 }
 
-func TestExistingFilenameChecksumLedgerIsPreserved(t * testing.T) {
+func TestExistingFilenameChecksumLedgerIsPreserved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "existing-ledger.db")
 	database := sql.Open("sqlite", path)
 	data := os.ReadFile(filepath.Join(sqlite.MigrationDirectory(), "001_initial.sql"))
-	checksum := fmt.Sprintf("%x", sha256.Sum256([] byte(strings.ReplaceAll(string(data), "\r\n", "\n"))))
+	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.ReplaceAll(string(data), "\r\n", "\n"))))
 	database.Exec(string(data))
 	database.Exec("CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL)")
 	database.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (?,?)", "001_initial.sql", checksum)
@@ -97,33 +159,49 @@ func TestExistingFilenameChecksumLedgerIsPreserved(t * testing.T) {
 	database.Close()
 	repository := new sqlite.Repository(path)
 	item := repository.Find(context.Background(), "kept")
-	if item.Title() != "Existing record" || ! item.IsCompleted() { t.Fatal("migration changed existing data") }
+	if item.Title() != "Existing record" || !item.IsCompleted() {
+		t.Fatal("migration changed existing data")
+	}
 	repository.Close()
 	database = sql.Open("sqlite", path)
 	defer database.Close()
 	var recorded string
-	database.QueryRow("SELECT checksum FROM schema_migrations WHERE version='001_initial.sql'").Scan(& recorded)
-	if recorded != checksum { t.Fatal("migration rewrote historical checksum") }
+	database.QueryRow("SELECT checksum FROM schema_migrations WHERE version='001_initial.sql'").Scan(&recorded)
+	if recorded != checksum {
+		t.Fatal("migration rewrote historical checksum")
+	}
 	var versions int
-	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(& versions)
-	if versions != 3 { t.Fatal("migration did not extend existing filename ledger") }
+	database.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&versions)
+	if versions != 3 {
+		t.Fatal("migration did not extend existing filename ledger")
+	}
 }
 
-func TestMigrationPackageRollsBackAndReappliesDDDSchema(t * testing.T) {
+func TestMigrationPackageRollsBackAndReappliesDDDSchema(t *testing.T) {
 	database := sql.Open("sqlite", filepath.Join(t.TempDir(), "rollback.db"))
 	defer database.Close()
 	database.SetMaxOpenConns(1)
 	database.Exec("PRAGMA foreign_keys = ON")
 	migrator := new Migrator(database, sqlite.MigrationDirectory())
-	if migrator.Up() != 3 || migrator.Version() != "003_assignee_index.sql" { t.Fatal("initial schema version incorrect") }
-	if migrator.Down(3) != 3 || migrator.Version() != "" { t.Fatal("schema rollback failed") }
+	if migrator.Up() != 3 || migrator.Version() != "003_assignee_index.sql" {
+		t.Fatal("initial schema version incorrect")
+	}
+	if migrator.Down(3) != 3 || migrator.Version() != "" {
+		t.Fatal("schema rollback failed")
+	}
 	var remaining int
-	database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('tasks','users','tasks_assignee_id')").Scan(& remaining)
-	if remaining != 0 { t.Fatal("rollback left application schema behind") }
-	if migrator.Up() != 3 || migrator.Up() != 0 { t.Fatal("reapply was not idempotent") }
+	database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('tasks','users','tasks_assignee_id')").Scan(&remaining)
+	if remaining != 0 {
+		t.Fatal("rollback left application schema behind")
+	}
+	if migrator.Up() != 3 || migrator.Up() != 0 {
+		t.Fatal("reapply was not idempotent")
+	}
 	database.Exec("INSERT INTO users(id,name,email) VALUES ('owner','Owner','owner@example.com')")
 	database.Exec("INSERT INTO tasks(id,title,assignee_id) VALUES ('task','After rollback','owner')")
 	var owner string
-	database.QueryRow("SELECT assignee_id FROM tasks WHERE id='task'").Scan(& owner)
-	if owner != "owner" { t.Fatal("reapplied schema lost relationships") }
+	database.QueryRow("SELECT assignee_id FROM tasks WHERE id='task'").Scan(&owner)
+	if owner != "owner" {
+		t.Fatal("reapplied schema lost relationships")
+	}
 }

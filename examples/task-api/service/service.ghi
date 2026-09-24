@@ -4,17 +4,26 @@ import app.store
 import strings "go:strings"
 import utf8 "go:unicode/utf8"
 
-class ValidationError extends Exception { constructor(message string) { parent(message) } }
+class ValidationError extends Exception {
+	constructor(message string) {
+		parent(message)
+	}
+}
 
 class Service {
 	private repository store.Store
-	constructor(repository store.Store) { this.repository = repository }
+	constructor(repository store.Store) {
+		this.repository = repository
+	}
 	public func Add(title string) store.Task {
 		title = strings.TrimSpace(title)
 		if title == "" || utf8.RuneCountInString(title) > 200 {
 			throw new ValidationError("title must contain between 1 and 200 characters")
 		}
+
 		return this.repository.Add(title)
 	}
-	public func List() [] store.Task { return this.repository.List() }
+	public func List() []store.Task {
+		return this.repository.List()
+	}
 }

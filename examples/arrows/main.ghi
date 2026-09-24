@@ -3,20 +3,30 @@ namespace main
 import sort "go:sort"
 
 func main() {
-	greet := () => { println("Hello from Ghi") }
+	greet := () => {
+		println("Hello from Ghi")
+	}
 	greet()
 
-	sum := (a int, b int) int => { return a + b }
+	sum := (a int, b int) int => {
+		return a + b
+	}
 	println(sum(2, 3))
 
 	total := 0
-	add := (amount int) => { total += amount }
+	add := (amount int) => {
+		total += amount
+	}
 	add(7)
 	println(total)
 
-	values := [] int { 3, 1, 2 }
+	values := []int{
+		3,
+		1,
+		2,
+	}
 	sort.Slice(values, (i int, j int) bool => {
-			return values[i] < values[j]
-		})
+		return values[i] < values[j]
+	})
 	println(values[0], values[1], values[2])
 }

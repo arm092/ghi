@@ -1,38 +1,63 @@
 namespace presentation.httpapi
 import application.users
 import domain.user
-import http "go:net/http"
 import uuid "go:github.com/google/uuid"
+import http "go:net/http"
 
-type UserInput struct { Name string `json:"name"`; Email string `json:"email"` }
-type UserResponse struct { ID string `json:"id"`; Name string `json:"name"`; Email string `json:"email"` }
-func userResponse(item user.User) UserResponse { return UserResponse { ID: item.Id(), Name: item.Name(), Email: item.Email() } }
+type UserInput struct {
+	Name string `json:"name"`
+	Email string `json:"email"`
+}
+type UserResponse struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Email string `json:"email"`
+}
+func userResponse(item user.User) UserResponse {
+	return UserResponse{
+		ID: item.Id(),
+		Name: item.Name(),
+		Email: item.Email(),
+	}
+}
 func userID(value string) string {
-	try { id := uuid.Parse(value); return id.String() } catch err GoError { throw new RequestError("Invalid user ID") }
+	try {
+		id := uuid.Parse(value)
+
+		return id.String()
+	} catch err GoError {
+		throw new RequestError("Invalid user ID")
+	}
 }
 class UserController {
 	private service users.Service
-	constructor(service users.Service) { this.service = service }
-	public func List(w http.ResponseWriter, r * http.Request) {
+	constructor(service users.Service) {
+		this.service = service
+	}
+	public func List(w http.ResponseWriter, r *http.Request) {
 		limit, offset := pagination(w, r)
-		result := [] UserResponse {}
-		for _, item := range this.service.Page(r.Context(), limit, offset) { result = append(result, userResponse(item)) }
+		result := []UserResponse{}
+		for _, item := range this.service.Page(r.Context(), limit, offset) {
+			result = append(result, userResponse(item))
+		}
 		send(w, 200, result)
 	}
-	public func Create(w http.ResponseWriter, r * http.Request) {
+	public func Create(w http.ResponseWriter, r *http.Request) {
 		var input UserInput
-		decodeBody(w, r, & input)
+		decodeBody(w, r, &input)
 		item := this.service.Create(r.Context(), input.Name, input.Email)
 		w.Header().Set("Location", "/api/v1/users/" + item.Id())
 		send(w, 201, userResponse(item))
 	}
-	public func Get(w http.ResponseWriter, r * http.Request, id string) { send(w, 200, userResponse(this.service.Get(r.Context(), userID(id)))) }
-	public func Replace(w http.ResponseWriter, r * http.Request, id string) {
+	public func Get(w http.ResponseWriter, r *http.Request, id string) {
+		send(w, 200, userResponse(this.service.Get(r.Context(), userID(id))))
+	}
+	public func Replace(w http.ResponseWriter, r *http.Request, id string) {
 		var input UserInput
-		decodeBody(w, r, & input)
+		decodeBody(w, r, &input)
 		send(w, 200, userResponse(this.service.Replace(r.Context(), userID(id), input.Name, input.Email)))
 	}
-	public func Delete(w http.ResponseWriter, r * http.Request, id string) {
+	public func Delete(w http.ResponseWriter, r *http.Request, id string) {
 		this.service.Delete(r.Context(), userID(id))
 		w.WriteHeader(204)
 	}

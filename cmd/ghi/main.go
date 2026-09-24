@@ -43,7 +43,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi check [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version")
 		return 0
 	}
 	if args[0] == "version" {

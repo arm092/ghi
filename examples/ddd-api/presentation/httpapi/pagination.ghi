@@ -2,19 +2,37 @@ namespace presentation.httpapi
 import http "go:net/http"
 import strconv "go:strconv"
 
-func pagination(w http.ResponseWriter, r * http.Request)(int, int) {
+func pagination(w http.ResponseWriter, r *http.Request)(int, int) {
 	query := r.URL.Query()
-	limit := 50; offset := 0
-	for _, key := range[] string { "limit", "offset" } {
+	limit := 50
+	offset := 0
+	for _, key := range []string{
+		"limit",
+		"offset",
+	} {
 		values := query[key]
-		if len(values) > 1 { throw new RequestError("Pagination parameters must occur once") }
+		if len(values) > 1 {
+			throw new RequestError("Pagination parameters must occur once")
+		}
 		if len(values) == 1 {
 			value := 0
-			try { value = strconv.Atoi(values[0]) } catch err GoError { throw new RequestError("Pagination parameters must be integers") }
-			if key == "limit" { limit = value } else { offset = value }
+			try {
+				value = strconv.Atoi(values[0])
+			} catch err GoError {
+				throw new RequestError("Pagination parameters must be integers")
+			}
+			if key == "limit" {
+				limit = value
+			} else {
+				offset = value
+			}
 		}
 	}
-	if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 { throw new RequestError("limit must be 1..100 and offset 0..1000000") }
-	w.Header().Set("X-Limit", strconv.Itoa(limit)); w.Header().Set("X-Offset", strconv.Itoa(offset))
+	if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+		throw new RequestError("limit must be 1..100 and offset 0..1000000")
+	}
+	w.Header().Set("X-Limit", strconv.Itoa(limit))
+	w.Header().Set("X-Offset", strconv.Itoa(offset))
+
 	return limit, offset
 }

@@ -1,10 +1,10 @@
 namespace tests.unit
+import domain.task
+import strings "go:strings"
 
 import testing "go:testing"
-import strings "go:strings"
-import domain.task
 
-func TestTaskTitleAndCompletion(t * testing.T) {
+func TestTaskTitleAndCompletion(t *testing.T) {
 	item := new task.Task("task-1", "  Շապիկ  ")
 	if item.Id() != "task-1" || item.Title() != "Շապիկ" || item.IsCompleted() {
 		t.Fatal("constructor did not preserve identity, trim title, or default completion")
@@ -12,25 +12,33 @@ func TestTaskTitleAndCompletion(t * testing.T) {
 	maximum := strings.Repeat("ա", 200)
 	item.Rename(" " + maximum + " ")
 	item.SetCompleted(true)
-	if item.Id() != "task-1" || item.Title() != maximum || ! item.IsCompleted() {
+	if item.Id() != "task-1" || item.Title() != maximum || !item.IsCompleted() {
 		t.Fatal("rename or completion changed the wrong state")
 	}
 	restored := new task.Task(item.Id(), item.Title(), item.IsCompleted())
-	if restored.Title() != maximum || ! restored.IsCompleted() {
+	if restored.Title() != maximum || !restored.IsCompleted() {
 		t.Fatal("reconstituting a persisted task lost state")
 	}
 }
 
-func TestTaskRejectsInvalidTitlesWithoutMutation(t * testing.T) {
-	for _, title := range[] string { "", " \t\n ", strings.Repeat("ա", 201) } {
+func TestTaskRejectsInvalidTitlesWithoutMutation(t *testing.T) {
+	for _, title := range []string{
+		"",
+		" \t\n ",
+		strings.Repeat("ա", 201),
+	} {
 		rejected := false
 		try {
 			_ = new task.Task("invalid", title)
 		} catch err task.ValidationError {
 			rejected = true
-			if err.code != 1001 { t.Fatalf("wrong validation code: %d", err.code) }
+			if err.code != 1001 {
+				t.Fatalf("wrong validation code: %d", err.code)
+			}
 		}
-		if ! rejected { t.Fatalf("constructor accepted invalid title %q", title) }
+		if !rejected {
+			t.Fatalf("constructor accepted invalid title %q", title)
+		}
 
 		item := new task.Task("unchanged", "original", true)
 		rejected = false
@@ -39,7 +47,7 @@ func TestTaskRejectsInvalidTitlesWithoutMutation(t * testing.T) {
 		} catch err task.ValidationError {
 			rejected = true
 		}
-		if ! rejected || item.Title() != "original" || item.Id() != "unchanged" || ! item.IsCompleted() {
+		if !rejected || item.Title() != "original" || item.Id() != "unchanged" || !item.IsCompleted() {
 			t.Fatal("invalid rename was accepted or changed the aggregate")
 		}
 	}

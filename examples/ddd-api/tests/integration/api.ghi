@@ -1,20 +1,20 @@
 namespace tests.integration
-
-import testing "go:testing"
-import context "go:context"
-import errors "go:errors"
-import filepath "go:path/filepath"
-import httptest "go:net/http/httptest"
-import http "go:net/http"
-import strings "go:strings"
-import json "go:encoding/json"
-import io "go:io"
-import uuid "go:github.com/google/uuid"
-import infrastructure.sqlite
 import application.tasks
 import application.users
-import presentation.httpapi
 import domain.task
+import context "go:context"
+import json "go:encoding/json"
+import errors "go:errors"
+import uuid "go:github.com/google/uuid"
+import io "go:io"
+import http "go:net/http"
+import httptest "go:net/http/httptest"
+import filepath "go:path/filepath"
+import strings "go:strings"
+
+import testing "go:testing"
+import infrastructure.sqlite
+import presentation.httpapi
 
 func routerFor(repository sqlite.Repository) http.Handler {
 	return httpapi.NewRouter(new tasks.Service(repository, repository.Users()), new users.Service(repository.Users()))
@@ -35,7 +35,7 @@ type errorResponse struct {
 	}
 }
 
-func send(t * testing.T, client * http.Client, method string, url string, body string, status int) * http.Response {
+func send(t *testing.T, client *http.Client, method string, url string, body string, status int) *http.Response {
 	t.Helper()
 	request := http.NewRequest(method, url, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -45,27 +45,29 @@ func send(t * testing.T, client * http.Client, method string, url string, body s
 		response.Body.Close()
 		t.Fatalf("%s %s: got %d, want %d: %s", method, url, response.StatusCode, status, payload)
 	}
+
 	return response
 }
 
-func decodeTask(response * http.Response) taskResponse {
+func decodeTask(response *http.Response) taskResponse {
 	defer response.Body.Close()
 	var item taskResponse
-	json.NewDecoder(response.Body).Decode(& item)
+	json.NewDecoder(response.Body).Decode(&item)
+
 	return item
 }
 
-func requireError(t * testing.T, response * http.Response, code int, typeName string) {
+func requireError(t *testing.T, response *http.Response, code int, typeName string) {
 	t.Helper()
 	defer response.Body.Close()
 	var payload errorResponse
-	json.NewDecoder(response.Body).Decode(& payload)
+	json.NewDecoder(response.Body).Decode(&payload)
 	if payload.Error.Code != code || payload.Error.Type != typeName || payload.Error.Message == "" {
 		t.Fatalf("unexpected error payload: %#v", payload)
 	}
 }
 
-func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
+func TestHTTPCRUDAndReopenedPersistence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tasks.db")
 	repository := new sqlite.Repository(path)
 	defer repository.Close()
@@ -81,14 +83,20 @@ func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
 	}
 	url := server.URL + "/api/v1/tasks/" + created.ID
 	found := decodeTask(send(t, client, "GET", url, "", 200))
-	if found.ID != created.ID || found.Title != created.Title { t.Fatalf("get mismatch: %#v", found) }
+	if found.ID != created.ID || found.Title != created.Title {
+		t.Fatalf("get mismatch: %#v", found)
+	}
 	listed := send(t, client, "GET", server.URL + "/api/v1/tasks", "", 200)
-	var list[] taskResponse
-	json.NewDecoder(listed.Body).Decode(& list)
+	var list []taskResponse
+	json.NewDecoder(listed.Body).Decode(&list)
 	listed.Body.Close()
-	if len(list) != 1 || list[0].ID != created.ID { t.Fatalf("list mismatch: %#v", list) }
+	if len(list) != 1 || list[0].ID != created.ID {
+		t.Fatalf("list mismatch: %#v", list)
+	}
 	updated := decodeTask(send(t, client, "PUT", url, `{"title":"Delivered","completed":true}`, 200))
-	if updated.ID != created.ID || updated.Title != "Delivered" || ! updated.Completed { t.Fatalf("update mismatch: %#v", updated) }
+	if updated.ID != created.ID || updated.Title != "Delivered" || !updated.Completed {
+		t.Fatalf("update mismatch: %#v", updated)
+	}
 	server.Close()
 	repository.Close()
 
@@ -98,62 +106,151 @@ func TestHTTPCRUDAndReopenedPersistence(t * testing.T) {
 	defer restarted.Close()
 	url = restarted.URL + "/api/v1/tasks/" + created.ID
 	found = decodeTask(send(t, restarted.Client(), "GET", url, "", 200))
-	if found.Title != "Delivered" || ! found.Completed { t.Fatalf("task did not survive reopening: %#v", found) }
+	if found.Title != "Delivered" || !found.Completed {
+		t.Fatalf("task did not survive reopening: %#v", found)
+	}
 	deleted := send(t, restarted.Client(), "DELETE", url, "", 204)
 	data := io.ReadAll(deleted.Body)
 	deleted.Body.Close()
-	if len(data) != 0 { t.Fatalf("204 response has a body: %s", data) }
+	if len(data) != 0 {
+		t.Fatalf("204 response has a body: %s", data)
+	}
 	requireError(t, send(t, restarted.Client(), "GET", url, "", 404), 1002, "not_found")
 	requireError(t, send(t, restarted.Client(), "DELETE", url, "", 404), 1002, "not_found")
-	if len(reopened.List(context.Background())) != 0 { t.Fatal("delete did not persist") }
+	if len(reopened.List(context.Background())) != 0 {
+		t.Fatal("delete did not persist")
+	}
 }
 
-func TestValidationRequestLimitsAndSQLBinding(t * testing.T) {
+func TestValidationRequestLimitsAndSQLBinding(t *testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "validation.db"))
 	defer repository.Close()
 	router := routerFor(repository)
-	cases := [] struct { Method string; Path string; Body string; Status int } {
-		{ "POST", "/api/v1/tasks", `{"title":"   "}`, 422 },
-		{ "POST", "/api/v1/tasks", `{"title":"` + strings.Repeat("a", 201) + `"}`, 422 },
-		{ "POST", "/api/v1/tasks", `invalid`, 400 },
-		{ "POST", "/api/v1/tasks", `{"unexpected":true}`, 400 },
-		{ "POST", "/api/v1/tasks", `{"title":"first"} {"title":"second"}`, 400 },
-		{ "POST", "/api/v1/tasks", `{"title":"short"}` + strings.Repeat(" ", 65536), 400 },
-		{ "GET", "/api/v1/tasks/not-a-uuid", "", 400 },
-		{ "PATCH", "/api/v1/tasks", "", 405 },
-		{ "PUT", "/api/v1/tasks/00000000-0000-4000-8000-000000000001", `{"title":"missing","completed":true}`, 404 },
+	cases := [] struct {
+		Method string
+		Path string
+		Body string
+		Status int
+	}{
+		{
+			"POST",
+			"/api/v1/tasks",
+			`{"title":"   "}`,
+			422,
+		},
+		{
+			"POST",
+			"/api/v1/tasks",
+			`{"title":"` + strings.Repeat("a", 201) + `"}`,
+			422,
+		},
+		{
+			"POST",
+			"/api/v1/tasks",
+			`invalid`,
+			400,
+		},
+		{
+			"POST",
+			"/api/v1/tasks",
+			`{"unexpected":true}`,
+			400,
+		},
+		{
+			"POST",
+			"/api/v1/tasks",
+			`{"title":"first"} {"title":"second"}`,
+			400,
+		},
+		{
+			"POST",
+			"/api/v1/tasks",
+			`{"title":"short"}` + strings.Repeat(" ", 65536),
+			400,
+		},
+		{
+			"GET",
+			"/api/v1/tasks/not-a-uuid",
+			"",
+			400,
+		},
+		{
+			"PATCH",
+			"/api/v1/tasks",
+			"",
+			405,
+		},
+		{
+			"PUT",
+			"/api/v1/tasks/00000000-0000-4000-8000-000000000001",
+			`{"title":"missing","completed":true}`,
+			404,
+		},
 	}
 	for _, item := range cases {
 		request := httptest.NewRequest(item.Method, item.Path, strings.NewReader(item.Body))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
-		if response.Code != item.Status { t.Fatalf("%s %s: got %d want %d, body %s", item.Method, item.Path, response.Code, item.Status, response.Body.String()) }
+		if response.Code != item.Status {
+			t.Fatalf("%s %s: got %d want %d, body %s", item.Method, item.Path, response.Code, item.Status, response.Body.String())
+		}
 		var payload errorResponse
-		json.NewDecoder(response.Body).Decode(& payload)
-		if payload.Error.Type == "" || payload.Error.Message == "" { t.Fatalf("missing structured error: %#v", payload) }
-		if item.Status == 422 && payload.Error.Code != 1001 { t.Fatalf("validation code %d", payload.Error.Code) }
+		json.NewDecoder(response.Body).Decode(&payload)
+		if payload.Error.Type == "" || payload.Error.Message == "" {
+			t.Fatalf("missing structured error: %#v", payload)
+		}
+		if item.Status == 422 && payload.Error.Code != 1001 {
+			t.Fatalf("validation code %d", payload.Error.Code)
+		}
 	}
-	if len(repository.List(context.Background())) != 0 { t.Fatal("invalid requests changed storage") }
+	if len(repository.List(context.Background())) != 0 {
+		t.Fatal("invalid requests changed storage")
+	}
 	server := httptest.NewServer(router)
 	defer server.Close()
 	literal := "'); DROP TABLE tasks; --"
 	created := decodeTask(send(t, server.Client(), "POST", server.URL + "/api/v1/tasks", `{"title":"` + literal + `"}`, 201))
 	found := repository.Find(context.Background(), created.ID)
-	if found.Title() != literal || len(repository.List(context.Background())) != 1 { t.Fatal("SQL literal was not safely stored") }
+	if found.Title() != literal || len(repository.List(context.Background())) != 1 {
+		t.Fatal("SQL literal was not safely stored")
+	}
 }
 
-func TestRepositoryMissingRowsAndCancellation(t * testing.T) {
+func TestRepositoryMissingRowsAndCancellation(t *testing.T) {
 	repository := new sqlite.Repository(filepath.Join(t.TempDir(), "repository.db"))
 	defer repository.Close()
 	missing := "00000000-0000-4000-8000-000000000001"
 	count := 0
-	try { repository.Find(context.Background(), missing) } catch err task.NotFoundError { count++; if err.code != 1002 { t.Fatal("wrong missing code") } }
-	try { repository.Update(context.Background(), new task.Task(missing, "Missing")) } catch err task.NotFoundError { count++ }
-	try { repository.Delete(context.Background(), missing) } catch err task.NotFoundError { count++ }
-	if count != 3 { t.Fatalf("expected three missing-row errors, got %d", count) }
+	try {
+		repository.Find(context.Background(), missing)
+	} catch err task.NotFoundError {
+		count++
+		if err.code != 1002 {
+			t.Fatal("wrong missing code")
+		}
+	}
+	try {
+		repository.Update(context.Background(), new task.Task(missing, "Missing"))
+	} catch err task.NotFoundError {
+		count++
+	}
+	try {
+		repository.Delete(context.Background(), missing)
+	} catch err task.NotFoundError {
+		count++
+	}
+	if count != 3 {
+		t.Fatalf("expected three missing-row errors, got %d", count)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	canceled := false
-	try { repository.List(ctx) } catch err GoError { canceled = errors.Is(err.cause, context.Canceled) }
-	if ! canceled { t.Fatal("repository did not preserve context cancellation") }
+	try {
+		repository.List(ctx)
+	} catch err GoError {
+		canceled = errors.Is(err.cause, context.Canceled)
+	}
+	if !canceled {
+		t.Fatal("repository did not preserve context cancellation")
+	}
 }

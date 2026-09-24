@@ -13,14 +13,16 @@ import (
 )
 
 type formatToken struct {
-	kind       token.Token
-	text       string
-	start, end int
-	implicit   bool
+	kind        token.Token
+	text        string
+	start, end  int
+	implicit    bool
+	breakBefore bool
+	blankBefore bool
 }
 
-// FormatSource normalizes whitespace without rewriting Ghi tokens or literals.
-// Line breaks are retained because they participate in semicolon insertion.
+// FormatSource prints canonical Ghi layout while preserving literal and comment
+// contents. It validates both the input and the result before returning output.
 func FormatSource(filename string, source []byte) (output []byte, err error) {
 	// The extension parser predates error recovery for incomplete class members.
 	// A malformed editor buffer must be an error, never a formatter panic.
@@ -37,52 +39,7 @@ func FormatSource(filename string, source []byte) (output []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	var out strings.Builder
-	depth, lastEnd := 0, 0
-	var previous *formatToken
-	for i := range tokens {
-		current := &tokens[i]
-		if current.implicit {
-			continue
-		}
-		gap := string(source[lastEnd:current.start])
-		breaks := strings.Count(gap, "\n")
-		closing := current.kind == token.RBRACE || current.kind == token.RPAREN || current.kind == token.RBRACK
-		if closing && depth > 0 {
-			depth--
-		}
-		if previous == nil || breaks > 0 {
-			if previous != nil {
-				out.WriteByte('\n')
-				if breaks > 1 {
-					out.WriteByte('\n')
-				}
-			}
-			out.WriteString(strings.Repeat("\t", depth))
-		} else if formatSpace(*previous, *current) {
-			out.WriteByte(' ')
-		}
-		out.WriteString(current.text)
-		if current.kind == token.LBRACE || current.kind == token.LPAREN || current.kind == token.LBRACK {
-			depth++
-		}
-		previous = current
-		lastEnd = current.end
-	}
-	out.WriteByte('\n')
-	output = []byte(out.String())
-	after, err := scanFormatTokens(filename, output)
-	if err != nil {
-		return nil, err
-	}
-	if len(after) != len(tokens) {
-		return nil, fmt.Errorf("%s: formatting changed token boundaries", filename)
-	}
-	for i := range tokens {
-		if tokens[i].kind != after[i].kind || tokens[i].text != after[i].text || tokens[i].implicit != after[i].implicit {
-			return nil, fmt.Errorf("%s: formatting changed token boundaries", filename)
-		}
-	}
+	output = []byte(formatStructure(source, tokens))
 	if _, _, _, err := parseFile(token.NewFileSet(), filename, output); err != nil {
 		return nil, fmt.Errorf("%s: formatted source is invalid: %w", filename, err)
 	}
@@ -161,11 +118,14 @@ func formatSpace(previous, current formatToken) bool {
 			return true
 		}
 		switch previous.kind {
-		case token.IF, token.FOR, token.SWITCH, token.SELECT, token.FUNC:
+		case token.IF, token.FOR, token.SWITCH, token.SELECT, token.IMPORT:
 			return true
 		}
 		return previous.text == "catch"
 	case token.LBRACK:
+		if previous.kind == token.RANGE || previous.kind == token.RETURN {
+			return true
+		}
 		return previous.kind.IsOperator() && previous.kind != token.RBRACK && previous.kind != token.LPAREN
 	case token.RBRACE:
 		return previous.kind != token.LBRACE

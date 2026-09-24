@@ -1,16 +1,17 @@
 namespace infrastructure.sqlite
+import domain.task
+import domain.user
 
 import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
 import driver "go:modernc.org/sqlite"
 import strings "go:strings"
-import domain.task
-import domain.user
 
 func constraintFailure(cause error) bool {
 	var failure * driver.Error
-	return errors.As(cause, & failure) && failure.Code() & 255 == 19
+
+	return errors.As(cause, &failure) && failure.Code() & 255 == 19
 }
 
 class Repository implements task.Repository {
@@ -18,12 +19,16 @@ class Repository implements task.Repository {
 
 	constructor(path string, migrations string = "") {
 		separator := "?"
-		if strings.Contains(path, "?") { separator = "&" }
+		if strings.Contains(path, "?") {
+			separator = "&"
+		}
 		this.db = sql.Open("sqlite", path + separator + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 		this.db.SetMaxOpenConns(1)
 		this.db.SetMaxIdleConns(1)
 		try {
-			if migrations == "" { migrations = MigrationDirectory() }
+			if migrations == "" {
+				migrations = MigrationDirectory()
+			}
 			initializeSchema(this.db, migrations)
 		} catch err Exception {
 			this.db.Close()
@@ -31,27 +36,39 @@ class Repository implements task.Repository {
 		}
 	}
 
-	public func Close() { this.db.Close() }
-	public func Users() user.Repository { return new UserRepository(this.db) }
+	public func Close() {
+		this.db.Close()
+	}
+	public func Users() user.Repository {
+		return new UserRepository(this.db)
+	}
 
 	public func Create(ctx context.Context, item task.Task) {
 		try {
 			this.db.ExecContext(ctx, "INSERT INTO tasks (id, title, completed, assignee_id) VALUES (?, ?, ?, NULLIF(?, ''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId())
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new task.ValidationError("task ID already exists or assignee does not exist") }
+			if constraintFailure(err.cause) {
+				throw new task.ValidationError("task ID already exists or assignee does not exist")
+			}
 			throw err
 		}
 	}
 
-	public func CreateBatch(ctx context.Context, items[] task.Task) {
-		if len(items) < 1 || len(items) > 100 { throw new task.ValidationError("batch requires between 1 and 100 tasks") }
+	public func CreateBatch(ctx context.Context, items []task.Task) {
+		if len(items) < 1 || len(items) > 100 {
+			throw new task.ValidationError("batch requires between 1 and 100 tasks")
+		}
 		tx := this.db.BeginTx(ctx, nil)
 		defer rollback(tx)
 		try {
-			for _, item := range items { tx.ExecContext(ctx, "INSERT INTO tasks(id,title,completed,assignee_id) VALUES (?,?,?,NULLIF(?,''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId()) }
+			for _, item := range items {
+				tx.ExecContext(ctx, "INSERT INTO tasks(id,title,completed,assignee_id) VALUES (?,?,?,NULLIF(?,''))", item.Id(), item.Title(), item.IsCompleted(), item.AssigneeId())
+			}
 			tx.Commit()
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new task.ValidationError("batch contains duplicate task IDs or invalid assignees") }
+			if constraintFailure(err.cause) {
+				throw new task.ValidationError("batch contains duplicate task IDs or invalid assignees")
+			}
 			throw err
 		}
 	}
@@ -59,9 +76,13 @@ class Repository implements task.Repository {
 	public func Update(ctx context.Context, item task.Task) {
 		try {
 			result := this.db.ExecContext(ctx, "UPDATE tasks SET title = ?, completed = ?, assignee_id = NULLIF(?, '') WHERE id = ?", item.Title(), item.IsCompleted(), item.AssigneeId(), item.Id())
-			if result.RowsAffected() == 0 { throw new task.NotFoundError(item.Id()) }
+			if result.RowsAffected() == 0 {
+				throw new task.NotFoundError(item.Id())
+			}
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new task.ValidationError("assignee does not exist") }
+			if constraintFailure(err.cause) {
+				throw new task.ValidationError("assignee does not exist")
+			}
 			throw err
 		}
 	}
@@ -72,36 +93,44 @@ class Repository implements task.Repository {
 		var completed bool
 		var assigneeID string
 		try {
-			this.db.QueryRowContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks WHERE id = ?", id).Scan(& storedID, & title, & completed, & assigneeID)
+			this.db.QueryRowContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks WHERE id = ?", id).Scan(&storedID, &title, &completed, &assigneeID)
 		} catch err GoError {
-			if errors.Is(err.cause, sql.ErrNoRows) { throw new task.NotFoundError(id) }
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new task.NotFoundError(id)
+			}
 			throw err
 		}
+
 		return new task.Task(storedID, title, completed, assigneeID)
 	}
 
-	public func List(ctx context.Context) [] task.Task {
+	public func List(ctx context.Context) []task.Task {
 		return this.Page(ctx, 100, 0)
 	}
-	public func Page(ctx context.Context, limit int, offset int) [] task.Task {
-		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 { throw new task.ValidationError("invalid pagination bounds") }
+	public func Page(ctx context.Context, limit int, offset int) []task.Task {
+		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+			throw new task.ValidationError("invalid pagination bounds")
+		}
 		rows := this.db.QueryContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks ORDER BY rowid LIMIT ? OFFSET ?", limit, offset)
 		defer rows.Close()
-		items := [] task.Task {}
+		items := []task.Task{}
 		for rows.Next() {
 			var id string
 			var title string
 			var completed bool
 			var assigneeID string
-			rows.Scan(& id, & title, & completed, & assigneeID)
+			rows.Scan(&id, &title, &completed, &assigneeID)
 			items = append(items, new task.Task(id, title, completed, assigneeID))
 		}
 		rows.Err()
+
 		return items
 	}
 
 	public func Delete(ctx context.Context, id string) {
 		result := this.db.ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", id)
-		if result.RowsAffected() == 0 { throw new task.NotFoundError(id) }
+		if result.RowsAffected() == 0 {
+			throw new task.NotFoundError(id)
+		}
 	}
 }

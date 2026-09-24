@@ -3,13 +3,13 @@ namespace presentation.httpapi
 import application.tasks
 import domain.task
 import domain.user
-import http "go:net/http"
 import json "go:encoding/json"
-import io "go:io"
-import strings "go:strings"
-import mime "go:mime"
 import uuid "go:github.com/google/uuid"
+import io "go:io"
 import slog "go:log/slog"
+import mime "go:mime"
+import http "go:net/http"
+import strings "go:strings"
 
 type TaskResponse struct {
 	ID string `json:"id"`
@@ -27,13 +27,22 @@ type ErrorDetail struct {
 	Type string `json:"type"`
 	Message string `json:"message"`
 }
-type ErrorResponse struct { Error ErrorDetail `json:"error"` }
+type ErrorResponse struct {
+	Error ErrorDetail `json:"error"`
+}
 class RequestError extends Exception {
-	constructor(message string, status int = 400) { parent(message, status) }
+	constructor(message string, status int = 400) {
+		parent(message, status)
+	}
 }
 
 func response(item task.Task) TaskResponse {
-	return TaskResponse { ID: item.Id(), Title: item.Title(), Completed: item.IsCompleted(), AssigneeID: item.AssigneeId() }
+	return TaskResponse{
+		ID: item.Id(),
+		Title: item.Title(),
+		Completed: item.IsCompleted(),
+		AssigneeID: item.AssigneeId(),
+	}
 }
 func send(w http.ResponseWriter, status int, payload any) {
 	body := json.Marshal(payload)
@@ -42,11 +51,19 @@ func send(w http.ResponseWriter, status int, payload any) {
 	w.Write(body)
 }
 func failure(w http.ResponseWriter, status int, code int, kind string, message string) {
-	send(w, status, ErrorResponse { Error: ErrorDetail { Code: code, Type: kind, Message: message } })
+	send(w, status, ErrorResponse{
+		Error: ErrorDetail{
+			Code: code,
+			Type: kind,
+			Message: message,
+		},
+	})
 }
-func guarded(handler func (http.ResponseWriter, * http.Request)) http.HandlerFunc {
-	return func (w http.ResponseWriter, r * http.Request) {
-		try { handler(w, r) } catch err RequestError {
+func guarded(handler func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		try {
+			handler(w, r)
+		} catch err RequestError {
 			failure(w, err.code, err.code, "request_error", err.message)
 		} catch err task.ValidationError {
 			failure(w, 422, err.code, "validation_error", err.message)
@@ -59,80 +76,125 @@ func guarded(handler func (http.ResponseWriter, * http.Request)) http.HandlerFun
 		} catch err user.ConflictError {
 			failure(w, 409, err.code, "conflict", err.message)
 		} catch err Exception {
-			frames := [] map[string] any {}
-			for _, frame := range err.stackTrace { frames = append(frames, map[string] any { "function": frame.functionName, "file": frame.file, "line": frame.line }) }
+			frames := [] map[string]any{}
+			for _, frame := range err.stackTrace {
+				frames = append(frames, map[string]any{
+					"function": frame.functionName,
+					"file": frame.file,
+					"line": frame.line,
+				})
+			}
 			slog.Error("request_failed", "type", err.typeName, "code", err.code, "error", err.message, "stack", frames)
 			failure(w, 500, 500, "internal_error", "An internal error occurred")
 		}
 	}
 }
-func decodeBody(w http.ResponseWriter, r * http.Request, target any) {
+func decodeBody(w http.ResponseWriter, r *http.Request, target any) {
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "" {
 		try {
 			mediaType, _ := mime.ParseMediaType(contentType)
-			if mediaType != "application/json" { throw new RequestError("Content-Type must be application/json", 415) }
-		} catch err GoError { throw new RequestError("Invalid Content-Type", 415) }
+			if mediaType != "application/json" {
+				throw new RequestError("Content-Type must be application/json", 415)
+			}
+		} catch err GoError {
+			throw new RequestError("Invalid Content-Type", 415)
+		}
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	try {
 		decoder := json.NewDecoder(r.Body)
 		var raw json.RawMessage
-		decoder.Decode(& raw)
+		decoder.Decode(&raw)
 		body := strings.TrimSpace(string(raw))
-		if len(body) == 0 || body[0] != '{' { throw new RequestError("Expected a JSON object") }
+		if len(body) == 0 || body[0] != '{' {
+			throw new RequestError("Expected a JSON object")
+		}
 		var trailing any
 		ended := false
-		try { decoder.Decode(& trailing) } catch err GoError {
-			if err.cause != io.EOF { throw err }
+		try {
+			decoder.Decode(&trailing)
+		} catch err GoError {
+			if err.cause != io.EOF {
+				throw err
+			}
 			ended = true
 		}
-		if ! ended { throw new RequestError("Expected one JSON object") }
+		if !ended {
+			throw new RequestError("Expected one JSON object")
+		}
 		objectDecoder := json.NewDecoder(strings.NewReader(body))
 		objectDecoder.DisallowUnknownFields()
 		objectDecoder.Decode(target)
-	} catch err GoError { throw new RequestError("Invalid JSON request or body exceeds 4096 bytes") }
+	} catch err GoError {
+		throw new RequestError("Invalid JSON request or body exceeds 4096 bytes")
+	}
 }
 func taskID(value string) string {
-	try { id := uuid.Parse(value); return id.String() } catch err GoError { throw new RequestError("Invalid task ID") }
+	try {
+		id := uuid.Parse(value)
+
+		return id.String()
+	} catch err GoError {
+		throw new RequestError("Invalid task ID")
+	}
 }
 func assigneeID(value string) string {
-	if value == "" { return "" }
-	try { id := uuid.Parse(value); return id.String() } catch err GoError { throw new RequestError("Invalid assignee ID") }
+	if value == "" {
+		return ""
+	}
+	try {
+		id := uuid.Parse(value)
+
+		return id.String()
+	} catch err GoError {
+		throw new RequestError("Invalid assignee ID")
+	}
 }
 
 class TaskController {
 	private service tasks.Service
-	constructor(service tasks.Service) { this.service = service }
-	public func List(w http.ResponseWriter, r * http.Request) {
+	constructor(service tasks.Service) {
+		this.service = service
+	}
+	public func List(w http.ResponseWriter, r *http.Request) {
 		limit, offset := pagination(w, r)
-		result := [] TaskResponse {}
-		for _, item := range this.service.Page(r.Context(), limit, offset) { result = append(result, response(item)) }
+		result := []TaskResponse{}
+		for _, item := range this.service.Page(r.Context(), limit, offset) {
+			result = append(result, response(item))
+		}
 		send(w, 200, result)
 	}
-	public func CreateBatch(w http.ResponseWriter, r * http.Request) {
-		var input struct { Titles[] string `json:"titles"` }
-		decodeBody(w, r, & input)
-		result := [] TaskResponse {}
-		for _, item := range this.service.CreateBatch(r.Context(), input.Titles) { result = append(result, response(item)) }
+	public func CreateBatch(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Titles []string `json:"titles"`
+		}
+		decodeBody(w, r, &input)
+		result := []TaskResponse{}
+		for _, item := range this.service.CreateBatch(r.Context(), input.Titles) {
+			result = append(result, response(item))
+		}
 		send(w, 201, result)
 	}
-	public func Create(w http.ResponseWriter, r * http.Request) {
-		var input struct { Title string `json:"title"`; AssigneeID string `json:"assignee_id"` }
-		decodeBody(w, r, & input)
+	public func Create(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Title string `json:"title"`
+			AssigneeID string `json:"assignee_id"`
+		}
+		decodeBody(w, r, &input)
 		item := this.service.Create(r.Context(), input.Title, assigneeID(input.AssigneeID))
 		w.Header().Set("Location", "/api/v1/tasks/" + item.Id())
 		send(w, 201, response(item))
 	}
-	public func Get(w http.ResponseWriter, r * http.Request, id string) {
+	public func Get(w http.ResponseWriter, r *http.Request, id string) {
 		send(w, 200, response(this.service.Get(r.Context(), taskID(id))))
 	}
-	public func Replace(w http.ResponseWriter, r * http.Request, id string) {
+	public func Replace(w http.ResponseWriter, r *http.Request, id string) {
 		var input TaskInput
-		decodeBody(w, r, & input)
+		decodeBody(w, r, &input)
 		send(w, 200, response(this.service.Replace(r.Context(), taskID(id), input.Title, input.Completed, assigneeID(input.AssigneeID))))
 	}
-	public func Delete(w http.ResponseWriter, r * http.Request, id string) {
+	public func Delete(w http.ResponseWriter, r *http.Request, id string) {
 		this.service.Delete(r.Context(), taskID(id))
 		w.WriteHeader(204)
 	}

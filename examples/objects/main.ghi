@@ -3,45 +3,45 @@ namespace main
 import fmt "go:fmt"
 
 interface Described {
-    func describe() string
+	func describe() string
 }
 
 class Person {
-    protected name string
+	protected name string
 
-    constructor(name string = "Guest") {
-        this.name = name
-    }
+	constructor(name string = "Guest") {
+		this.name = name
+	}
 
-    public func describe() string {
-        return this.name
-    }
+	public func describe() string {
+		return this.name
+	}
 
-    public func greet() string {
-        return "Hello, " + this.describe()
-    }
+	public func greet() string {
+		return "Hello, " + this.describe()
+	}
 }
 
 class Developer extends Person implements Described {
-    public experience int
+	public experience int
 
-    constructor(name string, experience int = 1) {
-        parent(name)
-        this.experience = experience
-    }
+	constructor(name string, experience int = 1) {
+		parent(name)
+		this.experience = experience
+	}
 
-    public override func describe() string {
-        return parent.describe() + " from Ghi"
-    }
+	public override func describe() string {
+		return parent.describe() + " from Ghi"
+	}
 }
 
 func introduce(person Person) {
-    fmt.Println(person.greet())
+	fmt.Println(person.greet())
 }
 
 func main() {
-    developer := new Developer("Arman")
-    developer.experience++
-    introduce(developer)
-    fmt.Println("Experience:", developer.experience)
+	developer := new Developer("Arman")
+	developer.experience++
+	introduce(developer)
+	fmt.Println("Experience:", developer.experience)
 }

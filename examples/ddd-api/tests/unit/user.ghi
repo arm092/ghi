@@ -1,46 +1,97 @@
 namespace tests.unit
-import testing "go:testing"
+import application.tasks
+import domain.task
+import domain.user
 import context "go:context"
 import strings "go:strings"
-import domain.user
-import domain.task
-import application.tasks
+import testing "go:testing"
 
 class MemoryUsers implements user.Repository {
-	private items map[string] user.User
-	constructor() { this.items = make(map[string] user.User) }
-	public func Create(ctx context.Context, item user.User) { this.items[item.Id()] = item }
-	public func Update(ctx context.Context, item user.User) { this.items[item.Id()] = item }
+	private items map[string]user.User
+	constructor() {
+		this.items = make(map[string]user.User)
+	}
+	public func Create(ctx context.Context, item user.User) {
+		this.items[item.Id()] = item
+	}
+	public func Update(ctx context.Context, item user.User) {
+		this.items[item.Id()] = item
+	}
 	public func Find(ctx context.Context, id string) user.User {
 		item := this.items[id]
-		if item == nil { throw new user.NotFoundError(id) }
+		if item == nil {
+			throw new user.NotFoundError(id)
+		}
+
 		return item
 	}
-	public func List(ctx context.Context) [] user.User {
-		items := [] user.User {}
-		for _, item := range this.items { items = append(items, item) }
+	public func List(ctx context.Context) []user.User {
+		items := []user.User{}
+		for _, item := range this.items {
+			items = append(items, item)
+		}
+
 		return items
 	}
-	public func Delete(ctx context.Context, id string) { delete(this.items, id) }
-	public func Page(ctx context.Context, limit int, offset int) [] user.User { items := this.List(ctx); if offset >= len(items) { return[] user.User {} }; end := offset + limit; if end > len(items) { end = len(items) }; return items[offset: end] }
-}
+	public func Delete(ctx context.Context, id string) {
+		delete(this.items, id)
+	}
+	public func Page(ctx context.Context, limit int, offset int) []user.User {
+		items := this.List(ctx)
+		if offset >= len(items) {
+			return []user.User{}
+		}
+		end := offset + limit
+		if end > len(items) {
+			end = len(items)
+		}
 
-func TestUserValidationIsAtomic(t * testing.T) {
-	item := new user.User("user-1", " Անի ", " ANI@EXAMPLE.COM ")
-	if item.Name() != "Անի" || item.Email() != "ani@example.com" { t.Fatal("user normalization failed") }
-	for _, input := range[] struct { Name string; Email string } {
-		{ "", "valid@example.com" },
-		{ strings.Repeat("ա", 101), "valid@example.com" },
-		{ "Changed", "not-an-email" },
-		{ "Changed", "Name <valid@example.com>" },
-	} {
-		rejected := false
-		try { item.Replace(input.Name, input.Email) } catch err user.ValidationError { rejected = true; if err.code != 2001 { t.Fatal("wrong validation code") } }
-		if ! rejected || item.Name() != "Անի" || item.Email() != "ani@example.com" { t.Fatal("invalid replacement mutated user") }
+		return items[offset: end]
 	}
 }
 
-func TestTaskAssigneeMustExistBeforeMutation(t * testing.T) {
+func TestUserValidationIsAtomic(t *testing.T) {
+	item := new user.User("user-1", " Անի ", " ANI@EXAMPLE.COM ")
+	if item.Name() != "Անի" || item.Email() != "ani@example.com" {
+		t.Fatal("user normalization failed")
+	}
+	for _, input := range [] struct {
+		Name string
+		Email string
+	} {
+		{
+			"",
+			"valid@example.com",
+		},
+		{
+			strings.Repeat("ա", 101),
+			"valid@example.com",
+		},
+		{
+			"Changed",
+			"not-an-email",
+		},
+		{
+			"Changed",
+			"Name <valid@example.com>",
+		},
+	} {
+		rejected := false
+		try {
+			item.Replace(input.Name, input.Email)
+		} catch err user.ValidationError {
+			rejected = true
+			if err.code != 2001 {
+				t.Fatal("wrong validation code")
+			}
+		}
+		if !rejected || item.Name() != "Անի" || item.Email() != "ani@example.com" {
+			t.Fatal("invalid replacement mutated user")
+		}
+	}
+}
+
+func TestTaskAssigneeMustExistBeforeMutation(t *testing.T) {
 	ctx := context.Background()
 	repository := new MemoryRepository()
 	people := new MemoryUsers()
@@ -48,11 +99,25 @@ func TestTaskAssigneeMustExistBeforeMutation(t * testing.T) {
 	people.Create(ctx, new user.User("user-1", "Ani", "ani@example.com"))
 	item := service.Create(ctx, "Original", "user-1")
 	rejected := false
-	try { service.Replace(ctx, item.Id(), "Changed", true, "absent") } catch err task.ValidationError { rejected = true }
-	if ! rejected || repository.updates != 0 || item.Title() != "Original" || item.IsCompleted() || item.AssigneeId() != "user-1" { t.Fatal("invalid assignee changed task") }
+	try {
+		service.Replace(ctx, item.Id(), "Changed", true, "absent")
+	} catch err task.ValidationError {
+		rejected = true
+	}
+	if !rejected || repository.updates != 0 || item.Title() != "Original" || item.IsCompleted() || item.AssigneeId() != "user-1" {
+		t.Fatal("invalid assignee changed task")
+	}
 	rejected = false
-	try { service.Create(ctx, "Invalid", "absent") } catch err task.ValidationError { rejected = true }
-	if ! rejected || repository.creates != 1 { t.Fatal("invalid assignee reached persistence") }
+	try {
+		service.Create(ctx, "Invalid", "absent")
+	} catch err task.ValidationError {
+		rejected = true
+	}
+	if !rejected || repository.creates != 1 {
+		t.Fatal("invalid assignee reached persistence")
+	}
 	unassigned := service.Replace(ctx, item.Id(), "Original", false)
-	if unassigned.AssigneeId() != "" { t.Fatal("omitted assignee did not unassign") }
+	if unassigned.AssigneeId() != "" {
+		t.Fatal("omitted assignee did not unassign")
+	}
 }

@@ -1,26 +1,34 @@
 namespace infrastructure.sqlite
+import domain.user
 import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
-import domain.user
 
 class UserRepository implements user.Repository {
 	private db * sql.DB
-	constructor(db * sql.DB) { this.db = db }
+	constructor(db *sql.DB) {
+		this.db = db
+	}
 	public func Create(ctx context.Context, item user.User) {
 		try {
 			this.db.ExecContext(ctx, "INSERT INTO users (id, name, email) VALUES (?, ?, ?)", item.Id(), item.Name(), item.Email())
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new user.ConflictError("user ID or email already exists") }
+			if constraintFailure(err.cause) {
+				throw new user.ConflictError("user ID or email already exists")
+			}
 			throw err
 		}
 	}
 	public func Update(ctx context.Context, item user.User) {
 		try {
 			result := this.db.ExecContext(ctx, "UPDATE users SET name = ?, email = ? WHERE id = ?", item.Name(), item.Email(), item.Id())
-			if result.RowsAffected() == 0 { throw new user.NotFoundError(item.Id()) }
+			if result.RowsAffected() == 0 {
+				throw new user.NotFoundError(item.Id())
+			}
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new user.ConflictError("email already exists") }
+			if constraintFailure(err.cause) {
+				throw new user.ConflictError("email already exists")
+			}
 			throw err
 		}
 	}
@@ -29,37 +37,47 @@ class UserRepository implements user.Repository {
 		var name string
 		var email string
 		try {
-			this.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id).Scan(& storedID, & name, & email)
+			this.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id).Scan(&storedID, &name, &email)
 		} catch err GoError {
-			if errors.Is(err.cause, sql.ErrNoRows) { throw new user.NotFoundError(id) }
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new user.NotFoundError(id)
+			}
 			throw err
 		}
+
 		return new user.User(storedID, name, email)
 	}
-	public func List(ctx context.Context) [] user.User {
+	public func List(ctx context.Context) []user.User {
 		return this.Page(ctx, 100, 0)
 	}
-	public func Page(ctx context.Context, limit int, offset int) [] user.User {
-		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 { throw new user.ValidationError("invalid pagination bounds") }
+	public func Page(ctx context.Context, limit int, offset int) []user.User {
+		if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+			throw new user.ValidationError("invalid pagination bounds")
+		}
 		rows := this.db.QueryContext(ctx, "SELECT id, name, email FROM users ORDER BY rowid LIMIT ? OFFSET ?", limit, offset)
 		defer rows.Close()
-		items := [] user.User {}
+		items := []user.User{}
 		for rows.Next() {
 			var id string
 			var name string
 			var email string
-			rows.Scan(& id, & name, & email)
+			rows.Scan(&id, &name, &email)
 			items = append(items, new user.User(id, name, email))
 		}
 		rows.Err()
+
 		return items
 	}
 	public func Delete(ctx context.Context, id string) {
 		try {
 			result := this.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
-			if result.RowsAffected() == 0 { throw new user.NotFoundError(id) }
+			if result.RowsAffected() == 0 {
+				throw new user.NotFoundError(id)
+			}
 		} catch err GoError {
-			if constraintFailure(err.cause) { throw new user.ConflictError("user is assigned to tasks; unassign or delete those tasks first") }
+			if constraintFailure(err.cause) {
+				throw new user.ConflictError("user is assigned to tasks; unassign or delete those tasks first")
+			}
 			throw err
 		}
 	}

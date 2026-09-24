@@ -15,22 +15,29 @@ class Store {
 		this.db.SetMaxOpenConns(1)
 		this.db.Exec("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL)")
 	}
-	public func Close() { this.db.Close() }
+	public func Close() {
+		this.db.Close()
+	}
 	public func Add(title string) Task {
 		result := this.db.Exec("INSERT INTO tasks(title) VALUES (?)", title)
 		id := result.LastInsertId()
-		return Task { ID: id, Title: title }
+
+		return Task{
+			ID: id,
+			Title: title,
+		}
 	}
-	public func List() [] Task {
+	public func List() []Task {
 		rows := this.db.Query("SELECT id, title FROM tasks ORDER BY id")
 		defer rows.Close()
-		tasks := [] Task {}
+		tasks := []Task{}
 		for rows.Next() {
 			var task Task
-			rows.Scan(& task.ID, & task.Title)
+			rows.Scan(&task.ID, &task.Title)
 			tasks = append(tasks, task)
 		}
 		rows.Err()
+
 		return tasks
 	}
 }
