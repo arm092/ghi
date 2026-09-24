@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/token"
 	"io"
 	"io/fs"
 	"os"
@@ -52,6 +53,8 @@ var refRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 var commitRE = regexp.MustCompile(`^[a-f0-9]{40}([a-f0-9]{24})?$`)
 var identityPartRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+const ghiKeywords = " namespace class constructor extends implements override public private protected this parent new try catch finally throw as "
+
 func validateName(name string) error {
 	if !namespaceRE.MatchString(name) || strings.EqualFold(strings.Split(name, ".")[0], "main") || strings.EqualFold(strings.Split(name, ".")[0], "ghi") {
 		return fmt.Errorf("invalid package namespace %q: use dotted identifiers outside main and ghi", name)
@@ -72,7 +75,7 @@ func identityNamespace(identity string) (string, error) {
 		return identity, nil
 	}
 	parts := strings.Split(identity, "/")
-	if len(parts) != 2 || !identityPartRE.MatchString(parts[0]) || !identityPartRE.MatchString(parts[1]) {
+	if len(parts) != 2 || !validIdentityPart(parts[0]) || !validIdentityPart(parts[1]) {
 		return "", fmt.Errorf("invalid package identity %q: use owner/package with Ghi identifier segments", identity)
 	}
 	namespace := parts[0] + "." + parts[1]
@@ -80,6 +83,9 @@ func identityNamespace(identity string) (string, error) {
 		return "", fmt.Errorf("invalid package identity %q: %w", identity, e)
 	}
 	return namespace, nil
+}
+func validIdentityPart(part string) bool {
+	return part != "_" && identityPartRE.MatchString(part) && !token.Lookup(part).IsKeyword() && !strings.Contains(ghiKeywords, " "+part+" ")
 }
 func validateDependency(d Dependency) error {
 	if d.Repository == "" || strings.HasPrefix(d.Repository, "-") || strings.ContainsAny(d.Repository, "\x00\r\n") || strings.Contains(d.Repository, "::") {

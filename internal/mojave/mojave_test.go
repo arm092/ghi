@@ -202,7 +202,7 @@ func TestQualifiedIdentityRejectsAmbiguityAndLockTampering(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	library := repo(t, "arm092.migrations", nil)
-	for _, identity := range []string{"arm-092/migrations", "arm092/migrations-more", "arm092/../migrations", "arm092\\migrations", "/migrations", "arm092/", "arm092/migrations/extra"} {
+	for _, identity := range []string{"arm-092/migrations", "arm092/migrations-more", "arm092/../migrations", "arm092\\migrations", "/migrations", "arm092/", "arm092/migrations/extra", "for/migrations", "arm092/type", "namespace/pkg", "arm092/class", "_/migrations"} {
 		if e := Add(ctx, root, identity, library, "v1.0.0"); e == nil || !strings.Contains(e.Error(), "invalid") {
 			t.Fatalf("accepted ambiguous identity %q: %v", identity, e)
 		}
