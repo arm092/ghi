@@ -95,4 +95,19 @@ public class GhiCoreTest {
         assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.lastIndexOf("Account")));
         assertEquals(GhiHighlightingLexer.TYPE,roles.get(source.lastIndexOf("Version")));
     }
+    @Test public void arrowFunctionTokensAndParameterColors(){
+        String source="func main(){sum := (a int, b int) int => { return a+b }; empty := () => {}; named := (x int) (result int, err error) => { result=x; return }; old := func(x int) int { return x }}";
+        var tokens=lex(source);
+        assertEquals(3,tokens.stream().filter(token->token.text().equals("=>")&&token.type()==GhiLexer.OPERATOR).count());
+        assertFalse(tokens.stream().anyMatch(token->token.type()==TokenType.BAD_CHARACTER));
+        var lexer=new GhiHighlightingLexer();lexer.start(source);var roles=new HashMap<Integer,IElementType>();
+        while(lexer.getTokenType()!=null){roles.put(lexer.getTokenStart(),lexer.getTokenType());lexer.advance();}
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("a int")));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("return a+b")+7));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("b int")));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("a+b")+2));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("result int")));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("result=x")));
+        assertEquals(GhiLexer.KEYWORD,roles.get(source.indexOf("func(x")));
+    }
 }

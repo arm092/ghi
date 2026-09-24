@@ -106,6 +106,30 @@ public final class GhiHighlightingLexer extends LexerBase {
                 functionMembers.set(open+1,scopeEnd);
             }
         }
+        for(int i=0;i<words.size();i++)if(text(i).equals("(")&&close[i]>i){
+            int body=arrowBody(i);if(body<0)continue;
+            int end=close[i],scopeEnd=close[body]<0?words.size():close[body];
+            Set<String> names=new HashSet<>();
+            for(int at=i+1;at<end;){
+                int next=at;
+                while(next<end&&!text(next).equals(",")){if(close[next]>next)next=close[next];next++;}
+                if(id(at)&&!BUILTINS.contains(text(at))&&(at+1<next||next<end)){
+                    names.add(text(at));color(at,PARAMETER);
+                }
+                at=next+1;
+            }
+            int resultOpen=end+1;
+            if(text(resultOpen).equals("(")&&close[resultOpen]>resultOpen)for(int at=resultOpen+1;at<close[resultOpen];){
+                int next=at;
+                while(next<close[resultOpen]&&!text(next).equals(",")){if(close[next]>next)next=close[next];next++;}
+                if(id(at)&&at+1<next&&!text(at+1).equals(".")&&!text(at+1).equals("[")){
+                    names.add(text(at));color(at,PARAMETER);
+                }
+                at=next+1;
+            }
+            parameters.add(new Scope(i,scopeEnd,names));functionMembers.set(body+1,scopeEnd);
+            i=body;
+        }
         // Scan each function body once for its parameter references. Avoid searching
         // every function scope for every token on each editor rehighlight.
         for(Scope scope:parameters)for(int i=scope.from()+1;i<scope.to();i++){
@@ -123,6 +147,15 @@ public final class GhiHighlightingLexer extends LexerBase {
             if(inClass(i) && outsideFunction(i) && (id(i+1) || Set.of("[","*","?","map","chan").contains(after))){color(i,FIELD);continue;}
             color(i,LOCAL);
         }
+    }
+    private int arrowBody(int open){
+        for(int at=close[open]+1;at<words.size();at++){
+            if(newline(at-1,at))return -1;
+            if(text(at).equals("=>"))return text(at+1).equals("{")?at+1:-1;
+            if(Set.of(";","{","}",",").contains(text(at)))return -1;
+            if((text(at).equals("(")||text(at).equals("["))&&close[at]>at)at=close[at];
+        }
+        return -1;
     }
     private boolean inClass(int i){return classMembers.get(i);}
     private boolean outsideFunction(int i){return !functionMembers.get(i);}

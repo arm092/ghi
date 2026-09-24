@@ -69,6 +69,7 @@ public final class GhiLexer extends LexerBase {
             if(match.lookingAt())end=match.end();
             token=NUMBER;return;
         }
+        if(c=='=' && end<limit && buffer.charAt(end)=='>'){end++;token=OPERATOR;return;}
         token=switch(c){
             case '('->LPAREN;case ')'->RPAREN;case '{'->LBRACE;case '}'->RBRACE;
             case '['->LBRACKET;case ']'->RBRACKET;

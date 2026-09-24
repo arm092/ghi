@@ -326,6 +326,40 @@ public class GhiIdeTest extends BasePlatformTestCase {
         var variants=myFixture.completeBasic();
         if(variants!=null)for(var item:variants){assertFalse(item.getLookupString().equals("Box"));assertFalse(item.getLookupString().equals("Contract"));}
     }
+    public void testAnonymousArrowScopesCapturesAndCalls(){
+        String source="namespace main\nclass Counter {\n public value int\n public func make(seed int) func(int) int {\n  return (n int) int => { return this.value + seed + n }\n }\n}\nfunc main(){\n outer := (a int) func(int) int => {\n  inner := (b int) int => { return a+b }\n  return inner\n }\n sum := (a int, b int) int => { return a+b }\n pair := (a int) (int,error) => { return a,nil }\n named := (x int) (result int, err error) => { result=x; return }\n empty := () => { }\n sum(1,2); pair(1); named(2); empty(); outer(2)\n}\n";
+        var file=myFixture.configureByText("arrows.ghi",source);
+        var model=GhiSymbols.forFile(file);
+        int outerName=source.indexOf("(a int) func")+1;
+        int innerName=source.indexOf("(b int) int")+1;
+        int innerUse=source.indexOf("return a+b");
+        assertEquals(model.resolve(file,outerName),model.resolve(file,innerUse+7));
+        assertEquals(model.resolve(file,innerName),model.resolve(file,innerUse+9));
+        int seedDeclaration=source.indexOf("seed int");
+        int seedUse=source.indexOf("+ seed +")+2;
+        assertEquals(model.resolve(file,seedDeclaration),model.resolve(file,seedUse));
+        int fieldDeclaration=source.indexOf("value int");
+        int fieldUse=source.indexOf("this.value")+5;
+        assertEquals(model.resolve(file,fieldDeclaration),model.resolve(file,fieldUse));
+        var sum=model.callAt(file,source.indexOf("sum(1,2)")+6);
+        assertNotNull(sum);assertEquals(java.util.List.of("a int","b int"),sum.symbol().parameters);
+        var pair=model.callAt(file,source.indexOf("pair(1)")+5);
+        assertNotNull(pair);assertEquals("(int,error)",pair.symbol().resultSignature);
+        assertEquals(java.util.List.of("a int"),pair.symbol().parameters);
+        int resultName=source.indexOf("result int"),resultUse=source.indexOf("result=x");
+        assertEquals(model.resolve(file,resultName),model.resolve(file,resultUse));
+        var named=model.callAt(file,source.indexOf("named(2)")+7);
+        assertNotNull(named);assertEquals(java.util.List.of("x int"),named.symbol().parameters);
+        var empty=model.callAt(file,source.indexOf("empty()")+6);
+        assertNotNull(empty);assertTrue(empty.symbol().parameters.isEmpty());
+        var available=model.complete(file,innerUse+9);
+        assertTrue(available.stream().anyMatch(symbol->symbol.name.equals("a")));
+        assertTrue(available.stream().anyMatch(symbol->symbol.name.equals("b")));
+        myFixture.getEditor().getCaretModel().moveToOffset(outerName);
+        myFixture.renameElementAtCaret("input");
+        assertTrue(file.getText().contains("return input+b"));
+        assertTrue(file.getText().contains("sum := (a int, b int)"));
+    }
     public void testExcludedInstalledPackageNavigationHintsAndAutoImport(){
         var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {public value string\nconstructor(name string){this.value=name}\npublic func run(count int){}}\nclass Wider {}\n");
         myFixture.addFileToProject(".ghi/packages/acme.lib/tests/trap.ghi","namespace acme.lib\nclass TestTrap {}\n");

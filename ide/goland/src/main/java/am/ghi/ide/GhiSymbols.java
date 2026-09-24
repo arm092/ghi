@@ -18,7 +18,7 @@ final class GhiSymbols {
         String name, kind, type="", base="", visibility="public", importNamespace="", resultSignature=""; int offset;
         PsiFile file; Scope scope, body; List<String> parameters=new ArrayList<>();
         List<String> typeParameters=new ArrayList<>(), contracts=new ArrayList<>();
-        PsiElement external; boolean explicitAlias;
+        PsiElement external; boolean explicitAlias, callable;
         Symbol(String name,String kind,int offset,PsiFile file,Scope scope) {
             this.name=name;this.kind=kind;this.offset=offset;this.file=file;this.scope=scope;
         }
@@ -26,7 +26,7 @@ final class GhiSymbols {
     }
     static final class Source {
         PsiFile file; String namespace=""; List<Token> tokens=new ArrayList<>();
-        List<Scope> scopes=new ArrayList<>(); Map<Integer,Symbol> declarations=new HashMap<>(); Set<Integer> importPathTokens=new HashSet<>(); Map<Integer,Symbol> selectedPaths=new HashMap<>();
+        List<Scope> scopes=new ArrayList<>(); Map<Integer,Symbol> declarations=new HashMap<>(), arrows=new HashMap<>(); Set<Integer> importPathTokens=new HashSet<>(); Map<Integer,Symbol> selectedPaths=new HashMap<>();
         Source(PsiFile file) { this.file=file; }
         Scope scope(int offset) {
             Scope result=scopes.getFirst();
@@ -126,6 +126,21 @@ final class GhiSymbols {
                     parameters(s,symbol,i+2,close,text);
                 }
             }
+            if(word.equals("(")){
+                Arrow arrow=arrowAt(ts,i,text);
+                if(arrow!=null){
+                    Scope body=scopeAt(s,ts.get(arrow.body).start);
+                    if(body!=null){
+                        Symbol function=new Symbol("<arrow>","arrow",t.start,file,s.scope(t.start));
+                        function.body=body;function.type=typeAt(ts,arrow.close+1);
+                        if(arrow.arrow>arrow.close+1)function.resultSignature=text.substring(ts.get(arrow.close+1).start,ts.get(arrow.arrow-1).end);
+                        body.owner=function;s.arrows.put(t.start,function);
+                        parameters(s,function,i+1,arrow.close,text);
+                        namedArrowResults(s,function,arrow.close+1,arrow.arrow);
+                    }
+                    i=arrow.body;
+                }
+            }
         }
         for(int i=0;i<ts.size();i++){
             Token t=ts.get(i);if(!t.identifier||s.declarations.containsKey(t.start))continue;
@@ -139,10 +154,29 @@ final class GhiSymbols {
                 Symbol symbol=declare(s,t,field?"field":prev.equals("const")?"const":"local",scope);symbol.visibility=scope.owner!=null&&scope.owner.kind.equals("interface")?"public":visibility(ts,i);
                 symbol.type=shortDecl?typeAt(ts,i+3):typeAt(ts,i+1);
                 if(symbol.type.isEmpty()&&is(ts,i+1,"="))symbol.type=typeAt(ts,i+2);
+                int value=shortDecl?i+3:is(ts,i+1,"=")?i+2:-1;
+                if(value>=0&&value<ts.size()){
+                    Symbol arrow=s.arrows.get(ts.get(value).start);
+                    if(arrow!=null){symbol.callable=true;symbol.parameters.addAll(arrow.parameters);symbol.resultSignature=arrow.resultSignature;symbol.type=arrow.type;}
+                }
             }
         }
     }
     private static boolean lineBreak(String text,int from,int to){return text.substring(from,to).contains("\n");}
+    private record Arrow(int close,int arrow,int body){}
+    private static Arrow arrowAt(List<Token> ts,int open,String text){
+        int close=matching(ts,open,"(",")");if(close<0)return null;
+        for(int at=close+1;at<ts.size();at++){
+            if(lineBreak(text,ts.get(at-1).end,ts.get(at).start))return null;
+            if(is(ts,at,"=>"))return is(ts,at+1,"{")?new Arrow(close,at,at+1):null;
+            if(Set.of(";","{","}",",").contains(ts.get(at).text))return null;
+            if(is(ts,at,"(")||is(ts,at,"[")){
+                int end=matching(ts,at,ts.get(at).text,is(ts,at,"(")?")":"]");
+                if(end<0)return null;at=end;
+            }
+        }
+        return null;
+    }
     private static Scope scopeAt(Source s,int start){for(Scope scope:s.scopes)if(scope.start==start)return scope;return null;}
     private Symbol declare(Source s,Token t,String kind,Scope scope){Symbol symbol=new Symbol(t.text,kind,t.start,s.file,scope);symbols.add(symbol);s.declarations.put(t.start,symbol);return symbol;}
     private void parameters(Source s,Symbol function,int start,int end,String text){
@@ -155,6 +189,23 @@ final class GhiSymbols {
                     if(name.identifier&&function.body!=null){Symbol param=declare(s,name,"parameter",function.body);param.type=typeAt(s.tokens,segment+1);}}
                 segment=i+1;
             }
+        }
+    }
+    private void namedArrowResults(Source s,Symbol function,int open,int arrow){
+        if(!is(s.tokens,open,"("))return;
+        int end=matching(s.tokens,open,"(",")");if(end<0||end>=arrow)return;
+        for(int at=open+1;at<end;){
+            int next=at;
+            while(next<end&&!is(s.tokens,next,",")){
+                if(is(s.tokens,next,"(")||is(s.tokens,next,"[")){
+                    int nested=matching(s.tokens,next,s.tokens.get(next).text,is(s.tokens,next,"(")?")":"]");
+                    if(nested>next)next=nested;
+                }
+                next++;
+            }
+            if(at+1<next&&s.tokens.get(at).identifier&&!is(s.tokens,at+1,".")&&!is(s.tokens,at+1,"["))
+                declare(s,s.tokens.get(at),"result",function.body);
+            at=next+1;
         }
     }
     static boolean is(List<Token> ts,int i,String text){return i>=0&&i<ts.size()&&ts.get(i).text.equals(text);}

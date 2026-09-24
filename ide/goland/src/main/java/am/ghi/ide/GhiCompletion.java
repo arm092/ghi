@@ -30,7 +30,7 @@ public final class GhiCompletion extends CompletionContributor {
             }
             for(var symbol:available){
                 var item=LookupElementBuilder.create(symbol.name).withTypeText(symbol.kind+(symbol.type.isEmpty()?"":" "+symbol.type),true).withIcon(GhiIcons.FILE);
-                if(symbol.kind.equals("func"))item=item.withTailText("("+String.join(", ",symbol.parameters)+")",true);
+                if(symbol.kind.equals("func")||symbol.callable)item=item.withTailText("("+String.join(", ",symbol.parameters)+")",true);
                 result.addElement(item);
             }
         }
