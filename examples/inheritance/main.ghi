@@ -1,0 +1,51 @@
+namespace main
+
+import fmt "go:fmt"
+
+class User {
+	public email string
+
+	constructor(email string) {
+		this.email = email
+	}
+}
+
+class Repository[T any] {
+	protected items []T
+
+	constructor() {
+		this.items = []T{}
+	}
+
+	public func add(item T) {
+		this.items = append(this.items, item)
+	}
+
+	public func count() int {
+		return len(this.items)
+	}
+}
+
+class UserRepository extends Repository[User] {
+	public func findByEmail(email string) ?User {
+		for _, user := range this.items {
+			if user.email == email {
+				return user
+			}
+		}
+
+		return nil
+	}
+}
+
+func main() {
+	users := new UserRepository()
+	users.add(new User("arman@example.com"))
+	var repository Repository[User] = users
+	fmt.Println(repository.count())
+	found := users.findByEmail("arman@example.com")
+	if found != nil {
+		fmt.Println(found.email)
+	}
+	fmt.Println(users.findByEmail("missing@example.com") == nil)
+}

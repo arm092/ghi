@@ -15,7 +15,7 @@ func (p *program) expressionClass(expression ast.Expr, info *types.Info) *classD
 	return p.classType(info.TypeOf(expression))
 }
 
-func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int) bool {
+func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int, transforms ...func(ast.Expr) ast.Expr) bool {
 	if fn == nil {
 		return false
 	}
@@ -30,6 +30,15 @@ func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int) b
 			break
 		}
 		clone, _ := parser.ParseExpr(expressionText(value))
+		if len(transforms) > 0 {
+			// Parse a file wrapper to resolve lambda-local names. ParseExpr alone
+			// does not populate resolution objects used by scoped substitution.
+			parsed, err := parser.ParseFile(token.NewFileSet(), "default.ghi", "package defaults\nvar ghi_default_placeholder = "+expressionText(value), 0)
+			if err == nil {
+				clone = parsed.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec).Values[0]
+			}
+			clone = transforms[0](clone)
+		}
 		call.Args = append(call.Args, clone)
 		changed = true
 	}
@@ -163,7 +172,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							changed = true
 						}
 						for _, c := range p.classes() {
-							if !c.Interface && baseText == p.classSymbolIfImported(c, "GhiInit_"+c.Name, file, ns) && fillDefaults(n, c.Constructor, 1) {
+							if !c.Interface && baseText == p.classSymbolIfImported(c, "GhiInit_"+c.Name, file, ns) && fillDefaults(n, c.Constructor, 1, p.classDefaultTransform(c, classBindings(c, typeArguments), file, ns)) {
 								changed = true
 							}
 						}
@@ -179,7 +188,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								constructor = expressionText(qualified.X) + ".GhiNew_" + c.Name
 							}
 							n.Fun, _ = parser.ParseExpr(constructor + typeArgumentsText(typeArguments))
-							fillDefaults(n, c.Constructor, 0)
+							fillDefaults(n, c.Constructor, 0, p.classDefaultTransform(c, classBindings(c, typeArguments), file, ns))
 							changed = true
 							return node
 						}
@@ -208,8 +217,8 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 									reject("parent method is missing or inaccessible")
 									return node
 								}
-								n.Fun, _ = parser.ParseExpr(p.classSymbol(method.Owner, bodyName(method), file, ns))
-								fillDefaults(n, method, 0)
+								n.Fun, _ = parser.ParseExpr(p.classSymbol(method.Owner, bodyName(method), file, ns) + p.ancestorArgumentText(owner, method.Owner))
+								fillDefaults(n, method, 0, p.classDefaultTransform(method.Owner, classBindings(method.Owner, p.ancestorArguments(owner, method.Owner)), file, ns))
 								n.Args = append([]ast.Expr{ast.NewIdent("this")}, n.Args...)
 								changed = true
 								return node
@@ -221,7 +230,10 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 										return node
 									}
 									selector.Sel = ast.NewIdent("GhiM_" + method.Name)
-									fillDefaults(n, method, 0)
+									fillDefaults(n, method, 0, func(value ast.Expr) ast.Expr {
+										bindings := p.inheritedCallBindings(c, method.Owner, selector.X, value, info, file, ns)
+										return p.classDefaultTransform(method.Owner, bindings, file, ns)(value)
+									})
 									changed = true
 									return node
 								}

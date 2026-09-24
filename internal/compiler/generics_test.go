@@ -51,7 +51,7 @@ func TestGenericsRejectInvalidTypes(t *testing.T) {
 		"uninitialized generic local": `func zero[T any]() T{var value T;return value};func main(){_=zero[User]()}`,
 		"wrong interface argument":    `interface Reader[T any]{func get()T};class Box[T any] implements Reader[int]{public func get()T{panic("unused")}};func main(){_=new Box[string]()}`,
 		"phantom invariance":          `class Box[T any]{};func main(){var box Box[int]=new Box[string]();_=box}`,
-		"generic parent":              `class Base[T any]{};class Child extends Base[int]{};func main(){_=new Child()}`,
+		"missing parent arguments":    `class Base[T any]{};class Child extends Base{};func main(){_=new Child()}`,
 		"nongeneric indexed parent":   `class Base{};class Child extends Base[int]{};func main(){_=new Child()}`,
 		"generic aggregate field":     `type Wrapped[T any] struct{value T};class Holder {public wrapped Wrapped[User]};func main(){_=new Holder()}`,
 		"generic nil default":         `func bad[T any](value T=nil){};func main(){}`,

@@ -133,7 +133,7 @@ func (p *program) classSymbol(c *classDecl, name string, to *sourceFile, ns *nam
 	path := generatedModule + "/" + strings.ReplaceAll(c.Namespace.Name, ".", "/")
 	return p.importAlias(c.File, to, path, c.Namespace.GoName) + "." + name
 }
-func (p *program) typeText(typ ast.Expr, owner *classDecl, to *sourceFile, ns *namespace) string {
+func (p *program) typeText(typ ast.Expr, owner *classDecl, to *sourceFile, ns *namespace, context ...*classDecl) string {
 	copy, _ := parser.ParseExpr(expressionText(typ))
 	node := walkNode(copy, func(n ast.Node) ast.Node {
 		switch n := n.(type) {
@@ -166,12 +166,41 @@ func (p *program) typeText(typ ast.Expr, owner *classDecl, to *sourceFile, ns *n
 				expression, _ := parser.ParseExpr(p.classSymbol(c, c.Name, to, ns))
 				return expression
 			}
+			if owner.Namespace != ns {
+				for _, source := range owner.Namespace.Files {
+					for _, decl := range source.Tree.Decls {
+						group, ok := decl.(*ast.GenDecl)
+						if !ok || group.Tok != token.TYPE {
+							continue
+						}
+						for _, spec := range group.Specs {
+							if named, ok := spec.(*ast.TypeSpec); ok && named.Name.Name == n.Name {
+								expr, _ := parser.ParseExpr(p.classSymbol(owner, n.Name, to, ns))
+								return expr
+							}
+						}
+					}
+				}
+			}
 		}
 		return n
 	}, true)
+	if len(context) > 0 && context[0] != owner {
+		for a := context[0].Parent; a != nil; a = a.Parent {
+			if a == owner {
+				args := p.ancestorArguments(context[0], owner)
+				bindings := map[string]ast.Expr{}
+				for i, name := range classParameterNames(owner) {
+					bindings[name] = args[i]
+				}
+				node = substituteType(node.(ast.Expr), bindings)
+				break
+			}
+		}
+	}
 	return expressionText(node.(ast.Expr))
 }
-func (p *program) parameters(f *functionDecl, to *sourceFile, ns *namespace) string {
+func (p *program) parameters(f *functionDecl, to *sourceFile, ns *namespace, context ...*classDecl) string {
 	var result []string
 	for _, param := range f.Node.Type.Params.List {
 		if param.Names[0].Name == "this" {
@@ -179,13 +208,13 @@ func (p *program) parameters(f *functionDecl, to *sourceFile, ns *namespace) str
 		}
 		typ := expressionText(param.Type)
 		if f.Owner != nil {
-			typ = p.typeText(param.Type, f.Owner, to, ns)
+			typ = p.typeText(param.Type, f.Owner, to, ns, context...)
 		}
 		result = append(result, param.Names[0].Name+" "+typ)
 	}
 	return strings.Join(result, ", ")
 }
-func (p *program) results(f *functionDecl, to *sourceFile, ns *namespace) string {
+func (p *program) results(f *functionDecl, to *sourceFile, ns *namespace, context ...*classDecl) string {
 	if f.Node.Type.Results == nil {
 		return ""
 	}
@@ -193,7 +222,7 @@ func (p *program) results(f *functionDecl, to *sourceFile, ns *namespace) string
 	for _, field := range f.Node.Type.Results.List {
 		typ := expressionText(field.Type)
 		if f.Owner != nil {
-			typ = p.typeText(field.Type, f.Owner, to, ns)
+			typ = p.typeText(field.Type, f.Owner, to, ns, context...)
 		}
 		if len(field.Names) == 0 {
 			result = append(result, typ)
@@ -220,7 +249,7 @@ func (p *program) signature(f *functionDecl, where *classDecl) string {
 	var parts []string
 	for _, param := range f.Node.Type.Params.List {
 		if param.Names[0].Name != "this" {
-			parts = append(parts, p.typeText(param.Type, f.Owner, where.File, where.Namespace))
+			parts = append(parts, p.typeText(param.Type, f.Owner, where.File, where.Namespace, where))
 		}
 	}
 	var results []string
@@ -231,7 +260,7 @@ func (p *program) signature(f *functionDecl, where *classDecl) string {
 				count = 1
 			}
 			for i := 0; i < count; i++ {
-				results = append(results, p.typeText(field.Type, f.Owner, where.File, where.Namespace))
+				results = append(results, p.typeText(field.Type, f.Owner, where.File, where.Namespace, where))
 			}
 		}
 	}
@@ -275,15 +304,17 @@ func (p *program) prepareClasses() error {
 				}
 				seen[key] = true
 				if c.ParentName != "" {
-					if genericName(c.ParentName) != c.ParentName {
-						return fmt.Errorf("%s:%d: type arguments are not supported in class inheritance", file.Path, c.Line)
-					}
 					c.Parent = p.classNamed(c.ParentName, file, ns)
 					if c.Parent == nil || c.Parent.Interface {
 						return fmt.Errorf("class %s: unknown parent class %s", c.Name, c.ParentName)
 					}
-					if c.TypeParams != nil || c.Parent.TypeParams != nil {
-						return fmt.Errorf("%s:%d: generic class inheritance is not supported yet", file.Path, c.Line)
+					expr, err := parser.ParseExpr(c.ParentName)
+					if err != nil {
+						return fmt.Errorf("%s:%d: invalid parent type: %w", file.Path, c.Line, err)
+					}
+					_, args := genericBase(expr)
+					if len(args) != len(classParameterNames(c.Parent)) {
+						return fmt.Errorf("%s:%d: parent %s expects %d type arguments, got %d", file.Path, c.Line, c.Parent.Name, len(classParameterNames(c.Parent)), len(args))
 					}
 				}
 				for _, name := range c.InterfaceNames {

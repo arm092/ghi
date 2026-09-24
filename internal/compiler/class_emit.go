@@ -14,16 +14,16 @@ func (p *program) emitClass(c *classDecl) error {
 	fmt.Fprintf(&out, "package %s\ntype %s%s interface {\n", c.Namespace.GoName, c.Name, parameters)
 	if !c.Interface {
 		for a := c; a != nil; a = a.Parent {
-			fmt.Fprintf(&out, "GhiIs_%s(%s)\n", a.key(), a.markerParameters())
+			fmt.Fprintf(&out, "GhiIs_%s(%s)\n", a.key(), p.ancestorMarkerParameters(c, a))
 		}
 	}
 	for _, field := range c.allFields() {
-		typ := p.typeText(field.Type, field.Owner, c.File, c.Namespace)
+		typ := p.typeText(field.Type, field.Owner, c.File, c.Namespace, c)
 		fmt.Fprintf(&out, "%s() %s\n%s(value %s)\n", fieldGet(field), typ, fieldSet(field), typ)
 		fmt.Fprintf(&out, "%s() *%s\n", fieldRef(field), typ)
 	}
 	for _, m := range c.allMethods() {
-		fmt.Fprintf(&out, "GhiM_%s(%s)%s\n", m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace))
+		fmt.Fprintf(&out, "GhiM_%s(%s)%s\n", m.Name, p.parameters(m, c.File, c.Namespace, c), p.results(m, c.File, c.Namespace, c))
 	}
 	out.WriteString("}\n")
 	if len(c.InterfaceNames) > 0 {
@@ -36,14 +36,14 @@ func (p *program) emitClass(c *classDecl) error {
 	if !c.Interface {
 		fmt.Fprintf(&out, "type ghiData_%s%s struct {\n", c.Name, parameters)
 		for _, f := range c.allFields() {
-			fmt.Fprintf(&out, "F_%s_%s %s\n", f.Owner.key(), f.Name, p.typeText(f.Type, f.Owner, c.File, c.Namespace))
+			fmt.Fprintf(&out, "F_%s_%s %s\n", f.Owner.key(), f.Name, p.typeText(f.Type, f.Owner, c.File, c.Namespace, c))
 		}
 		out.WriteString("}\n")
 		for a := c; a != nil; a = a.Parent {
-			fmt.Fprintf(&out, "func (this *%s) GhiIs_%s(%s) {}\n", receiver, a.key(), a.markerParameters())
+			fmt.Fprintf(&out, "func (this *%s) GhiIs_%s(%s) {}\n", receiver, a.key(), p.ancestorMarkerParameters(c, a))
 		}
 		for _, f := range c.allFields() {
-			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace)
+			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace, c)
 			fmt.Fprintf(&out, "func (this *%s) %s() %s { return this.F_%s_%s }\n", receiver, fieldGet(f), typ, f.Owner.key(), f.Name)
 			fmt.Fprintf(&out, "func (this *%s) %s(value %s) { this.F_%s_%s = value }\n", receiver, fieldSet(f), typ, f.Owner.key(), f.Name)
 			fmt.Fprintf(&out, "func (this *%s) %s() *%s { return &this.F_%s_%s }\n", receiver, fieldRef(f), typ, f.Owner.key(), f.Name)
@@ -57,7 +57,7 @@ func (p *program) emitClass(c *classDecl) error {
 			if args != "" {
 				args = ", " + args
 			}
-			fmt.Fprintf(&out, "func (this *%s) GhiM_%s(%s)%s { %s%s%s(this%s) }\n", receiver, m.Name, p.parameters(m, c.File, c.Namespace), p.results(m, c.File, c.Namespace), ret, p.classSymbol(m.Owner, bodyName(m), c.File, c.Namespace), m.Owner.typeArguments(), args)
+			fmt.Fprintf(&out, "func (this *%s) GhiM_%s(%s)%s { %s%s%s(this%s) }\n", receiver, m.Name, p.parameters(m, c.File, c.Namespace, c), p.results(m, c.File, c.Namespace, c), ret, p.classSymbol(m.Owner, bodyName(m), c.File, c.Namespace), p.ancestorArgumentText(c, m.Owner), args)
 		}
 		ctor := c.Constructor
 		args := argumentNames(ctor)
@@ -138,7 +138,7 @@ func (p *program) prepareConstructor(c *classDecl) error {
 							return fmt.Errorf("%s: this cannot be used in parent constructor arguments", c.Name)
 						}
 					}
-					call.Fun, _ = parser.ParseExpr(p.classSymbol(c.Parent, "GhiInit_"+c.Parent.Name, c.File, c.Namespace))
+					call.Fun, _ = parser.ParseExpr(p.classSymbol(c.Parent, "GhiInit_"+c.Parent.Name, c.File, c.Namespace) + p.ancestorArgumentText(c, c.Parent))
 					call.Args = append([]ast.Expr{ast.NewIdent("this")}, call.Args...)
 					continue
 				}
@@ -158,7 +158,7 @@ func (p *program) prepareConstructor(c *classDecl) error {
 		if required > 0 {
 			return fmt.Errorf("%s: explicit parent(...) required", c.Name)
 		}
-		fun, _ := parser.ParseExpr(p.classSymbol(c.Parent, "GhiInit_"+c.Parent.Name, c.File, c.Namespace))
+		fun, _ := parser.ParseExpr(p.classSymbol(c.Parent, "GhiInit_"+c.Parent.Name, c.File, c.Namespace) + p.ancestorArgumentText(c, c.Parent))
 		call := &ast.CallExpr{Fun: fun, Args: []ast.Expr{ast.NewIdent("this")}}
 		fn.Node.Body.List = append([]ast.Stmt{&ast.ExprStmt{X: call}}, fn.Node.Body.List...)
 	}
