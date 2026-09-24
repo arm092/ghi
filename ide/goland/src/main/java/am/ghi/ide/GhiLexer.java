@@ -15,7 +15,7 @@ public final class GhiLexer extends LexerBase {
         "namespace","import", "as","class","interface","extends","implements","constructor","override",
         "new","public","private","protected","this","parent","try","catch","finally","throw",
         "break","case","chan","const","continue","default","defer","else","fallthrough","for",
-        "func","go","goto","if","map","range","return","select","struct","switch","type","var",
+        "func","go","goto","if","map","match","range","return","select","struct","switch","type","var",
         "nil","true","false");
     private static final Pattern NUMERIC=Pattern.compile(
         "(?:0[xX][0-9a-fA-F_]+(?:\\.[0-9a-fA-F_]*)?(?:[pP][+-]?[0-9_]+)?|0[bB][01_]+|0[oO][0-7_]+|(?:[0-9][0-9_]*(?:\\.[0-9_]*)?|\\.[0-9][0-9_]*)(?:[eE][+-]?[0-9_]+)?)i?");

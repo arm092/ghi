@@ -110,4 +110,17 @@ public class GhiCoreTest {
         assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("result=x")));
         assertEquals(GhiLexer.KEYWORD,roles.get(source.indexOf("func(x")));
     }
+    @Test public void matchExpressionsTokenizeAndHighlight(){
+        String source="func describe(status int) string { return match status { 200 => \"OK\", 500, 503 => \"Error\", default => match status { 200 => \"OK\", default => \"Unknown\", }, } }";
+        var tokens=lex(source);
+        assertEquals(2,tokens.stream().filter(token->token.text().equals("match")&&token.type()==GhiLexer.KEYWORD).count());
+        assertEquals(2,tokens.stream().filter(token->token.text().equals("default")&&token.type()==GhiLexer.KEYWORD).count());
+        assertEquals(5,tokens.stream().filter(token->token.text().equals("=>")&&token.type()==GhiLexer.OPERATOR).count());
+        assertFalse(tokens.stream().anyMatch(token->token.type()==TokenType.BAD_CHARACTER));
+        var lexer=new GhiHighlightingLexer();lexer.start(source);var roles=new HashMap<Integer,IElementType>();
+        while(lexer.getTokenType()!=null){roles.put(lexer.getTokenStart(),lexer.getTokenType());lexer.advance();}
+        assertEquals(GhiLexer.KEYWORD,roles.get(source.indexOf("match")));
+        assertEquals(GhiLexer.KEYWORD,roles.get(source.lastIndexOf("default")));
+        assertEquals(GhiHighlightingLexer.PARAMETER,roles.get(source.indexOf("match status")+6));
+    }
 }

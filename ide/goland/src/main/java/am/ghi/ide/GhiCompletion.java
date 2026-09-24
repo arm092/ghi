@@ -18,6 +18,8 @@ public final class GhiCompletion extends CompletionContributor {
             }
             String preceding=file.getText().substring(0,parameters.getPosition().getTextOffset()).stripTrailing();
             if(!preceding.endsWith(".")&&!preceding.matches("(?s).*\\bnew")&&!parameters.getPosition().getText().isEmpty() && "new".startsWith(parameters.getPosition().getText().replace("IntellijIdeaRulezzz", "")))result.addElement(LookupElementBuilder.create("new").bold());
+            if(!preceding.endsWith(".")&&!preceding.substring(preceding.lastIndexOf('\n')+1).stripLeading().startsWith("import "))
+                result.addElement(LookupElementBuilder.create("match").bold());
             var available=GhiSymbols.forFile(file).complete(file,parameters.getOffset());
             if(!preceding.endsWith(".")&&!preceding.substring(preceding.lastIndexOf('\n')+1).stripLeading().startsWith("import ")){
                 for(var choice:GhiTypeImports.candidates(file,null)){

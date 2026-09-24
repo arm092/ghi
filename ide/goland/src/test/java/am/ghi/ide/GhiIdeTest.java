@@ -441,6 +441,44 @@ public class GhiIdeTest extends BasePlatformTestCase {
         assertTrue(file.getText().contains("return input+b"));
         assertTrue(file.getText().contains("sum := (a int, b int)"));
     }
+    public void testMatchExpressionReferencesAndCompletion(){
+        String source="namespace main\nconst success = 200\nfunc render(value string) string{return value}\n"
+            +"func describe(status int, backup int) string {\n"
+            +" label := \"ready\"\n"
+            +" result := match status {\n"
+            +"  success => render(label),\n"
+            +"  500, 503 => render(\"Error\"),\n"
+            +"  default => match backup {\n"
+            +"   success => label,\n"
+            +"   default => \"Unknown\",\n"
+            +"  },\n"
+            +" }\n return result\n}\n"
+            +"class Counter {public value string\npublic func describe(status int) string {return match status {200 => this.value, default => \"Unknown\",}}}\n";
+        var file=myFixture.configureByText("match.ghi",source);var model=GhiSymbols.forFile(file);
+        assertEquals(model.resolve(file,source.indexOf("status int")),model.resolve(file,source.indexOf("match status")+6));
+        assertEquals(model.resolve(file,source.indexOf("backup int")),model.resolve(file,source.indexOf("match backup")+6));
+        assertEquals(model.resolve(file,source.indexOf("success =")),model.resolve(file,source.indexOf("success =>")));
+        assertEquals(model.resolve(file,source.indexOf("label :=")+1),model.resolve(file,source.indexOf("render(label)")+7));
+        assertEquals(model.resolve(file,source.indexOf("label :=")+1),model.resolve(file,source.indexOf("=> label")+3));
+        assertEquals(model.resolve(file,source.indexOf("func render")+5),model.resolve(file,source.indexOf("render(label)")));
+        assertEquals(java.util.List.of("value string"),model.callAt(file,source.indexOf("render(label)")+12).symbol().parameters);
+        assertEquals(model.resolve(file,source.lastIndexOf("value string")),model.resolve(file,source.indexOf("this.value")+5));
+        var names=model.complete(file,source.indexOf("=> label")+4).stream().map(symbol->symbol.name).toList();
+        assertTrue(names.toString(),names.containsAll(java.util.List.of("status","backup","label","success","render")));
+        file=myFixture.configureByText("match-completion.ghi","namespace main\nfunc f(status int) string {return mat<caret>}\n");
+        var variants=myFixture.completeBasic();
+        assertTrue(file.getText(),variants==null?file.getText().contains("return match"):
+            java.util.Arrays.stream(variants).anyMatch(item->item.getLookupString().equals("match")));
+        String closure="namespace main\nfunc choose(status int, suffix string) func(string) string {\n"
+            +" return match status {\n"
+            +"  200 => (item string) string => { return item+suffix },\n"
+            +"  default => (item string) string => { return suffix },\n"
+            +" }\n}\n";
+        file=myFixture.configureByText("match-closure.ghi",closure);model=GhiSymbols.forFile(file);
+        assertEquals(model.resolve(file,closure.indexOf("item string")),model.resolve(file,closure.indexOf("return item")+7));
+        assertEquals(model.resolve(file,closure.indexOf("suffix string")),model.resolve(file,closure.indexOf("+suffix")+1));
+        assertEquals(model.resolve(file,closure.indexOf("suffix string")),model.resolve(file,closure.lastIndexOf("return suffix")+7));
+    }
     public void testExcludedInstalledPackageNavigationHintsAndAutoImport(){
         var library=myFixture.addFileToProject(".ghi/packages/acme.lib/types.ghi","namespace acme.lib\nclass Widget {public value string\nconstructor(name string){this.value=name}\npublic func run(count int){}}\nclass Wider {}\n");
         myFixture.addFileToProject(".ghi/packages/acme.lib/tests/trap.ghi","namespace acme.lib\nclass TestTrap {}\n");
