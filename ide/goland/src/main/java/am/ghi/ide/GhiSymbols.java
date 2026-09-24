@@ -17,7 +17,8 @@ final class GhiSymbols {
     static final class Symbol {
         String name, kind, type="", base="", visibility="public", importNamespace="", resultSignature=""; int offset;
         PsiFile file; Scope scope, body; List<String> parameters=new ArrayList<>();
-        List<String> typeParameters=new ArrayList<>(), contracts=new ArrayList<>();
+        List<String> typeParameters=new ArrayList<>(), contracts=new ArrayList<>(), embedded=new ArrayList<>();
+        Map<String,String> constraints=new LinkedHashMap<>(); boolean interfaceType;
         PsiElement external; boolean explicitAlias, callable;
         Symbol(String name,String kind,int offset,PsiFile file,Scope scope) {
             this.name=name;this.kind=kind;this.offset=offset;this.file=file;this.scope=scope;
@@ -114,10 +115,22 @@ final class GhiSymbols {
             }
             if(Set.of("class","interface","type","func").contains(word)&&i+1<ts.size()&&ts.get(i+1).identifier){
                 int nameIndex=i+1;Token name=ts.get(nameIndex);Scope scope=s.scope(t.start);
-                Symbol symbol=declare(s,name,word,scope);symbol.visibility=scope.owner!=null&&scope.owner.kind.equals("interface")?"public":visibility(ts,i);
+                Symbol symbol=declare(s,name,word,scope);symbol.visibility=scope.owner!=null&&(scope.owner.kind.equals("interface")||scope.owner.interfaceType)?"public":visibility(ts,i);
                 if(is(ts,nameIndex+1,"[")){
                     int end=matching(ts,nameIndex+1,"[","]");
-                    if(end>=0)for(String parameter:GhiGenericTypes.arguments(typeAt(ts,nameIndex)))symbol.typeParameters.add(parameter.split("[^\\p{L}\\p{N}_]",2)[0]);
+                    if(end>=0)for(String parameter:GhiGenericTypes.arguments(typeAt(ts,nameIndex))){
+                        String[] parts=parameter.trim().split("\\s+",2);
+                        symbol.typeParameters.add(parts[0]);
+                        if(parts.length>1)symbol.constraints.put(parts[0],parts[1]);
+                    }
+                }
+                if(word.equals("type")){
+                    int after=nameIndex+1;
+                    if(is(ts,after,"[")){int end=matching(ts,after,"[","]");if(end>=0)after=end+1;}
+                    if(is(ts,after,"interface")&&is(ts,after+1,"{")){
+                        symbol.interfaceType=true;symbol.body=scopeAt(s,ts.get(after+1).start);
+                        if(symbol.body!=null){symbol.body.owner=symbol;embeddedTypes(s,symbol,after+1,text);}
+                    }
                 }
                 if(word.equals("class")||word.equals("interface")||word.equals("func")) {
                     int open=find(ts,nameIndex+1,"{",Set.of(";","}"));
@@ -141,7 +154,7 @@ final class GhiSymbols {
                         for(int at=k+1;at<ts.size()&&(open<0||at<open);at++)if(ts.get(at).identifier&&(at==k+1||is(ts,at-1,",")))symbol.contracts.add(typeAt(ts,at));
                         break;
                     }
-                    if(symbol.body!=null)symbol.body.owner=symbol;
+                    if(symbol.body!=null){symbol.body.owner=symbol;if(word.equals("interface"))embeddedTypes(s,symbol,open,text);}
                 }
             }
             if(word.equals("constructor")&&is(ts,i+1,"(")){
@@ -188,6 +201,21 @@ final class GhiSymbols {
         }
     }
     private static boolean lineBreak(String text,int from,int to){return text.substring(from,to).contains("\n");}
+    private static void embeddedTypes(Source source,Symbol owner,int open,String text){
+        if(owner.body==null||open<0)return;
+        List<Token> tokens=source.tokens;int close=matching(tokens,open,"{","}");
+        boolean start=true;
+        for(int i=open+1;i<close;i++){
+            Token token=tokens.get(i);
+            if(source.scope(token.start)!=owner.body)continue;
+            if(i>open+1&&lineBreak(text,tokens.get(i-1).end,token.start))start=true;
+            if(start&&token.identifier&&!token.text.equals("func")){
+                String expression=typeAt(tokens,i);
+                if(!expression.isEmpty())owner.embedded.add(expression);
+            }
+            start=token.text.equals(";");
+        }
+    }
     private record Arrow(int close,int arrow,int body){}
     private static Arrow arrowAt(List<Token> ts,int open,String text){
         int close=matching(ts,open,"(",")");if(close<0)return null;
@@ -242,7 +270,7 @@ final class GhiSymbols {
         if(index>=ts.size()||!ts.get(index).identifier)return "";
         String name=qualified(ts,index);int after=index+1;
         while(is(ts,after,".")&&after+1<ts.size()&&ts.get(after+1).identifier)after+=2;
-        if(is(ts,after,"[")){int end=matching(ts,after,"[","]");if(end>=0){StringBuilder generic=new StringBuilder();for(int i=after;i<=end;i++){if(i>after&&ts.get(i-1).identifier&&ts.get(i).identifier)generic.append(' ');generic.append(ts.get(i).text);}name+=generic;}}
+        if(is(ts,after,"[")){int end=matching(ts,after,"[","]");if(end>=0){StringBuilder generic=new StringBuilder();for(int i=after;i<=end;i++){if(i>after&&ts.get(i-1).identifier&&(ts.get(i).identifier||ts.get(i).text.equals("interface")))generic.append(' ');generic.append(ts.get(i).text);}name+=generic;}}
         return name;
     }
     private static String qualified(List<Token> ts,int index){StringBuilder name=new StringBuilder();while(index<ts.size()&&ts.get(index).identifier){name.append(ts.get(index++).text);if(!is(ts,index,".")||index+1>=ts.size()||!ts.get(index+1).identifier)break;name.append('.');index++;}return name.toString();}
@@ -322,7 +350,19 @@ final class GhiSymbols {
         if(symbol.kind.equals("typeImport"))return selectedTarget(symbol);
         if(symbol.external!=null)return GhiGoSymbols.resultType(symbol);
         if(Set.of("class","interface","type").contains(symbol.kind))return symbol;
-        Symbol result=type(symbol.type,context);return result!=null&&result.external!=null?GhiGoSymbols.resultType(result):instantiate(result,symbol.type);
+        Symbol result=type(symbol.type,context);
+        if(result!=null)return result.external!=null?GhiGoSymbols.resultType(result):instantiate(result,symbol.type);
+        for(Scope scope=symbol.scope;scope!=null;scope=scope.parent)if(scope.owner!=null){
+            String constraint=scope.owner.constraints.get(symbol.type);
+            if(constraint!=null){
+                Symbol view=new Symbol(symbol.type,"constraint",symbol.offset,symbol.file,symbol.scope);
+                if(constraint.startsWith("interface{" )&&constraint.endsWith("}"))
+                    view.embedded.addAll(Arrays.asList(constraint.substring(10,constraint.length()-1).split(";")));
+                else view.embedded.add(constraint);
+                return view;
+            }
+        }
+        return null;
     }
     private static Symbol declaration(Symbol view){return view.body!=null&&view.body.owner!=null?view.body.owner:view;}
     private static Symbol instantiate(Symbol declared,String expression){
@@ -338,11 +378,29 @@ final class GhiSymbols {
         return instantiate(type(base,declared.file),base);
     }
     private Symbol ownerView(Symbol view,Symbol owner){
-        Set<Symbol> visited=new HashSet<>();
-        for(;view!=null&&visited.add(declaration(view));view=baseView(view))if(declaration(view)==owner)return view;
+        for(Symbol candidate:memberViews(view))if(declaration(candidate)==owner)return candidate;
         return null;
     }
-    private Symbol member(Symbol view,String name,Set<Symbol> visited){if(view==null||!visited.add(declaration(view)))return null;if(view.external!=null)return GhiGoSymbols.members(view).stream().filter(symbol->symbol.name.equals(name)).findFirst().orElse(null);for(Symbol symbol:symbols)if(symbol.scope==view.body&&symbol.name.equals(name))return symbol;return member(baseView(view),name,visited);}
+    private List<Symbol> memberViews(Symbol root){
+        List<Symbol> result=new ArrayList<>();collectMemberViews(root,new HashSet<>(),result);return result;
+    }
+    private void collectMemberViews(Symbol view,Set<Symbol> visited,List<Symbol> result){
+        if(view==null||!visited.add(declaration(view)))return;
+        result.add(view);
+        collectMemberViews(baseView(view),visited,result);
+        Map<String,String> bindings=GhiGenericTypes.bind(declaration(view).typeParameters,GhiGenericTypes.arguments(view.type));
+        for(String embedded:view.embedded.isEmpty()?declaration(view).embedded:view.embedded){
+            String expression=GhiGenericTypes.substitute(embedded.trim(),bindings);
+            collectMemberViews(instantiate(type(expression,view.file),expression),visited,result);
+        }
+    }
+    private Symbol member(Symbol view,String name,Set<Symbol> visited){
+        for(Symbol candidate:memberViews(view)){
+            if(candidate.external!=null){for(Symbol symbol:GhiGoSymbols.members(candidate))if(symbol.name.equals(name))return symbol;}
+            else for(Symbol symbol:symbols)if(symbol.scope==candidate.body&&symbol.name.equals(name))return symbol;
+        }
+        return null;
+    }
     private static Symbol enclosingClass(Scope scope){for(;scope!=null;scope=scope.parent)if(scope.owner!=null&&scope.owner.kind.equals("class"))return scope.owner;return null;}
     private boolean inherits(Symbol child,Symbol parent,Set<Symbol> visited){
         if(child==null||!visited.add(child))return false;
@@ -434,13 +492,12 @@ final class GhiSymbols {
                 for(Symbol symbol:symbols)if(symbol.scope.parent==null&&!isImport(symbol)&&sources.get(symbol.file).namespace.equals(receiver.importNamespace))result.putIfAbsent(symbol.name,symbol);
                 return completionValues(result,construction,file);
             }
-            Symbol cls=asType(receiver,file);if(cls!=null&&cls.external!=null)return GhiGoSymbols.members(cls);Set<Symbol> visited=new HashSet<>();Symbol current=enclosingClass(s.scope(offset));
-            while(cls!=null&&visited.add(declaration(cls))){
-                Map<String,String> bindings=GhiGenericTypes.bind(declaration(cls).typeParameters,GhiGenericTypes.arguments(cls.type));
-                for(Symbol symbol:symbols)if(symbol.scope==cls.body&&!symbol.kind.equals("constructor")
-                    &&(!symbol.visibility.equals("private")||declaration(cls)==current)&&(!symbol.visibility.equals("protected")||inherits(current,declaration(cls),new HashSet<>())))
+            Symbol cls=asType(receiver,file);if(cls!=null&&cls.external!=null)return GhiGoSymbols.members(cls);Symbol current=enclosingClass(s.scope(offset));
+            for(Symbol candidate:memberViews(cls)){
+                Map<String,String> bindings=GhiGenericTypes.bind(declaration(candidate).typeParameters,GhiGenericTypes.arguments(candidate.type));
+                for(Symbol symbol:symbols)if(symbol.scope==candidate.body&&!symbol.kind.equals("constructor")
+                    &&(!symbol.visibility.equals("private")||declaration(candidate)==current)&&(!symbol.visibility.equals("protected")||inherits(current,declaration(candidate),new HashSet<>())))
                     result.putIfAbsent(symbol.name,bindings.isEmpty()?symbol:substituted(symbol,bindings));
-                cls=baseView(cls);
             }
         }else{
 
@@ -501,12 +558,33 @@ final class GhiSymbols {
         if(construction)values.values().removeIf(symbol->!symbol.kind.equals("class")&&!symbol.kind.equals("import")&&!(symbol.kind.equals("typeImport")&&selectedTarget(symbol)!=null&&selectedTarget(symbol).kind.equals("class")));
         return new ArrayList<>(values.values());
     }    record Call(Symbol symbol,int open,int parameter) {}
+    private Symbol methodValue(Symbol local){
+        if(!local.kind.equals("local"))return null;
+        Source source=sources.get(local.file);if(source==null)return null;
+        List<Token> tokens=source.tokens;
+        for(int i=0;i+4<tokens.size();i++)if(tokens.get(i).start==local.offset&&is(tokens,i+1,":")&&is(tokens,i+2,"=")){
+            if(!is(tokens,i+4,".")||i+5>=tokens.size())return null;
+            int after=i+6;
+            if(after<tokens.size()&&!Set.of(";","}").contains(tokens.get(after).text)
+                &&!lineBreak(local.file.getText(),tokens.get(i+5).end,tokens.get(after).start))return null;
+            Symbol method=resolveToken(source,i+5,new HashSet<>());
+            if(method==null||!method.kind.equals("func"))return null;
+            Symbol receiver=resolveToken(source,i+3,new HashSet<>());
+            Symbol owner=method.scope==null?null:method.scope.owner;
+            Symbol view=ownerView(receiver==null?null:asType(receiver,local.file),owner);
+            if(view==null)return method;
+            Map<String,String> bindings=GhiGenericTypes.bind(owner.typeParameters,GhiGenericTypes.arguments(view.type));
+            return bindings.isEmpty()?method:substituted(method,bindings);
+        }
+        return null;
+    }
     Call callAt(PsiFile file,int offset){Source s=sources.get(file);Deque<Integer> stack=new ArrayDeque<>();for(int i=0;i<s.tokens.size()&&s.tokens.get(i).start<offset;i++){if(is(s.tokens,i,"("))stack.push(i);else if(is(s.tokens,i,")")&&!stack.isEmpty())stack.pop();}
         if(stack.isEmpty())return null;int open=stack.peek();int callee=calleeIndex(s.tokens,open-1);
         Symbol callable=resolveToken(s,callee,new HashSet<>());
         if(callable==null && callee>=0 && !is(s.tokens,callee-1,"."))callable=builtin(s.tokens.get(callee).text,file);
         if(callable!=null&&callable.kind.equals("typeImport"))callable=selectedTarget(callable);
         if(callable==null)return null;
+        Symbol value=methodValue(callable);if(value!=null)callable=value;
         Map<String,String> bindings=new LinkedHashMap<>();
         if(callable.kind.equals("class")){
             Symbol view=callable;

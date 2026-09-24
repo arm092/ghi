@@ -177,6 +177,48 @@ public class GhiIdeTest extends BasePlatformTestCase {
         completed=model.complete(file,source.indexOf("over.take")+5);
         assertEquals(java.util.List.of("input int"),completed.stream().filter(symbol->symbol.name.equals("take")).findFirst().orElseThrow().parameters);
     }
+    public void testEmbeddedGenericConstraintMembers(){
+        String source="namespace main\n"
+            +"interface Identifiable {func id() int}\n"
+            +"interface Labelled {func label() string}\n"
+            +"interface Reader[V any] {func read(value V) V}\n"
+            +"type Entity interface {Identifiable; Labelled}\n"
+            +"type Readable[V any] interface {Entity; Reader[V]}\n"
+            +"func use[V any,T Readable[V]](item T){item.id();item.label();item.read(nil);f:=item.read;f(nil)}\n"
+            +"func inline[T interface {Identifiable; Labelled}](item T){item.id();item.label()}\n";
+        var file=myFixture.configureByText("embedded-constraints.ghi",source);var model=GhiSymbols.forFile(file);
+        assertEquals("id",model.resolve(file,source.indexOf("item.id()")+5).getText());
+        assertEquals("label",model.resolve(file,source.indexOf("item.label()")+5).getText());
+        assertEquals("read",model.resolve(file,source.indexOf("item.read(nil)")+5).getText());
+        assertEquals(java.util.List.of("value V"),model.callAt(file,source.indexOf("item.read(nil)")+13).symbol().parameters);
+        assertEquals("read",model.resolve(file,source.indexOf("f:=item.read")+8).getText());
+        assertEquals(java.util.List.of("value V"),model.callAt(file,source.indexOf("f(nil)")+5).symbol().parameters);
+        assertEquals("id",model.resolve(file,source.lastIndexOf("item.id()")+5).getText());
+        var completed=model.complete(file,source.indexOf("item.read(nil)")+5);
+        assertTrue(completed.stream().anyMatch(symbol->symbol.name.equals("id")));
+        assertTrue(completed.stream().anyMatch(symbol->symbol.name.equals("label")));
+        assertTrue(completed.stream().anyMatch(symbol->symbol.name.equals("read")));
+    }
+    public void testImportedEmbeddedConstraintHintAndMethodValue(){
+        var library=myFixture.addFileToProject("contracts/types.ghi","namespace contracts\ninterface Reader[V any] {func read(value V) V}\ninterface Identifiable {func id() int}\ntype Readable[V any] interface {Identifiable; Reader[V]}\n");
+        String source="namespace main\nimport contracts.Readable as Contract\n"
+            +"func use[T Contract[int]](item T){item.id();item.read(1);fn:=item.read;fn(2)}\n";
+        var file=myFixture.configureByText("imported-embedded.ghi",source);var model=GhiSymbols.forFile(file);
+        assertEquals(library,model.resolve(file,source.indexOf("item.id()")+5).getContainingFile());
+        assertEquals(library,model.resolve(file,source.indexOf("item.read(1)")+5).getContainingFile());
+        assertEquals(java.util.List.of("value int"),model.callAt(file,source.indexOf("item.read(1)")+11).symbol().parameters);
+        assertEquals(java.util.List.of("value int"),model.callAt(file,source.indexOf("fn(2)")+4).symbol().parameters);
+        var completed=model.complete(file,source.indexOf("item.read(1)")+5);
+        assertTrue(completed.stream().anyMatch(symbol->symbol.name.equals("id")));
+        assertEquals(java.util.List.of("value int"),completed.stream().filter(symbol->symbol.name.equals("read")).findFirst().orElseThrow().parameters);
+    }
+    public void testMethodValueDoesNotTreatCallResultAsMethod(){
+        String source="namespace main\ninterface Reader {func read(value int) int}\n"
+            +"func use(item Reader){result:=item.read(1);result(2);combined:=item.read + item.read;combined(3)}\n";
+        var file=myFixture.configureByText("method-value-result.ghi",source);var model=GhiSymbols.forFile(file);
+        assertTrue(model.callAt(file,source.indexOf("result(2)")+8).symbol().parameters.isEmpty());
+        assertTrue(model.callAt(file,source.indexOf("combined(3)")+10).symbol().parameters.isEmpty());
+    }
     public void testCoordinatedContractRenamePreservesUnrelatedMethods(){
         var contract=myFixture.addFileToProject("contract.ghi","namespace main\ninterface Reader {func read() string}\nclass Base {public func read() string{return \"read\"}}\nclass Child extends Base implements Reader {}\nclass Other {public func read() int{return 1}}\n");
         var file=myFixture.configureByText("rename-family.ghi","namespace main\nclass Override extends Child {public override func read() string{return parent.read()}}\nfunc use(value Reader, other Other){value.<caret>read();other.read()} // read\n");
