@@ -1,0 +1,26 @@
+namespace presentation.httpapi
+
+import tasks "application.tasks"
+import http "go:net/http"
+import time "go:time"
+import chi "go:github.com/go-chi/chi/v5"
+import middleware "go:github.com/go-chi/chi/v5/middleware"
+
+func NewRouter(service tasks.Service) http.Handler {
+	controller := new TaskController(service)
+	router := chi.NewRouter()
+	router.Use(middleware.RequestID, middleware.Recoverer, middleware.Timeout(15 * time.Second))
+	router.Get("/health", guarded(func (w http.ResponseWriter, r * http.Request) { send(w, 200, map[string] string { "status": "ok" }) }))
+	router.Route("/api/v1/tasks", func (routes chi.Router) {
+			routes.Get("/", guarded(controller.List))
+			routes.Post("/", guarded(controller.Create))
+			routes.Route("/{taskID}", func (item chi.Router) {
+					item.Get("/", guarded(func (w http.ResponseWriter, r * http.Request) { controller.Get(w, r, chi.URLParam(r, "taskID")) }))
+					item.Put("/", guarded(func (w http.ResponseWriter, r * http.Request) { controller.Replace(w, r, chi.URLParam(r, "taskID")) }))
+					item.Delete("/", guarded(func (w http.ResponseWriter, r * http.Request) { controller.Delete(w, r, chi.URLParam(r, "taskID")) }))
+				})
+		})
+	router.NotFound(guarded(func (w http.ResponseWriter, r * http.Request) { failure(w, 404, 404, "not_found", "Route not found") }))
+	router.MethodNotAllowed(guarded(func (w http.ResponseWriter, r * http.Request) { failure(w, 405, 405, "method_not_allowed", "Method not allowed") }))
+	return router
+}

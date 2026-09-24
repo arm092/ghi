@@ -1,0 +1,66 @@
+namespace infrastructure.sqlite
+
+import context "go:context"
+import sql "go:database/sql"
+import errors "go:errors"
+import _ "go:modernc.org/sqlite"
+import task "domain.task"
+
+class Repository implements task.Repository {
+	private db * sql.DB
+
+	constructor(path string) {
+		this.db = sql.Open("sqlite", path)
+		this.db.SetMaxOpenConns(1)
+		try {
+			this.db.Exec("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, completed BOOLEAN NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)))")
+		} catch err GoError {
+			this.db.Close()
+			throw err
+		}
+	}
+
+	public func Close() { this.db.Close() }
+
+	public func Create(ctx context.Context, item task.Task) {
+		this.db.ExecContext(ctx, "INSERT INTO tasks (id, title, completed) VALUES (?, ?, ?)", item.Id(), item.Title(), item.IsCompleted())
+	}
+
+	public func Update(ctx context.Context, item task.Task) {
+		result := this.db.ExecContext(ctx, "UPDATE tasks SET title = ?, completed = ? WHERE id = ?", item.Title(), item.IsCompleted(), item.Id())
+		if result.RowsAffected() == 0 { throw new task.NotFoundError(item.Id()) }
+	}
+
+	public func Find(ctx context.Context, id string) task.Task {
+		var storedID string
+		var title string
+		var completed bool
+		try {
+			this.db.QueryRowContext(ctx, "SELECT id, title, completed FROM tasks WHERE id = ?", id).Scan(& storedID, & title, & completed)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) { throw new task.NotFoundError(id) }
+			throw err
+		}
+		return new task.Task(storedID, title, completed)
+	}
+
+	public func List(ctx context.Context) [] task.Task {
+		rows := this.db.QueryContext(ctx, "SELECT id, title, completed FROM tasks ORDER BY rowid")
+		defer rows.Close()
+		items := [] task.Task {}
+		for rows.Next() {
+			var id string
+			var title string
+			var completed bool
+			rows.Scan(& id, & title, & completed)
+			items = append(items, new task.Task(id, title, completed))
+		}
+		rows.Err()
+		return items
+	}
+
+	public func Delete(ctx context.Context, id string) {
+		result := this.db.ExecContext(ctx, "DELETE FROM tasks WHERE id = ?", id)
+		if result.RowsAffected() == 0 { throw new task.NotFoundError(id) }
+	}
+}

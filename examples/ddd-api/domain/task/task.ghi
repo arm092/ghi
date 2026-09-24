@@ -1,0 +1,40 @@
+namespace domain.task
+
+import strings "go:strings"
+import utf8 "go:unicode/utf8"
+
+class ValidationError extends Exception {
+	constructor(message string) { parent(message, 1001) }
+}
+
+class NotFoundError extends Exception {
+	constructor(id string) { parent("task " + id + " was not found", 1002) }
+}
+
+func normalizeTitle(title string) string {
+	title = strings.TrimSpace(title)
+	length := utf8.RuneCountInString(title)
+	if length < 1 || length > 200 {
+		throw new ValidationError("title must contain between 1 and 200 characters")
+	}
+	return title
+}
+
+class Task {
+	private id string
+	private title string
+	private completed bool
+
+	constructor(id string, title string, completed bool = false) {
+		this.id = id
+		this.title = normalizeTitle(title)
+		this.completed = completed
+	}
+
+	public func Id() string { return this.id }
+	public func Title() string { return this.title }
+	public func IsCompleted() bool { return this.completed }
+
+	public func Rename(title string) { this.title = normalizeTitle(title) }
+	public func SetCompleted(completed bool) { this.completed = completed }
+}

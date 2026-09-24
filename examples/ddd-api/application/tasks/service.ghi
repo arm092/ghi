@@ -1,0 +1,29 @@
+namespace application.tasks
+
+import context "go:context"
+import uuid "go:github.com/google/uuid"
+import task "domain.task"
+
+class Service {
+	private repository task.Repository
+
+	constructor(repository task.Repository) { this.repository = repository }
+
+	public func Create(ctx context.Context, title string) task.Task {
+		item := new task.Task(uuid.NewString(), title)
+		this.repository.Create(ctx, item)
+		return item
+	}
+
+	public func Replace(ctx context.Context, id string, title string, completed bool) task.Task {
+		item := this.repository.Find(ctx, id)
+		item.Rename(title)
+		item.SetCompleted(completed)
+		this.repository.Update(ctx, item)
+		return item
+	}
+
+	public func Get(ctx context.Context, id string) task.Task { return this.repository.Find(ctx, id) }
+	public func List(ctx context.Context) [] task.Task { return this.repository.List(ctx) }
+	public func Delete(ctx context.Context, id string) { this.repository.Delete(ctx, id) }
+}

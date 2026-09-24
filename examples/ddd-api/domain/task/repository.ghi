@@ -1,0 +1,11 @@
+namespace domain.task
+
+import context "go:context"
+
+interface Repository {
+	func Create(ctx context.Context, item Task)
+	func Update(ctx context.Context, item Task)
+	func Find(ctx context.Context, id string) Task
+	func List(ctx context.Context) [] Task
+	func Delete(ctx context.Context, id string)
+}

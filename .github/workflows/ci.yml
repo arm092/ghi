@@ -29,6 +29,10 @@ jobs:
           go run ./cmd/ghi fmt --check ./examples/task-api
           go run ./cmd/ghi check ./examples/task-api
           go run ./cmd/ghi test -v ./examples/task-api
+          go run ./cmd/ghi fmt --check ./examples/ddd-api
+          go run ./cmd/ghi check ./examples/ddd-api
+          go run ./cmd/ghi build ./examples/ddd-api
+          go run ./cmd/ghi test -v ./examples/ddd-api
       - run: go run ./cmd/ghi run ./examples/hello
       - name: Test Windows installer
         if: runner.os == 'Windows'

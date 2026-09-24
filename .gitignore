@@ -9,3 +9,5 @@ install/ghi
 install/ghi.sha256
 install/mojave
 install/mojave.sha256
+
+/ddd-tasks.db*

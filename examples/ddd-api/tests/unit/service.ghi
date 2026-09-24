@@ -1,0 +1,79 @@
+namespace tests.unit
+
+import context "go:context"
+import testing "go:testing"
+import uuid "go:github.com/google/uuid"
+import task "domain.task"
+import tasks "application.tasks"
+
+class MemoryRepository implements task.Repository {
+	private items map[string] task.Task
+	public creates int
+	public updates int
+	public lastContext context.Context
+
+	constructor() { this.items = make(map[string] task.Task) }
+	public func Create(ctx context.Context, item task.Task) {
+		this.lastContext = ctx
+		this.creates++
+		this.items[item.Id()] = item
+	}
+	public func Update(ctx context.Context, item task.Task) {
+		this.lastContext = ctx
+		this.updates++
+		this.items[item.Id()] = item
+	}
+	public func Find(ctx context.Context, id string) task.Task {
+		this.lastContext = ctx
+		item := this.items[id]
+		if item == nil { throw new task.NotFoundError(id) }
+		return item
+	}
+	public func List(ctx context.Context) [] task.Task {
+		this.lastContext = ctx
+		items := [] task.Task {}
+		for _, item := range this.items { items = append(items, item) }
+		return items
+	}
+	public func Delete(ctx context.Context, id string) {
+		this.lastContext = ctx
+		delete(this.items, id)
+	}
+}
+
+func TestServiceValidatesBeforePersistence(t * testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	repository := new MemoryRepository()
+	service := new tasks.Service(repository)
+	item := service.Create(ctx, "  first task  ")
+	parsed := uuid.Parse(item.Id())
+	if parsed.Version() != 4 || item.Title() != "first task" || item.IsCompleted() {
+		t.Fatal("create did not generate a UUID and a normalized task")
+	}
+	if repository.creates != 1 || repository.lastContext != ctx {
+		t.Fatal("create did not persist with the request context")
+	}
+
+	rejected := false
+	try { service.Create(ctx, "   ") } catch err task.ValidationError { rejected = true }
+	if ! rejected || repository.creates != 1 { t.Fatal("invalid task reached persistence") }
+
+	rejected = false
+	try { service.Replace(ctx, item.Id(), "   ", true) } catch err task.ValidationError { rejected = true }
+	if ! rejected || repository.updates != 0 || item.Title() != "first task" || item.IsCompleted() {
+		t.Fatal("invalid replacement changed the task or reached persistence")
+	}
+
+	replaced := service.Replace(ctx, item.Id(), "  renamed  ", true)
+	if replaced.Id() != item.Id() || replaced.Title() != "renamed" || ! replaced.IsCompleted() || repository.updates != 1 || repository.lastContext != ctx {
+		t.Fatal("replacement lost identity, state, or request context")
+	}
+
+	rejected = false
+	try { service.Get(ctx, "missing") } catch err task.NotFoundError {
+		rejected = true
+		if err.code != 1002 { t.Fatalf("wrong not-found code: %d", err.code) }
+	}
+	if ! rejected { t.Fatal("missing task did not propagate a domain not-found error") }
+}
