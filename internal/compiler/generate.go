@@ -9,6 +9,7 @@ import (
 	"go/printer"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -101,6 +102,33 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 		}
 	}
 	p.rebaseSources(origins)
+	// Exact names preserve user-facing stack frames for copied method bodies.
+	for _, file := range p.Runtime.Files {
+		for _, decl := range file.Tree.Decls {
+			general, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range general.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok || len(value.Names) != 1 || value.Names[0].Name != "specializedNames" {
+					continue
+				}
+				literal := value.Values[0].(*ast.CompositeLit)
+				names := make([]string, 0, len(p.SpecializedNames))
+				for name := range p.SpecializedNames {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					display := p.SpecializedNames[name]
+					key, _ := parser.ParseExpr(strconv.Quote(name))
+					text, _ := parser.ParseExpr(strconv.Quote(display))
+					literal.Elts = append(literal.Elts, &ast.KeyValueExpr{Key: key, Value: text})
+				}
+			}
+		}
+	}
 	for _, ns := range p.Ordered {
 		target := dir
 		if ns.Name != "main" {

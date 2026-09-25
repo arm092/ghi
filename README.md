@@ -149,6 +149,8 @@ Ghi uses the Go compiler and runtime, but generated abstractions can add overhea
 
 The development compiler specializes method and constructor receivers for classes with no descendants in the compiled project. Direct `this` member access can then use a concrete Go pointer, allowing Go to inline calls. Public class types, alias types and virtual dispatch retain their existing semantics. Methods that rebind `this` or take its address keep the original implementation. Debug builds disable this optimization. This change is not included in v0.2.2.
 
+The development compiler also generates concrete copies of small method bodies for inheritance hierarchies within one namespace, when both the concrete class and the method owner have no generic parameters. Original shared bodies remain available for `parent` calls and other dynamic receivers. Copies stay in the original file to preserve import bindings, and stack traces retain the original method names and source lines. Large methods, generic owners/classes and cross-namespace inheritance keep the shared implementation. Constructors in inheritance hierarchies are unchanged.
+
 The opt-in comparison suite lives in `tests/performance`. It builds Ghi and Go fixtures with the same Go toolchain, checks workload results, and measures arithmetic, fields, methods, virtual dispatch, object allocation, nullable values, error handling and an in-process HTTP handler. It reports time, bytes and allocations per operation, using five samples with alternating execution order. Build time is outside the runtime measurements.
 
 ```powershell
@@ -175,6 +177,15 @@ Snapshot: Windows amd64, Intel Core i9-13900HX, Go 1.26.3, September 26, 2026. M
 | In-process HTTP handler | 51.71 | 44.59 | 44.86 |
 
 The method fixture improves about 6.2 times and virtual dispatch about 1.5 times. Small differences in the other fixtures should not be attributed to this optimization. Escaping object creation allocates 8 bytes once per operation in both languages. The failure fixture allocates 1,040 bytes across eight allocations in Ghi, versus 16 bytes in one allocation for a Go error without a stack trace.
+
+A second comparison on the same machine/toolchain measures inheritance specialization against the preceding leaf-only optimization. This run adds an inherited-method fixture; it is separate from the first snapshot above. [Inheritance samples](tests/performance/results/inheritance-windows-amd64-go1.26.3.csv).
+
+| Workload | Ghi leaf-only (ns/op) | Ghi inheritance specialization (ns/op) | Go (ns/op) |
+| --- | ---: | ---: | ---: |
+| Inherited method | 3.261 | 0.497 | 0.494 |
+| Virtual dispatch | 2.833 | 1.370 | 1.383 |
+
+The inherited-method fixture improves about 6.6 times, and virtual dispatch about 2.1 times. Both have zero allocations per operation. The Ghi benchmark binary grows from 5,921,792 to 5,922,816 bytes (1 KiB, about 0.02%); the Go binary is 5,882,368 bytes in both runs. These sizes include default Go debug information. Binary growth in larger class hierarchies can differ. Exception allocation counts remain unchanged at eight in the failure fixture; this pass does not optimize exception handling.
 
 ## Files, namespaces and imports
 

@@ -200,6 +200,7 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 				return err
 			}
 			if !p.Debug {
+				p.specializeInheritedReceivers(info)
 				p.specializeLeafReceivers(info)
 			}
 			return nil

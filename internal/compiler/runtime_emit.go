@@ -43,6 +43,7 @@ import (
  goruntime "go:runtime"
  "go:strings"
 )
+var specializedNames = map[string]string{}
 // ReportPanic is installed at the application entry boundary. Runtime faults
 // remain fatal; it only renders their Ghi source frames before exiting.
 func ReportPanic() {
@@ -67,6 +68,11 @@ func CaptureStack() []StackFrame {
  for {
   frame,more:=frames.Next()
   name:=frame.Function
+  if at:=strings.Index(name,".ghi_specialized_");at>=0 {
+   symbol,suffix:=name,""
+   if dot:=strings.IndexByte(name[at+1:],'.');dot>=0 {symbol,suffix=name[:at+1+dot],name[at+1+dot:]}
+   if display,ok:=specializedNames[symbol];ok {name=display+suffix}
+  }
   if strings.HasSuffix(frame.File,".ghi") && !strings.Contains(frame.File,".ghi-runtime") && !strings.Contains(name,"GhiM_") && !strings.Contains(name,"GhiNew_") && !strings.Contains(name,"GhiGet_") && !strings.Contains(name,"GhiSet_") && !strings.Contains(name,"GhiRef_") {
    if at:=strings.LastIndex(name,".GhiBody_");at>=0 {name=name[:at+1]+strings.Replace(name[at+9:],"_",".",1)}
    name=strings.ReplaceAll(name,"GhiInit_","constructor.")

@@ -22,6 +22,14 @@ type Derived struct{ Base }
 func (c *Derived) add(n int) int { c.value += n * 2; return c.value }
 
 type Adder interface{ add(int) int }
+type Inherited struct{ Base }
+
+func inherited(b *testing.B) {
+	c := &Inherited{}
+	for i := 0; i < b.N; i++ {
+		sink = c.add(i)
+	}
+}
 
 var escaped = &Counter{}
 

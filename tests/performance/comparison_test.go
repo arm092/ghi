@@ -61,6 +61,11 @@ func TestComparison(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("%s build (informational, warm caches not controlled): %s", language, time.Since(started))
+		stat, err := os.Stat(binary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s binary bytes: %d", language, stat.Size())
 		binaries[language] = binary
 	}
 	// Alternate order to reduce systematic thermal/order bias.

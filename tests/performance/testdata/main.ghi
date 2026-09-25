@@ -17,6 +17,11 @@ class Base {
 class Derived extends Base {
  public override func add(n int) int { this.value += n * 2; return this.value }
 }
+class Inherited extends Base {}
+func inherited(b *testing.B) {
+ c := new Inherited()
+ for i := 0; i < b.N; i++ { sink = c.add(i) }
+}
 var escaped Counter = new Counter()
 func fields(b *testing.B) {
  c := new Counter()

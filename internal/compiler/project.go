@@ -29,6 +29,8 @@ type namespace struct {
 
 type program struct {
 	Debug               bool
+	SourceCopies        map[ast.Node]ast.Node
+	SpecializedNames    map[string]string
 	Root                string
 	Fset                *token.FileSet
 	Namespaces          map[string]*namespace

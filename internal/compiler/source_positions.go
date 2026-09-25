@@ -62,6 +62,11 @@ func (p *program) snapshotSources() map[ast.Node]nodeSource {
 // Go's SourcePos printer uses physical positions, ignoring adjusted //line
 // mappings. Rebase source nodes to virtual files containing the original text.
 func (p *program) rebaseSources(original map[ast.Node]nodeSource) {
+	for copy, source := range p.SourceCopies {
+		if entry, ok := original[source]; ok {
+			original[copy] = entry
+		}
+	}
 	files := map[string]*token.File{}
 	sources := map[string][]byte{}
 	for _, ns := range p.Ordered {
