@@ -67,4 +67,3 @@ func httpHandler(b *testing.B) {
   sink = response.Code
  }
 }
-
