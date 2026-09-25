@@ -1,5 +1,7 @@
 # Ghi – Go, Hierarchy, Interfaces
 
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-30363D?logo=githubsponsors&logoColor=EA4AAA)](https://github.com/sponsors/arm092)
+
 Ghi is a statically typed language for backend applications. It combines Go-like syntax and the Go runtime with classes, inheritance, constructors, typed exceptions, nullable types and namespaces.
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
