@@ -1,0 +1,70 @@
+namespace main
+import flag "go:flag"
+import fmt "go:fmt"
+import testing "go:testing"
+import http "go:net/http"
+import httptest "go:net/http/httptest"
+
+class Counter {
+ public value int
+ constructor(value int = 0) { this.value = value }
+ public func add(n int) int { this.value += n; return this.value }
+}
+class Base {
+ public value int
+ public func add(n int) int { this.value += n; return this.value }
+}
+class Derived extends Base {
+ public override func add(n int) int { this.value += n * 2; return this.value }
+}
+var escaped Counter = new Counter()
+func fields(b *testing.B) {
+ c := new Counter()
+ for i := 0; i < b.N; i++ { c.value += i }
+ sink = c.value
+}
+func method(b *testing.B) {
+ c := new Counter()
+ for i := 0; i < b.N; i++ { sink = c.add(i) }
+}
+func virtual(b *testing.B) {
+ objects := []Base{new Base(), new Derived()}
+ for i := 0; i < b.N; i++ { sink = objects[i & 1].add(i) }
+}
+func create(b *testing.B) {
+ for i := 0; i < b.N; i++ { escaped = new Counter(i) }
+ sink = escaped.value
+}
+func optional(value int) ?int { if value & 1 == 0 { return nil }; return &value }
+func nullable(b *testing.B) {
+ for i := 0; i < b.N; i++ {
+  value := optional(i)
+  if value != nil { sink = *value }
+ }
+}
+func maybeFail(value int) int { if value < 0 { throw new Exception("failure", 7) }; return value }
+var operation = maybeFail
+func success(b *testing.B) {
+ for i := 0; i < b.N; i++ {
+  try { sink = operation(i) } catch err Exception { sink = err.code }
+ }
+}
+func failure(b *testing.B) {
+ for i := 0; i < b.N; i++ {
+  try { sink = operation(-1) } catch err Exception { sink = err.code }
+ }
+}
+class Handler {
+ public func serve(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
+}
+func httpHandler(b *testing.B) {
+ handler := new Handler()
+ request := httptest.NewRequest("GET", "/", nil)
+ b.ResetTimer()
+ for i := 0; i < b.N; i++ {
+  response := httptest.NewRecorder()
+  handler.serve(response, request)
+  sink = response.Code
+ }
+}
+

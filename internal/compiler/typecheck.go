@@ -196,7 +196,13 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			if err := p.validateEnumValues(info); err != nil {
 				return err
 			}
-			return p.validateNonNull(info)
+			if err := p.validateNonNull(info); err != nil {
+				return err
+			}
+			if !p.Debug {
+				p.specializeLeafReceivers(info)
+			}
+			return nil
 		}
 	}
 	return fmt.Errorf("compiler lowering did not converge")

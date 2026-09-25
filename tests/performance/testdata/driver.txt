@@ -1,0 +1,44 @@
+
+var sink int
+
+func arithmetic(b *testing.B) {
+ value := 1
+ for i := 0; i < b.N; i++ { value = (value * 33 + i) & 65535 }
+ sink = value
+}
+
+func measure(name string, operation func(*testing.B)) {
+ result := testing.Benchmark(operation)
+ fmt.Printf("Benchmark%s\t%s\t%s\n", name, result.String(), result.MemString())
+}
+
+func main() {
+ testing.Init()
+ flag.Parse()
+ // Check observable work before timing; a fast but incorrect fixture must fail.
+ probe := testing.B{N: 7}
+ fields(&probe)
+ if sink != 21 { panic("fields checksum") }
+ method(&probe)
+ if sink != 21 { panic("method checksum") }
+ virtual(&probe)
+ if sink != 12 { panic("virtual checksum") }
+ create(&probe)
+ if sink != 6 { panic("create checksum") }
+ sink = -1
+ nullable(&probe)
+ if sink != 5 { panic("nullable checksum") }
+ success(&probe)
+ if sink != 6 { panic("success checksum") }
+ failure(&probe)
+ if sink != 7 { panic("failure checksum") }
+ measure("Arithmetic", arithmetic)
+ measure("Fields", fields)
+ measure("Method", method)
+ measure("Virtual", virtual)
+ measure("Create", create)
+ measure("Nullable", nullable)
+ measure("Success", success)
+ measure("Failure", failure)
+ measure("HTTP", httpHandler)
+}

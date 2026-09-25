@@ -17,6 +17,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [How compilation works](#how-compilation-works)
+- [Performance](#performance)
 - [Files, namespaces and imports](#files-namespaces-and-imports)
 - [Types and collections](#types-and-collections)
 - [Enums](#enums)
@@ -141,6 +142,39 @@ Use `-o hello.exe` on Windows. Run the compiled executable directly: `./hello` o
 5. The result is an executable for the target platform. Debug builds retain mappings to the original Ghi files.
 
 Generic types remain typed Go generics. Classes use generated interfaces and storage, preserving dynamic dispatch. Exceptions use generated runtime support. These transformations can introduce overhead; using the Go backend does not guarantee that every Ghi program performs identically to hand-written Go. Generated source and the generated object ABI are implementation details.
+
+## Performance
+
+Ghi uses the Go compiler and runtime, but generated abstractions can add overhead. Performance depends on the workload; compiling to Go does not guarantee identical execution time.
+
+The development compiler specializes method and constructor receivers for classes with no descendants in the compiled project. Direct `this` member access can then use a concrete Go pointer, allowing Go to inline calls. Public class types, alias types and virtual dispatch retain their existing semantics. Methods that rebind `this` or take its address keep the original implementation. Debug builds disable this optimization. This change is not included in v0.2.2.
+
+The opt-in comparison suite lives in `tests/performance`. It builds Ghi and Go fixtures with the same Go toolchain, checks workload results, and measures arithmetic, fields, methods, virtual dispatch, object allocation, nullable values, error handling and an in-process HTTP handler. It reports time, bytes and allocations per operation, using five samples with alternating execution order. Build time is outside the runtime measurements.
+
+```powershell
+$env:GHI_PERF = "1"
+go test ./tests/performance -run TestComparison -v -count=1
+```
+
+On macOS or Linux, use `GHI_PERF=1 go test ./tests/performance -run TestComparison -v -count=1`.
+
+The HTTP fixture exercises `httptest` and an empty 204 response, without a network or database. The error fixtures compare idiomatic Go error returns with Ghi exceptions: Ghi also captures a stack trace, so these workloads provide different diagnostics. Their ratio is not a general language speed comparison. Nanosecond-scale results are sensitive to the CPU, compiler and background load. The older `benchmarks/run.py` harness separately measures aggregate workloads and controlled cold/warm Go build caches.
+
+Snapshot: Windows amd64, Intel Core i9-13900HX, Go 1.26.3, September 26, 2026. Medians of five 150 ms samples; lower is better. The before run disables receiver specialization with the same workloads. These are local measurements, not cross-platform guarantees. [Raw samples](tests/performance/results/windows-amd64-go1.26.3.csv).
+
+| Workload | Ghi before (ns/op) | Ghi after (ns/op) | Go after (ns/op) |
+| --- | ---: | ---: | ---: |
+| Arithmetic | 1.085 | 1.076 | 1.187 |
+| Fields | 1.639 | 1.544 | 1.663 |
+| Method | 3.065 | 0.494 | 0.514 |
+| Virtual dispatch | 4.224 | 2.748 | 1.482 |
+| Escaping object creation | 10.09 | 9.51 | 9.33 |
+| Nullable primitive | 0.481 | 0.468 | 0.484 |
+| Error handling, success path | 6.655 | 6.600 | 1.719 |
+| Error handling, failure path | 3455 | 3119 | 16.36 |
+| In-process HTTP handler | 51.71 | 44.59 | 44.86 |
+
+The method fixture improves about 6.2 times and virtual dispatch about 1.5 times. Small differences in the other fixtures should not be attributed to this optimization. Escaping object creation allocates 8 bytes once per operation in both languages. The failure fixture allocates 1,040 bytes across eight allocations in Ghi, versus 16 bytes in one allocation for a Go error without a stack trace.
 
 ## Files, namespaces and imports
 

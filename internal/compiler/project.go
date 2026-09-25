@@ -28,6 +28,7 @@ type namespace struct {
 }
 
 type program struct {
+	Debug               bool
 	Root                string
 	Fset                *token.FileSet
 	Namespaces          map[string]*namespace
