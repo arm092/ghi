@@ -34,6 +34,8 @@ func main() {
  if sink != 6 { panic("success checksum") }
  failure(&probe)
  if sink != 7 { panic("failure checksum") }
+ failureDeep(&probe)
+ if sink != 7 { panic("deep failure checksum") }
  measure("Arithmetic", arithmetic)
  measure("Fields", fields)
  measure("Method", method)
@@ -43,5 +45,6 @@ func main() {
  measure("Nullable", nullable)
  measure("Success", success)
  measure("Failure", failure)
+ measure("FailureDeep", failureDeep)
  measure("HTTP", httpHandler)
 }

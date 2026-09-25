@@ -103,6 +103,22 @@ func failure(b *testing.B) {
 
 type Handler struct{}
 
+func deepFailure(depth int) (int, error) {
+	if depth == 0 {
+		return operation(-1)
+	}
+	return deepFailure(depth - 1)
+}
+func failureDeep(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		if value, err := deepFailure(96); err != nil {
+			sink = 7
+		} else {
+			sink = value
+		}
+	}
+}
+
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
 func httpHandler(b *testing.B) {
 	handler := &Handler{}

@@ -42,6 +42,7 @@ import (
  "go:os"
  goruntime "go:runtime"
  "go:strings"
+ "go:sync"
 )
 var specializedNames = map[string]string{}
 // ReportPanic is installed at the application entry boundary. Runtime faults
@@ -49,22 +50,71 @@ var specializedNames = map[string]string{}
 func ReportPanic() {
  value:=recover()
  if value==nil{return}
- trace := CaptureStack()
+ var trace []StackFrame
  if exception,ok := value.(raised); ok {
   fmt.Fprintf(os.Stderr, "fatal: %s (code %d): %s\n", exception.value.GhiGet_6768692e72756e74696d65_Exception_typeName(), exception.value.GhiGet_6768692e72756e74696d65_Exception_code(), exception.value.GhiM_Error())
   trace = exception.value.GhiGet_6768692e72756e74696d65_Exception_stackTrace()
- } else { fmt.Fprintln(os.Stderr, "fatal:", value) }
+ } else { trace=CaptureStack(); fmt.Fprintln(os.Stderr, "fatal:", value) }
  for _,frame := range trace {
   fmt.Fprintf(os.Stderr,"  at %s (%s:%d)\n",frame.GhiGet_6768692e72756e74696d65_StackFrame_functionName(),frame.GhiGet_6768692e72756e74696d65_StackFrame_file(),frame.GhiGet_6768692e72756e74696d65_StackFrame_line())
  }
  os.Exit(2)
 }
+// Cache only immutable frame descriptions, never public mutable StackFrames.
+// Full PC sequences distinguish callers, recursion and inline call sites.
+type stackKey struct { count int; pcs [64]uintptr }
+type stackFrameData struct { name,file string; line int }
+var stackCache = struct {
+ mu sync.RWMutex
+ entries map[stackKey][]stackFrameData
+ keys []stackKey
+ next int
+}{entries:make(map[stackKey][]stackFrameData)}
 func CaptureStack() []StackFrame {
- trace:=[]StackFrame{}
- pcs:=make([]uintptr,64)
+ var key stackKey
+ key.count=goruntime.Callers(2,key.pcs[:])
+ if key.count<len(key.pcs) {
+  data:=cachedStack(key)
+  trace:=make([]StackFrame,len(data))
+  for i,frame:=range data {trace[i]=GhiNew_StackFrame(frame.name,frame.file,frame.line)}
+  return trace
+ }
+ // Deep stacks stay complete and bypass the bounded cache.
+ pcs:=make([]uintptr,128)
  count:=goruntime.Callers(2,pcs)
- for count==len(pcs) { pcs=make([]uintptr,len(pcs)*2); count=goruntime.Callers(2,pcs) }
- frames:=goruntime.CallersFrames(pcs[:count])
+ for count==len(pcs) {pcs=make([]uintptr,len(pcs)*2);count=goruntime.Callers(2,pcs)}
+ trace:=[]StackFrame{}
+ walkStack(pcs[:count],func(name,file string,line int){trace=append(trace,GhiNew_StackFrame(name,file,line))})
+ return trace
+}
+func cachedStack(key stackKey) []stackFrameData {
+ stackCache.mu.RLock()
+ data,ok:=stackCache.entries[key]
+ stackCache.mu.RUnlock()
+ if ok {return data}
+ data=decodeStack(key)
+ stackCache.mu.Lock()
+ // Another goroutine may have decoded the same trace while we were outside
+ // the lock. The descriptions returned to readers are never mutated.
+ if existing,ok:=stackCache.entries[key];ok {data=existing} else {
+  if len(stackCache.keys)==128 {
+   delete(stackCache.entries,stackCache.keys[stackCache.next])
+   stackCache.keys[stackCache.next]=key
+   stackCache.next=(stackCache.next+1)%128
+  } else {stackCache.keys=append(stackCache.keys,key)}
+  stackCache.entries[key]=data
+ }
+ stackCache.mu.Unlock()
+ return data
+}
+// Keep the PC slice consumed by CallersFrames on the miss path only.
+func decodeStack(key stackKey) []stackFrameData {
+ data:=[]stackFrameData{}
+ walkStack(key.pcs[:key.count],func(name,file string,line int){data=append(data,stackFrameData{name,file,line})})
+ return data
+}
+func walkStack(pcs []uintptr,visit func(string,string,int)) {
+ frames:=goruntime.CallersFrames(pcs)
  for {
   frame,more:=frames.Next()
   name:=frame.Function
@@ -77,11 +127,10 @@ func CaptureStack() []StackFrame {
    if at:=strings.LastIndex(name,".GhiBody_");at>=0 {name=name[:at+1]+strings.Replace(name[at+9:],"_",".",1)}
    name=strings.ReplaceAll(name,"GhiInit_","constructor.")
    name=strings.TrimPrefix(name,"ghi.generated/")
-   trace=append(trace,GhiNew_StackFrame(name,frame.File,frame.Line))
+   visit(name,frame.File,frame.Line)
   }
   if !more {break}
  }
- return trace
 }
 func Some[T any](value T) *T { return &value }
 func Received[T any](value T,ok bool)*T{if !ok{return nil};return &value}

@@ -187,6 +187,18 @@ A second comparison on the same machine/toolchain measures inheritance specializ
 
 The inherited-method fixture improves about 6.6 times, and virtual dispatch about 2.1 times. Both have zero allocations per operation. The Ghi benchmark binary grows from 5,921,792 to 5,922,816 bytes (1 KiB, about 0.02%); the Go binary is 5,882,368 bytes in both runs. These sizes include default Go debug information. Binary growth in larger class hierarchies can differ. Exception allocation counts remain unchanged at eight in the failure fixture; this pass does not optimize exception handling.
 
+The development runtime now caches immutable frame descriptions for up to 128 distinct complete PC sequences shorter than 64 entries, replacing old entries in insertion order. Addresses are captured at every throw; stack traces remain immediately available. Every exception receives fresh mutable `StackFrame` objects and its own slice. Repeated throws of an exception keep its existing nonempty trace, including user-supplied frames. Deep stacks bypass the cache and grow their capture buffer until the whole stack fits. Cache misses still require symbol resolution, and the cache retains a bounded amount of metadata for the process lifetime.
+
+An exception-focused comparison against the inheritance-optimized compiler on the same Windows machine and Go 1.26.3 gives the following medians. The deep fixture adds 96 recursive calls and does not use the cache. [Exception samples](tests/performance/results/exceptions-windows-amd64-go1.26.3.csv).
+
+| Ghi workload | Before (ns/op) | After (ns/op) | Before / after bytes | Before / after allocations |
+| --- | ---: | ---: | ---: | ---: |
+| Successful operation inside `try` | 6.364 | 6.466 | 0 / 0 | 0 / 0 |
+| Repeated exception, cached stack | 2816 | 1149 | 1040 / 272 | 8 / 6 |
+| Deep exception, uncached stack | 22091 | 22205 | 11072 / 10608 | 111 / 112 |
+
+The repeated-exception fixture is about 2.5 times faster and allocates about 74% fewer bytes. The deep path remains approximately the same speed, with one additional temporary allocation and fewer bytes overall. These results do not predict first-throw or cache-miss latency. The benchmark binary grows by 8 KiB. Ordinary Go errors still do less work: the Go failure fixture does not capture a stack. Fatal reporting also reuses an exception's existing trace instead of capturing a redundant second stack.
+
 ## Files, namespaces and imports
 
 Files use UTF-8 and the `.ghi` extension. Each file starts with `namespace`. Files in one directory share a namespace; imports are local to each file. The executable entry point is `func main()` in namespace `main`.

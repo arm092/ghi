@@ -59,6 +59,12 @@ func failure(b *testing.B) {
   try { sink = operation(-1) } catch err Exception { sink = err.code }
  }
 }
+func deepFailure(depth int) int { if depth == 0 { return operation(-1) }; return deepFailure(depth - 1) }
+func failureDeep(b *testing.B) {
+ for i := 0; i < b.N; i++ {
+  try { sink = deepFailure(96) } catch err Exception { sink = err.code }
+ }
+}
 class Handler {
  public func serve(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
 }
