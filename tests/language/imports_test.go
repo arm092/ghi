@@ -36,6 +36,20 @@ func Serve() string { return "http" }
 	return dir
 }
 
+// A failed batched export query must still diagnose the specific source import.
+func TestGoImportBatchFailurePreservesLocation(t *testing.T) {
+	dir := importProject(t, `import fmt "go:fmt"
+import missing "go:ghi_missing_package"
+func main() { fmt.Println(missing.Value()) }
+`)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := compiler.Check(ctx, compiler.Options{Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "main.ghi:3:") || !strings.Contains(err.Error(), "ghi_missing_package") {
+		t.Fatalf("missing import lost its source diagnostic: %v", err)
+	}
+}
+
 func TestUnifiedNamespaceImports(t *testing.T) {
 	dir := importProject(t, `import models
 import models.User

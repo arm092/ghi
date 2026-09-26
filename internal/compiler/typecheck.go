@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 
 	"ghi/internal/toolchain"
@@ -34,15 +36,27 @@ func (loader *exportLoader) open(path string) (io.ReadCloser, error) {
 	if file := loader.exports[path]; file != "" {
 		return os.Open(file)
 	}
-	command := exec.CommandContext(loader.ctx, loader.goPath, "list", "-mod=readonly", "-deps", "-export", "-json", path)
+	if err := loader.load(path); err != nil {
+		return nil, err
+	}
+	file := loader.exports[path]
+	if file == "" {
+		return nil, fmt.Errorf("Go package %s has no export data", path)
+	}
+	return os.Open(file)
+}
+
+func (loader *exportLoader) load(paths ...string) error {
+	args := append([]string{"list", "-mod=readonly", "-deps", "-export", "-json"}, paths...)
+	command := exec.CommandContext(loader.ctx, loader.goPath, args...)
 	command.Dir = loader.dir
 	command.Env = toolchain.Env()
 	output, err := command.Output()
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("load Go package %s: %s", path, exit.Stderr)
+			return fmt.Errorf("load Go package %s: %s", strings.Join(paths, ", "), exit.Stderr)
 		}
-		return nil, err
+		return err
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	for {
@@ -52,17 +66,39 @@ func (loader *exportLoader) open(path string) (io.ReadCloser, error) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if pkg.Export != "" {
 			loader.exports[pkg.ImportPath] = pkg.Export
 		}
 	}
-	file := loader.exports[path]
-	if file == "" {
-		return nil, fmt.Errorf("Go package %s has no export data", path)
+	return nil
+}
+
+// Resolve external exports together so go list visits the dependency graph
+// once. This cache belongs to one compilation; Go still validates its cache.
+func (loader *exportLoader) prefetch(p *program) {
+	seen := map[string]bool{}
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			for _, spec := range file.Tree.Imports {
+				path, err := strconv.Unquote(spec.Path.Value)
+				if err == nil && path != "unsafe" && path != generatedModule && !strings.HasPrefix(path, generatedModule+"/") {
+					seen[path] = true
+				}
+			}
+		}
 	}
-	return os.Open(file)
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	if len(paths) > 0 {
+		// Failed batches fall back to per-import loading, preserving diagnostics
+		// at the original import site. Cancellation is checked by the caller.
+		_ = loader.load(paths...)
+	}
 }
 
 type packageChecker struct {
@@ -138,6 +174,7 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 		}
 	}
 	loader := &exportLoader{ctx: ctx, goPath: goPath, dir: workspace, exports: map[string]string{}}
+	loader.prefetch(p)
 	external := importer.ForCompiler(p.Fset, "gc", loader.open)
 	if _, err := p.rewrite(nil); err != nil {
 		return err

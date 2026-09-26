@@ -224,6 +224,22 @@ A comparison against the preceding implementation on the same Windows machine an
 
 The cached 96-call fixture takes about 23% less time. The shallow fixture remains around one microsecond, with a roughly 2% increase in this run; small differences are sensitive to measurement noise. Both benchmark binary sizes are unchanged. These results still describe warmed microbenchmarks, not cold-cache latency or application throughput.
 
+### Build performance
+
+The development compiler loads Go export metadata in one batched `go list` request for the project's external imports. Previously it launched a separate request whenever a needed package was not in the per-build export map. The map is recreated for every compilation, so source and dependency changes are still checked by Go. Failed batches fall back to individual imports to preserve source-located diagnostics. Dependency downloads, checksum verification and language validation remain enabled.
+
+On the DDD API example, Windows amd64 and Go 1.26.3, the following wall times were observed. Each row is one before/after observation, not a statistical median. Go's build and module caches were already populated; "initial" means the first invocation on the copied benchmark project, not a cold toolchain. The edited case changes an application log string in `main.ghi`. [Build samples](tests/performance/results/build-imports-windows-amd64-go1.26.3.csv).
+
+| DDD API build | Before | After |
+| --- | ---: | ---: |
+| Initial invocation, populated Go cache | 6.77 s | 3.93 s |
+| Repeated, unchanged sources | 6.66 s | 4.05 s |
+| After editing one source file | 6.57 s | 3.92 s |
+
+The repeated build takes about 39% less time in this run. Its export-loading subprocesses decrease from 14 to 1 (3.01 s to 0.31 s). Total Ghi lowering, which includes export loading and type checks, decreases from 3.39 s to 0.62 s. Dependency preparation remains about 1.8 s and Go compilation/linking about 1.5 s. Stage timings were collected with temporary instrumentation; the released CLI output is unchanged. Results depend on filesystem caches, dependencies and the Go toolchain. There is no persistent Ghi AST or executable cache in this change.
+
+A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping the module and OS caches populated. The first build took 40.68 s before and 16.53 s after; the immediate warm repeats took 6.25 s and 3.96 s. Batching lets Go schedule the complete set of imported packages together. These are single observations in before/after order, not a promise of a fixed cold-build speedup or a fresh-machine installation benchmark. [Isolated Go-cache samples](tests/performance/results/build-imports-cold-windows-amd64-go1.26.3.csv).
+
 ## Files, namespaces and imports
 
 Files use UTF-8 and the `.ghi` extension. Each file starts with `namespace`. Files in one directory share a namespace; imports are local to each file. The executable entry point is `func main()` in namespace `main`.
