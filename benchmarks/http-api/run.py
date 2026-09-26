@@ -43,6 +43,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--requests', type=int, default=20000)
     parser.add_argument('--runs', type=int, default=3)
+    parser.add_argument('--baseline-ghi', type=Path, help='compare the current Ghi server with a prebuilt Ghi server instead of Go')
+    parser.add_argument('--scenarios', nargs='+', choices=('page20', 'get', 'missing'), default=('page20', 'get', 'missing'))
     parser.add_argument('--output', default='.work/http-ddd-results.json')
     args = parser.parse_args()
     if args.requests < 100 or args.runs < 1:
@@ -56,6 +58,7 @@ def main():
     env = dict(os.environ, GHI_GO=go, GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='', GOMAXPROCS='8')
     suffix = '.exe' if os.name == 'nt' else ''
     binaries = {key: work / (key + suffix) for key in ('compiler', 'Ghi', 'Go', 'client')}
+    labels = {'Ghi': 'Ghi-after', 'Go': 'Ghi-before'} if args.baseline_ghi else {'Ghi': 'Ghi', 'Go': 'Go'}
     def run(command, cwd=root):
         return subprocess.check_output([str(x) for x in command], cwd=cwd, env=env, text=True, stderr=subprocess.STDOUT)
     locked = {module['path']: module['version'] for module in json.loads((root / 'examples/ddd-api/mojave.lock').read_text())['go']['modules']}
@@ -65,7 +68,10 @@ def main():
             assert locked.get(parts[0]) == parts[1], f'dependency version differs: {line}'
     run([go, 'build', '-o', binaries['compiler'], './cmd/ghi'])
     run([binaries['compiler'], 'build', '-o', binaries['Ghi'], root / 'examples/ddd-api'])
-    run([go, 'build', '-o', binaries['Go'], '.'], root / 'benchmarks/http-api/go')
+    if args.baseline_ghi:
+        shutil.copyfile(args.baseline_ghi.resolve(), binaries['Go'])
+    else:
+        run([go, 'build', '-o', binaries['Go'], '.'], root / 'benchmarks/http-api/go')
     run([go, 'build', '-o', binaries['client'], './benchmarks/http-api/client'])
     template = work / 'template.db'
     migrations = root / 'examples/ddd-api/infrastructure/sqlite/migrations'
@@ -113,6 +119,8 @@ def main():
     for sample in range(args.runs):
         for workers in (1, 16):
             for scenario, (path, status, expected) in scenarios.items():
+                if scenario not in args.scenarios:
+                    continue
                 order = ('Ghi','Go') if sample % 2 == 0 else ('Go','Ghi')
                 for language in order:
                     label = f'{sample}-{workers}-{scenario}-{language}'
@@ -138,7 +146,7 @@ def main():
                         command = [binaries['client'], '-url', base + path, '-body', references[scenario], '-status', status, '-workers', workers]
                         run(command + ['-requests', 300])
                         result = json.loads(run(command + ['-requests', args.requests]))
-                        result.update(language=language, scenario=scenario, sample=sample+1, peak_working_set_bytes=peak_memory(process.pid))
+                        result.update(language=labels[language], scenario=scenario, sample=sample+1, peak_working_set_bytes=peak_memory(process.pid))
                         records.append(result)
                         print(json.dumps(result), flush=True)
                     finally:
@@ -150,11 +158,15 @@ def main():
         'go': run([go,'version']).strip(), 'commit': run(['git','rev-parse','HEAD']).strip(),
         'gomaxprocs':8, 'users':1000, 'requests_per_sample':args.requests, 'runs':args.runs,
         'methodology':'Closed-loop localhost HTTP/1.1 keep-alive, independent server per sample, 300 warmup requests, identical SQLite snapshots, one DB connection, disabled info logs, JSON bytes checked on every response. Peak working set includes startup and warmup. Go baseline implements only the measured read routes. Ghi 404 captures exceptions; Go returns ordinary errors.',
-        'binary_bytes':{lang:binaries[lang].stat().st_size for lang in ('Ghi','Go')},
+        'comparison':'Current Ghi source versus a prebuilt Ghi baseline; source hashes below describe the current source only.' if args.baseline_ghi else 'Ghi versus Go',
+        'binary_bytes':{labels[lang]:binaries[lang].stat().st_size for lang in ('Ghi','Go')},
+        'binary_sha256':{labels[lang]:hashlib.sha256(binaries[lang].read_bytes()).hexdigest() for lang in ('Ghi','Go')},
         'timer':'Windows QueryPerformanceCounter; monotonic time.Since on other systems',
         'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [*sorted((root/'benchmarks/http-api').rglob('*.go')), *sorted((root/'examples/ddd-api').rglob('*.ghi')), root/'examples/ddd-api/mojave.lock', root/'benchmarks/http-api/go/go.mod', root/'benchmarks/http-api/go/go.sum'] if p.is_file() and '.ghi/packages' not in p.as_posix()},
         'samples':records,
     }
+    if args.baseline_ghi:
+        result['methodology'] = result['methodology'].replace('Go baseline implements only the measured read routes. Ghi 404 captures exceptions; Go returns ordinary errors.', 'Both binaries are Ghi DDD servers. The baseline executable is supplied with --baseline-ghi; the current server is built from this checkout.')
     destination = root / args.output
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, indent=2)+'\n', encoding='utf-8')

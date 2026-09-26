@@ -92,14 +92,14 @@ class Repository implements task.Repository {
 		var title string
 		var completed bool
 		var assigneeID string
-		try {
-			this.db.QueryRowContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks WHERE id = ?", id).Scan(&storedID, &title, &completed, &assigneeID)
-		} catch err GoError {
-			if errors.Is(err.cause, sql.ErrNoRows) {
-				throw new task.NotFoundError(id)
-			}
-			throw err
+		rows := this.db.QueryContext(ctx, "SELECT id, title, completed, COALESCE(assignee_id, '') FROM tasks WHERE id = ?", id)
+		defer rows.Close()
+		if !rows.Next() {
+			rows.Err()
+			throw new task.NotFoundError(id)
 		}
+		rows.Scan(&storedID, &title, &completed, &assigneeID)
+		rows.Close()
 
 		return new task.Task(storedID, title, completed, assigneeID)
 	}

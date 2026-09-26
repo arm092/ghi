@@ -2,7 +2,6 @@ namespace infrastructure.sqlite
 import domain.user
 import context "go:context"
 import sql "go:database/sql"
-import errors "go:errors"
 
 class UserRepository implements user.Repository {
 	private db * sql.DB
@@ -36,14 +35,14 @@ class UserRepository implements user.Repository {
 		var storedID string
 		var name string
 		var email string
-		try {
-			this.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id).Scan(&storedID, &name, &email)
-		} catch err GoError {
-			if errors.Is(err.cause, sql.ErrNoRows) {
-				throw new user.NotFoundError(id)
-			}
-			throw err
+		rows := this.db.QueryContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id)
+		defer rows.Close()
+		if !rows.Next() {
+			rows.Err()
+			throw new user.NotFoundError(id)
 		}
+		rows.Scan(&storedID, &name, &email)
+		rows.Close()
 
 		return new user.User(storedID, name, email)
 	}

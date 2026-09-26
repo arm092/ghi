@@ -2,6 +2,7 @@ namespace tests.integration
 import application.tasks
 import application.users
 import domain.task
+import domain.user
 import context "go:context"
 import json "go:encoding/json"
 import errors "go:errors"
@@ -228,6 +229,9 @@ func TestRepositoryMissingRowsAndCancellation(t *testing.T) {
 		if err.code != 1002 {
 			t.Fatal("wrong missing code")
 		}
+		if len(err.stackTrace) == 0 || !strings.HasSuffix(err.stackTrace[0].file, "repository.ghi") || !strings.Contains(err.stackTrace[0].functionName, "Repository.Find") {
+			t.Fatal("missing task lost its repository stack")
+		}
 	}
 	try {
 		repository.Update(context.Background(), new task.Task(missing, "Missing"))
@@ -252,5 +256,51 @@ func TestRepositoryMissingRowsAndCancellation(t *testing.T) {
 	}
 	if !canceled {
 		t.Fatal("repository did not preserve context cancellation")
+	}
+	users := repository.Users()
+	userMissing := false
+	try {
+		users.Find(context.Background(), missing)
+	} catch err user.NotFoundError {
+		userMissing = err.code == 2002 && err.message == "user " + missing + " was not found" && err.typeName == "domain.user.NotFoundError"
+		if len(err.stackTrace) == 0 || !strings.HasSuffix(err.stackTrace[0].file, "users.ghi") || !strings.Contains(err.stackTrace[0].functionName, "UserRepository.Find") {
+			t.Fatal("missing user lost its repository stack")
+		}
+	}
+	if !userMissing {
+		t.Fatal("wrong missing user error")
+	}
+	canceledFinds := 0
+	try {
+		repository.Find(ctx, missing)
+	} catch err GoError {
+		if errors.Is(err.cause, context.Canceled) {
+			canceledFinds++
+		}
+	}
+	try {
+		users.Find(ctx, missing)
+	} catch err GoError {
+		if errors.Is(err.cause, context.Canceled) {
+			canceledFinds++
+		}
+	}
+	if canceledFinds != 2 {
+		t.Fatal("Find converted cancellation into not found")
+	}
+	repository.Close()
+	closedFinds := 0
+	try {
+		repository.Find(context.Background(), missing)
+	} catch err GoError {
+		closedFinds++
+	}
+	try {
+		users.Find(context.Background(), missing)
+	} catch err GoError {
+		closedFinds++
+	}
+	if closedFinds != 2 {
+		t.Fatal("Find converted a closed database into not found")
 	}
 }

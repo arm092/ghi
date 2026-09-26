@@ -261,6 +261,32 @@ The benchmark is a closed-loop read workload: client and server share a machine,
 
 To reproduce, install the DDD example's locked dependencies with `mojave install` from `examples/ddd-api`, then run `python benchmarks/http-api/run.py` from the repository root with Go and Python available. The runner builds both servers and the client, uses disposable databases under `.work`, and checks the Go counterpart's module versions against `mojave.lock`. Results default to `.work/http-ddd-results.json`; use `--output` to choose another destination.
 
+### DDD not-found handling
+
+The development DDD example now uses `QueryContext`, `Next` and `Err` for single-row lookups in both repositories. An empty result directly throws the domain `NotFoundError`, avoiding the intermediate `GoError` and its stack that `QueryRowContext(...).Scan(...)` produced for `sql.ErrNoRows`. Query, iteration, scan and close failures still become `GoError`; cancellation and a closed database are not treated as missing records. Rows are closed before constructing a successful result, with deferred cleanup for exceptional paths. The final domain exception retains its code, message and a stack pointing to `Find`.
+
+This is an example-level optimization compatible with Ghi v0.2.3; it does not change the compiler's native-error bridge or exception semantics. In a direct missing-row benchmark using empty SQLite databases, Go 1.26.3 and `GOMAXPROCS=8`, five alternating before/after samples gave these medians. [Repository samples](tests/performance/results/ddd-404-repository-windows-amd64-go1.26.3.csv).
+
+| Missing-row lookup | Before | After | Before / after bytes | Before / after allocations |
+| --- | ---: | ---: | ---: | ---: |
+| User repository | 26.23 µs | 22.99 µs | 1920 / 1488 | 44 / 40 |
+| Task repository | 26.25 µs | 24.90 µs | 2016 / 1584 | 46 / 42 |
+
+The [repository fixture](benchmarks/http-api/testdata/repository.ghi) replaces `main.ghi` in disposable copies of the before/after DDD project. Both were compiled with the released Ghi v0.2.3 compiler. Run each executable with `-test.benchtime=300ms`, a separate empty database path and the migrations directory as its final two arguments. Construction and migrations occur outside the measured loops; each loop checks the expected domain error code.
+
+An HTTP comparison of the same two implementations ran five alternating samples of 10,000 requests per scenario and concurrency level, with 300 warmup requests. All 400,000 measured responses matched the expected status and exact JSON bytes. [HTTP before/after samples](tests/performance/results/http-ddd-404-before-after.json).
+
+| HTTP workload | Clients | Before requests/s | After requests/s | Before / after p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Get one user | 1 | 6,127 | 6,590 | 0.270 / 0.253 ms |
+| Missing user, expected 404 | 1 | 6,218 | 6,708 | 0.255 / 0.235 ms |
+| Get one user | 16 | 14,433 | 15,489 | 3.021 / 2.812 ms |
+| Missing user, expected 404 | 16 | 13,538 | 13,575 | 3.283 / 3.251 ms |
+
+Single-client 404 throughput is about 8% higher by median in this run; at 16 clients it is effectively unchanged. Samples overlap substantially, so these figures do not establish a universal or statistically significant HTTP speedup. The repeatable structural saving is one fewer intermediate exception and four fewer allocations per missing-row lookup. Successful reads also avoid the surrounding catch wrapper. The existing SQLite, localhost and closed-loop limitations still apply.
+
+The HTTP runner also accepts `--baseline-ghi /path/to/old-server` to compare two Ghi binaries, and `--scenarios get missing` to focus on successful and missing single-user lookups. Current-source hashes describe the new server; binary hashes identify both executables. The old server must implement the same measured routes and accept the DDD environment variables.
+
 ## Files, namespaces and imports
 
 Files use UTF-8 and the `.ghi` extension. Each file starts with `namespace`. Files in one directory share a namespace; imports are local to each file. The executable entry point is `func main()` in namespace `main`.

@@ -1,0 +1,47 @@
+namespace main
+import domain.task
+import domain.user
+import context "go:context"
+import flag "go:flag"
+import fmt "go:fmt"
+import os "go:os"
+import testing "go:testing"
+import infrastructure.sqlite.Repository
+var sink int
+func main() {
+	testing.Init()
+	flag.Parse()
+	repository := new Repository(os.Args[len(os.Args) - 2], os.Args[len(os.Args) - 1])
+	defer repository.Close()
+	users := repository.Users()
+	ctx := context.Background()
+	userResult := testing.Benchmark(func(b *testing.B) {
+		total := 0
+		for i := 0; i < b.N; i++ {
+			try {
+				users.Find(ctx, "00000000-0000-4000-8000-000000000001")
+			} catch err user.NotFoundError {
+				total += err.code
+			}
+		}
+		if total != b.N * 2002 {
+			panic("wrong user error")
+		}
+		sink = total
+	})
+	taskResult := testing.Benchmark(func(b *testing.B) {
+		total := 0
+		for i := 0; i < b.N; i++ {
+			try {
+				repository.Find(ctx, "00000000-0000-4000-8000-000000000001")
+			} catch err task.NotFoundError {
+				total += err.code
+			}
+		}
+		if total != b.N * 1002 {
+			panic("wrong task error")
+		}
+		sink = total
+	})
+	fmt.Printf("User %s %s\nTask %s %s\n", userResult.String(), userResult.MemString(), taskResult.String(), taskResult.MemString())
+}
