@@ -74,23 +74,24 @@ type frameCache[K comparable] struct {
 var stackCache = frameCache[stackKey]{entries:make(map[stackKey][]stackFrameData)}
 var deepStackCache = frameCache[deepStackKey]{entries:make(map[deepStackKey][]stackFrameData)}
 func CaptureStack() []StackFrame {
- var key stackKey
- key.count=goruntime.Callers(2,key.pcs[:])
- if key.count<len(key.pcs) {
-  data:=cachedStack(key)
-  return materializeStack(data)
- }
- return captureDeepStack()
-}
-// Keep larger keys and buffers off the common shallow-stack path.
-func captureDeepStack() []StackFrame {
+ // Capture once into the larger stack-local buffer, then use the smaller
+ // cache key for shallow traces. Neither buffer escapes on cache hits.
  var key deepStackKey
- key.count=goruntime.Callers(3,key.pcs[:])
+ key.count=goruntime.Callers(2,key.pcs[:])
+ if key.count<64 {
+  var shallow stackKey
+  shallow.count=key.count
+  copy(shallow.pcs[:],key.pcs[:key.count])
+  return materializeStack(cachedStack(shallow))
+ }
  if key.count<len(key.pcs) {
   if data,ok:=deepStackCache.load(key);ok {return materializeStack(data)}
   data:=decodeDeepStack(key)
   return materializeStack(deepStackCache.store(key,data,16))
  }
+ return captureUncachedStack()
+}
+func captureUncachedStack() []StackFrame {
  // Arbitrarily deep stacks stay complete and bypass both bounded caches.
  pcs:=make([]uintptr,512)
  count:=goruntime.Callers(3,pcs)

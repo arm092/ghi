@@ -212,6 +212,18 @@ A subsequent comparison against the first stack-cache implementation, using the 
 
 The 96-call fixture is about 3.2 times faster once its deeper stack is cached. The shallow fixture improves modestly in this run (about 7%); small timing differences should not be treated as a universal speedup. The 300-call fixture remains uncached and uses fewer capture-buffer allocations. The Ghi benchmark binary grows by 10 KiB, from 5,933,056 to 5,943,296 bytes; the Go binary remains 5,883,392 bytes. These measurements do not cover cold cache misses, application throughput or contention under load. Full trace capture remains more expensive than returning a Go error without a trace.
 
+The next development optimization captures up to 256 PCs in one traversal, then selects the existing shallow or deep cache. Previously, a cacheable deep trace required a 64-PC traversal followed by another traversal into the larger buffer. Traces of 256 PCs or more still grow their capture buffer and remain complete. The larger initial buffer is stack-local; the cache keys and public trace ownership are unchanged.
+
+A comparison against the preceding implementation on the same Windows machine and Go 1.26.3, with five samples per fixture, produced these medians. [Single-pass capture samples](tests/performance/results/exception-single-pass-windows-amd64-go1.26.3.csv).
+
+| Ghi exception workload | Before (ns/op) | After (ns/op) | Bytes / allocations, unchanged |
+| --- | ---: | ---: | ---: |
+| Repeated shallow exception | 986.4 | 1004 | 256 / 4 |
+| 96 recursive calls, cached | 6611 | 5115 | 5968 / 4 |
+| 300 recursive calls, uncached | 57380 | 55135 | 37808 / 318 |
+
+The cached 96-call fixture takes about 23% less time. The shallow fixture remains around one microsecond, with a roughly 2% increase in this run; small differences are sensitive to measurement noise. Both benchmark binary sizes are unchanged. These results still describe warmed microbenchmarks, not cold-cache latency or application throughput.
+
 ## Files, namespaces and imports
 
 Files use UTF-8 and the `.ghi` extension. Each file starts with `namespace`. Files in one directory share a namespace; imports are local to each file. The executable entry point is `func main()` in namespace `main`.
