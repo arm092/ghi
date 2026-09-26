@@ -138,7 +138,7 @@ Use `-o hello.exe` on Windows. Run the compiled executable directly: `./hello` o
 1. Ghi loads `.ghi` sources, namespaces and installed Mojave dependencies.
 2. It parses and validates Ghi constructs, then lowers them into Go declarations and expressions.
 3. Type checking validates assignments, generic constraints, method signatures and Ghi-specific rules such as visibility and nonnullable initialization.
-4. The compiler creates a temporary Go module and invokes the selected Go toolchain.
+4. The compiler prepares a Go module and invokes the selected Go toolchain. The development compiler can reuse generated files in `.ghi/build`; debug, test and editor-overlay builds use temporary workspaces.
 5. The result is an executable for the target platform. Debug builds retain mappings to the original Ghi files.
 
 Generic types remain typed Go generics. Classes use generated interfaces and storage, preserving dynamic dispatch. Exceptions use generated runtime support. These transformations can introduce overhead; using the Go backend does not guarantee that every Ghi program performs identically to hand-written Go. Generated source and the generated object ABI are implementation details.
@@ -249,6 +249,23 @@ On the DDD API example, Windows amd64 and Go 1.26.3, the following wall times we
 The repeated build takes about 39% less time in this run. Its export-loading subprocesses decrease from 14 to 1 (3.01 s to 0.31 s). Total Ghi lowering, which includes export loading and type checks, decreases from 3.39 s to 0.62 s. Dependency preparation remains about 1.8 s and Go compilation/linking about 1.5 s. Stage timings were collected with temporary instrumentation; the released CLI output is unchanged. Results depend on filesystem caches, dependencies and the Go toolchain. There is no persistent Ghi AST or executable cache in this change.
 
 A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping the module and OS caches populated. The first build took 40.68 s before and 16.53 s after; the immediate warm repeats took 6.25 s and 3.96 s. Batching lets Go schedule the complete set of imported packages together. These are single observations in before/after order, not a promise of a fixed cold-build speedup or a fresh-machine installation benchmark. [Isolated Go-cache samples](tests/performance/results/build-imports-cold-windows-amd64-go1.26.3.csv).
+
+#### Incremental builds (development compiler)
+
+Normal `ghi build`, `ghi run` and `ghi check` reuse validated generated Go code in `.ghi/build/work`. The cache key includes source contents and paths, installed Ghi package sources, manifests and lockfiles, the compiler executable, selected Go toolchain, resolved Go settings and external Go export artifacts. Local Go `replace` dependencies are checked by Go too. Source discovery, Mojave validation, dependency downloads and checksum verification still run. Generated files are hashed before reuse; missing or damaged cache data causes regeneration.
+
+Unchanged inputs skip Ghi lowering and semantic checking. After a source edit, Ghi currently checks and lowers the whole project because receiver specialization depends on the complete class hierarchy. Only changed generated files are written to the stable workspace, allowing Go to reuse unaffected compiled packages. This is incremental reuse of generated output and Go packages, not a persistent per-file Ghi AST cache. The compiler also seeds its temporary output from the previous executable, allowing Go to skip unnecessary linking after checking build IDs; failed builds preserve the previous output.
+
+Debug builds, test runs and unsaved editor overlays use fresh temporary workspaces. Concurrent builds use an OS lock; a busy, read-only or unavailable cache falls back to temporary compilation. The lock is released by the OS when the process exits, including after a crash. To clear generated build data, remove `.ghi/build` while no compilation is running; installed packages under `.ghi/packages` are separate. This feature is not included in v0.2.3.
+
+On the DDD API example, Windows amd64, Core i9-13900HX and Go 1.26.3 (September 27, 2026), five measured samples after one warm-up pair gave these median wall times. Each pair builds unchanged sources, then changes the offset expression in `application/users/service.ghi` and builds again. The next unchanged build uses that edited source. Both compiler versions use the same copied project, output path and populated Go/module caches; phases run sequentially with no test suite running alongside them.
+
+| DDD API build | Before | After |
+| --- | ---: | ---: |
+| Unchanged sources | 3.987 s | 2.797 s |
+| After editing one service | 3.822 s | 3.859 s |
+
+The unchanged build takes about 30% less time. The edited case is effectively unchanged within the observed variation; this implementation does not claim faster per-file Ghi semantic analysis. Dependency checksum verification alone still takes about 1.5 seconds on this project. Cold caches, other dependency sets and other platforms can differ. Sample zero is the warm-up pair and is excluded from these medians. [Raw samples](tests/performance/results/incremental-build-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 

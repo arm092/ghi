@@ -73,7 +73,7 @@ func (p *program) resolveImports() error {
 	return nil
 }
 
-func (p *program) generate(ctx context.Context, dir, goPath string) error {
+func (p *program) prepareGeneration(ctx context.Context, dir, goPath string) error {
 	if err := p.addRuntime(); err != nil {
 		return err
 	}
@@ -89,6 +89,10 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	if err := p.stageDependencies(ctx, dir, goPath); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	origins := p.snapshotSources()
 	if err := p.lower(ctx, goPath, dir); err != nil {
 		return err

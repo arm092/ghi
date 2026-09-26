@@ -77,7 +77,7 @@ func (loader *exportLoader) load(paths ...string) error {
 
 // Resolve external exports together so go list visits the dependency graph
 // once. This cache belongs to one compilation; Go still validates its cache.
-func (loader *exportLoader) prefetch(p *program) {
+func (loader *exportLoader) prefetch(p *program) error {
 	seen := map[string]bool{}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
@@ -97,8 +97,9 @@ func (loader *exportLoader) prefetch(p *program) {
 	if len(paths) > 0 {
 		// Failed batches fall back to per-import loading, preserving diagnostics
 		// at the original import site. Cancellation is checked by the caller.
-		_ = loader.load(paths...)
+		return loader.load(paths...)
 	}
+	return nil
 }
 
 type packageChecker struct {
@@ -173,8 +174,11 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			}
 		}
 	}
-	loader := &exportLoader{ctx: ctx, goPath: goPath, dir: workspace, exports: map[string]string{}}
-	loader.prefetch(p)
+	loader := &exportLoader{ctx: ctx, goPath: goPath, dir: workspace, exports: p.Exports}
+	if loader.exports == nil {
+		loader.exports = map[string]string{}
+		_ = loader.prefetch(p)
+	}
 	external := importer.ForCompiler(p.Fset, "gc", loader.open)
 	if _, err := p.rewrite(nil); err != nil {
 		return err

@@ -58,6 +58,27 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	defer os.Remove(staging)
+	// Go can skip linking when an existing executable's build ID is current.
+	// Seed the atomic output candidate, never let a failed build overwrite the
+	// user's last working executable. Go still validates all build inputs.
+	if previous, err := os.Open(output); err == nil {
+		if info, err := previous.Stat(); err == nil && info.Mode().IsRegular() {
+			if seed, err := os.OpenFile(staging, os.O_WRONLY|os.O_TRUNC, 0600); err == nil {
+				_, copyErr := io.Copy(seed, previous)
+				closeErr := seed.Close()
+				if copyErr == nil && closeErr == nil {
+					if err := os.Chmod(staging, 0755); err != nil {
+						previous.Close()
+						return Result{}, err
+					}
+				} else if err := os.Truncate(staging, 0); err != nil {
+					previous.Close()
+					return Result{}, err
+				}
+			}
+		}
+		previous.Close()
+	}
 	args := []string{"build", "-mod=readonly"}
 	if options.Debug {
 		args = append(args, "-gcflags=all=-N -l")

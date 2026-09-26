@@ -13,9 +13,16 @@ type preparedProject struct {
 	program   *program
 	workspace string
 	goPath    string
+	cache     *buildCache
 }
 
-func (p *preparedProject) close() { os.RemoveAll(p.workspace) }
+func (p *preparedProject) close() {
+	if p.cache != nil {
+		p.cache.release()
+	} else {
+		os.RemoveAll(p.workspace)
+	}
+}
 
 // prepareProject is shared by check and build so both enforce the same rules.
 func prepareProject(ctx context.Context, options Options) (*preparedProject, error) {
@@ -64,6 +71,27 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 		prepared.close()
 		return nil, err
 	}
+	if err := p.prepareGeneration(ctx, workspace, prepared.goPath); err != nil {
+		prepared.close()
+		return nil, p.sourceError(err)
+	}
+	var cache *buildCache
+	if !testing && !options.Debug && len(options.Overlay) == 0 {
+		cache = openBuildCache(root)
+	}
+	if cache != nil {
+		defer func() {
+			if prepared.cache == nil {
+				cache.release()
+			}
+		}()
+		cache.key = p.buildCacheKey(ctx, workspace, prepared.goPath)
+		if cache.key != "" && cache.valid() {
+			os.RemoveAll(workspace)
+			prepared.workspace, prepared.cache = cache.workspace, cache
+			return prepared, nil
+		}
+	}
 	if err := p.generate(ctx, workspace, prepared.goPath); err != nil {
 		prepared.close()
 		return nil, p.sourceError(err)
@@ -73,6 +101,10 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 			prepared.close()
 			return nil, err
 		}
+	}
+	if cache != nil && cache.key != "" && cache.store(workspace) == nil {
+		os.RemoveAll(workspace)
+		prepared.workspace, prepared.cache = cache.workspace, cache
 	}
 	return prepared, nil
 }
