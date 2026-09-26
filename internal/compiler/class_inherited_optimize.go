@@ -3,6 +3,8 @@ package compiler
 import (
 	"fmt"
 	"go/ast"
+	"go/parser"
+	"go/token"
 	"go/types"
 	"reflect"
 	"sort"
@@ -28,13 +30,11 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 	sort.Strings(names)
 	for _, className := range names {
 		c := classes[className]
-		if c.Interface || c.TypeParams != nil {
+		if c.Interface {
 			continue
 		}
 		for _, method := range c.allMethods() {
-			// Generic bodies require substituting ancestor type parameters.
-			if method.Owner.TypeParams != nil ||
-				(method.Owner == c && !parents[c]) {
+			if method.Owner == c && !parents[c] {
 				continue
 			}
 			original := method.Node
@@ -62,9 +62,18 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 			if !specializeReceiver(copy, c, copyInfo) {
 				continue
 			}
+			parameters := map[types.Object]int{}
+			if copy.Type.TypeParams != nil {
+				for _, field := range copy.Type.TypeParams.List {
+					for _, id := range field.Names {
+						parameters[copyInfo.Defs[id]] = len(parameters)
+					}
+				}
+				copy.Type.TypeParams = nil
+			}
 			name := fmt.Sprintf("ghi_specialized_%d_%s_%s", len(c.Name), c.Name, method.Name)
 			destination := method.Owner.File
-			if method.Owner.Namespace != c.Namespace {
+			if method.Owner.Namespace != c.Namespace || method.Owner.TypeParams != nil || c.TypeParams != nil {
 				// A separate file isolates imported names from the child's source.
 				destination = &sourceFile{Path: c.File.Path + "." + name, Unit: &unit{},
 					Tree: &ast.File{Name: ast.NewIdent(c.Namespace.GoName)}}
@@ -72,6 +81,7 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 					continue
 				}
 			}
+			p.bindSpecializationTypes(copy, c, method.Owner, destination, copyInfo, parameters, copies, name)
 			copy.Name = ast.NewIdent(name)
 			destination.Tree.Decls = append(destination.Tree.Decls, copy)
 			if destination != method.Owner.File {
@@ -89,13 +99,20 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 				if !ok {
 					continue
 				}
-				id, ok := ptr.X.(*ast.Ident)
+				receiver := ptr.X
+				switch indexed := receiver.(type) {
+				case *ast.IndexExpr:
+					receiver = indexed.X
+				case *ast.IndexListExpr:
+					receiver = indexed.X
+				}
+				id, ok := receiver.(*ast.Ident)
 				if !ok || id.Name != "ghiData_"+c.Name {
 					continue
 				}
 				ast.Inspect(wrapper.Body, func(node ast.Node) bool {
 					if call, ok := node.(*ast.CallExpr); ok {
-						call.Fun = ast.NewIdent(name)
+						call.Fun, _ = parser.ParseExpr(name + c.typeArguments())
 						return false
 					}
 					return true
@@ -108,6 +125,69 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 			p.SpecializedNames[prefix+"."+name] = method.Owner.Namespace.Name + "." + method.Owner.Name + "." + method.Name
 		}
 	}
+}
+
+// Generated aliases and parameter names prevent substitution from capturing
+// locals whose spelling matches a descendant's concrete type or type parameter.
+func (p *program) bindSpecializationTypes(fn *ast.FuncDecl, child, owner *classDecl, file *sourceFile, info *types.Info, parameters map[types.Object]int, copies map[ast.Node]ast.Node, name string) {
+	bindings := map[string]ast.Expr{}
+	var names []string
+	for i, original := range classParameterNames(child) {
+		fresh := fmt.Sprintf("ghi_type_%d", i)
+		bindings[original] = ast.NewIdent(fresh)
+		names = append(names, fresh)
+	}
+	arguments := ""
+	if len(names) > 0 {
+		arguments = "[" + strings.Join(names, ",") + "]"
+	}
+	if child.TypeParams != nil {
+		fn.Type.TypeParams = cloneSpecializationNode(child.TypeParams, map[ast.Node]ast.Node{}).(*ast.FieldList)
+		for _, field := range fn.Type.TypeParams.List {
+			for _, id := range field.Names {
+				id.Name = bindings[id.Name].(*ast.Ident).Name
+			}
+			field.Type, _ = parser.ParseExpr(p.typeText(field.Type, child, file, child.Namespace))
+			field.Type = substituteType(field.Type, bindings)
+		}
+		fn.Type.Params.List[0].Type = substituteType(fn.Type.Params.List[0].Type, bindings)
+	}
+	args := p.ancestorArguments(child, owner)
+	aliases := map[int]string{}
+	walkNode(fn, func(node ast.Node) ast.Node {
+		id, ok := node.(*ast.Ident)
+		if !ok {
+			return node
+		}
+		i, ok := parameters[info.Uses[id]]
+		if !ok {
+			return node
+		}
+		alias := aliases[i]
+		if alias == "" {
+			typ, _ := parser.ParseExpr(p.typeText(args[i], child, file, child.Namespace))
+			typ = substituteType(typ, bindings)
+			if id, ok := typ.(*ast.Ident); ok {
+				for _, fresh := range names {
+					if id.Name == fresh {
+						aliases[i] = fresh
+						return typ
+					}
+				}
+			}
+			alias = fmt.Sprintf("%s_arg_%d", name, i)
+			spec := &ast.TypeSpec{Name: ast.NewIdent(alias), Assign: token.Pos(1), Type: typ}
+			if fn.Type.TypeParams != nil {
+				spec.TypeParams = cloneSpecializationNode(fn.Type.TypeParams, map[ast.Node]ast.Node{}).(*ast.FieldList)
+			}
+			file.Tree.Decls = append(file.Tree.Decls, &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{spec}})
+			alias += arguments
+			aliases[i] = alias
+		}
+		expr, _ := parser.ParseExpr(alias)
+		copies[expr] = copies[id]
+		return expr
+	}, true)
 }
 
 // Bind a moved body using resolved objects, never identifier spelling. All its

@@ -160,7 +160,7 @@ func walkStack(pcs []uintptr,visit func(string,string,int)) {
   name:=frame.Function
   if at:=strings.Index(name,".ghi_specialized_");at>=0 {
    symbol,suffix:=name,""
-   if dot:=strings.IndexByte(name[at+1:],'.');dot>=0 {symbol,suffix=name[:at+1+dot],name[at+1+dot:]}
+   if end:=strings.IndexAny(name[at+1:],".[");end>=0 {symbol,suffix=name[:at+1+end],name[at+1+end:]}
    if display,ok:=specializedNames[symbol];ok {name=display+suffix}
   }
   if strings.HasSuffix(frame.File,".ghi") && !strings.Contains(frame.File,".ghi-runtime") && !strings.Contains(name,"GhiM_") && !strings.Contains(name,"GhiNew_") && !strings.Contains(name,"GhiGet_") && !strings.Contains(name,"GhiSet_") && !strings.Contains(name,"GhiRef_") {

@@ -1,10 +1,20 @@
 namespace base
 
+class GenericBase[T ~int] {
+	public value T
+	constructor(value T) { this.value = value }
+	public func add(n T) T {
+		this.value = this.value + n
+
+		return this.value
+	}
+}
+
 class Base {
 	public value int
 
 	public func add(n int) int {
-		this.value += n
+		this.value = this.value + n
 
 		return this.value
 	}

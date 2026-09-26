@@ -17,6 +17,10 @@ type preparedProject struct {
 }
 
 func (p *preparedProject) close() {
+	if p.program.verification != nil {
+		p.program.verification.cancel()
+		_ = p.program.verifyDependencies()
+	}
 	if p.cache != nil {
 		p.cache.release()
 	} else {
@@ -87,14 +91,23 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 		}()
 		cache.key = p.buildCacheKey(ctx, workspace, prepared.goPath)
 		if cache.key != "" && cache.valid() {
+			if err := p.verifyDependencies(); err != nil {
+				prepared.close()
+				return nil, err
+			}
 			os.RemoveAll(workspace)
 			prepared.workspace, prepared.cache = cache.workspace, cache
 			return prepared, nil
 		}
 	}
-	if err := p.generate(ctx, workspace, prepared.goPath); err != nil {
+	generationErr := p.generate(ctx, workspace, prepared.goPath)
+	if err := p.verifyDependencies(); err != nil {
 		prepared.close()
-		return nil, p.sourceError(err)
+		return nil, err
+	}
+	if generationErr != nil {
+		prepared.close()
+		return nil, p.sourceError(generationErr)
 	}
 	if !testing {
 		if err := p.validateEntry(); err != nil {

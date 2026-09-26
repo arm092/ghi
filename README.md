@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.3](https://github.com/arm092/ghi/releases/tag/v0.2.3), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.1](https://github.com/arm092/ghi-goland/releases/tag/v0.1.1).
+**Current release:** [Ghi v0.2.4](https://github.com/arm092/ghi/releases/tag/v0.2.4), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.2](https://github.com/arm092/ghi-goland/releases/tag/v0.1.2).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -36,7 +36,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.3).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.4).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.3/ghi_v0.2.3_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.4/ghi_v0.2.4_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -72,7 +72,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.3 on macOS, use the portable archive or Homebrew. A native v0.2.3 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.4 on macOS, use the portable archive or Homebrew. A native v0.2.4 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.4/ghi_v0.2.4_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -149,7 +149,7 @@ Ghi uses the Go compiler and runtime, but generated abstractions can add overhea
 
 Since v0.2.3, the compiler specializes method and constructor receivers for classes with no descendants in the compiled project. Direct `this` member access can then use a concrete Go pointer, allowing Go to inline calls. Public class types, alias types and virtual dispatch retain their existing semantics. Methods that rebind `this` or take its address keep the original implementation. Debug builds disable this optimization. This optimization is available starting with v0.2.3.
 
-The development compiler also generates concrete copies of small method bodies for inheritance hierarchies within one namespace, when both the concrete class and the method owner have no generic parameters. Original shared bodies remain available for `parent` calls and other dynamic receivers. Copies stay in the original file to preserve import bindings, and stack traces retain the original method names and source lines. Large methods, generic owners/classes and cross-namespace inheritance keep the shared implementation. Constructors in inheritance hierarchies are unchanged.
+Since v0.2.3, the compiler generates concrete copies of small method bodies for inheritance hierarchies within one namespace. Version v0.2.4 extends this to cross-namespace and generic inheritance. Original shared bodies remain available for `parent` calls and dynamic receivers. Constructors in inheritance hierarchies are unchanged.
 
 The opt-in comparison suite lives in `tests/performance`. It builds Ghi and Go fixtures with the same Go toolchain, checks workload results, and measures arithmetic, fields, methods, virtual dispatch, object allocation, nullable values, error handling and an in-process HTTP handler. It reports time, bytes and allocations per operation, using five samples with alternating execution order. Build time is outside the runtime measurements.
 
@@ -187,7 +187,16 @@ A second comparison on the same machine/toolchain measures inheritance specializ
 
 The inherited-method fixture improves about 6.6 times, and virtual dispatch about 2.1 times. Both have zero allocations per operation. The Ghi benchmark binary grows from 5,921,792 to 5,922,816 bytes (1 KiB, about 0.02%); the Go binary is 5,882,368 bytes in both runs. These sizes include default Go debug information. Binary growth in larger class hierarchies can differ. Exception allocation counts remain unchanged at eight in the failure fixture; this pass does not optimize exception handling.
 
-The development compiler also specializes small inherited methods across namespaces. Imports and named types retain their original bindings; virtual calls, `parent`, private class members, captured receivers and original exception source locations keep their semantics. Copies are limited to 128 AST nodes per method body. Generic inheritance, rebinding/address-taking of `this`, inaccessible namespace declarations and conflicting built-in names retain the shared implementation. Debug builds disable receiver specialization. This extension is not included in v0.2.3.
+Version v0.2.4 also specializes generic inheritance, including concrete descendants of generic bases, generic descendants and nested ancestor arguments. The following Windows amd64 / Go 1.26.3 comparison uses the same fixtures before and after this optimization, with five alternating 150 ms samples per language (September 27, 2026):
+
+| Generic inherited method | Ghi before (ns/op) | Ghi after (ns/op) | Go after (ns/op) |
+| --- | ---: | ---: | ---: |
+| Concrete descendant of generic base | 3.838 | 1.140 | 0.415 |
+| Generic descendant, instantiated with `int` | 4.243 | 1.057 | 0.416 |
+
+These fixtures improve about 3.4 and 4.0 times respectively, with zero allocations in both languages. Go remains faster in these fixtures; generic specialization does not guarantee elimination of all dispatch/dictionary overhead. The Ghi benchmark binary grows by 512 bytes, from 5,956,608 to 5,957,120; the Go binary stays at 5,886,464 bytes. Results include Go debug information and are workload-specific. [Raw samples](tests/performance/results/generic-inheritance-windows-amd64-go1.26.3.csv).
+
+Since v0.2.4, the compiler specializes small inherited methods across namespaces, including generic ancestors and descendants. Imports and named types retain their original bindings; virtual calls, `parent`, private class members, captured receivers and original exception source locations keep their semantics. Copies are limited to 128 AST nodes per method body. Rebinding/address-taking of `this`, inaccessible namespace declarations and conflicting built-in names retain the shared implementation. Debug builds disable receiver specialization. Generic substitutions use resolved type parameters and generated aliases to preserve local bindings.
 
 A cross-namespace fixture uses a base class in a separate package and calls its inherited method on a concrete descendant. On the same Windows amd64 machine with Go 1.26.3 (September 27, 2026), medians of five 150 ms samples are:
 
@@ -250,13 +259,13 @@ The repeated build takes about 39% less time in this run. Its export-loading sub
 
 A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping the module and OS caches populated. The first build took 40.68 s before and 16.53 s after; the immediate warm repeats took 6.25 s and 3.96 s. Batching lets Go schedule the complete set of imported packages together. These are single observations in before/after order, not a promise of a fixed cold-build speedup or a fresh-machine installation benchmark. [Isolated Go-cache samples](tests/performance/results/build-imports-cold-windows-amd64-go1.26.3.csv).
 
-#### Incremental builds (development compiler)
+#### Incremental builds (v0.2.4)
 
 Normal `ghi build`, `ghi run` and `ghi check` reuse validated generated Go code in `.ghi/build/work`. The cache key includes source contents and paths, installed Ghi package sources, manifests and lockfiles, the compiler executable, selected Go toolchain, resolved Go settings and external Go export artifacts. Local Go `replace` dependencies are checked by Go too. Source discovery, Mojave validation, dependency downloads and checksum verification still run. Generated files are hashed before reuse; missing or damaged cache data causes regeneration.
 
 Unchanged inputs skip Ghi lowering and semantic checking. After a source edit, Ghi currently checks and lowers the whole project because receiver specialization depends on the complete class hierarchy. Only changed generated files are written to the stable workspace, allowing Go to reuse unaffected compiled packages. This is incremental reuse of generated output and Go packages, not a persistent per-file Ghi AST cache. The compiler also seeds its temporary output from the previous executable, allowing Go to skip unnecessary linking after checking build IDs; failed builds preserve the previous output.
 
-Debug builds, test runs and unsaved editor overlays use fresh temporary workspaces. Concurrent builds use an OS lock; a busy, read-only or unavailable cache falls back to temporary compilation. The lock is released by the OS when the process exits, including after a crash. To clear generated build data, remove `.ghi/build` while no compilation is running; installed packages under `.ghi/packages` are separate. This feature is not included in v0.2.3.
+Debug builds, test runs and unsaved editor overlays use fresh temporary workspaces. Concurrent builds use an OS lock; a busy, read-only or unavailable cache falls back to temporary compilation. The lock is released by the OS when the process exits, including after a crash. To clear generated build data, remove `.ghi/build` while no compilation is running; installed packages under `.ghi/packages` are separate. Dependency checksum verification runs concurrently with Ghi analysis; both must succeed before generated output or an executable can be accepted.
 
 On the DDD API example, Windows amd64, Core i9-13900HX and Go 1.26.3 (September 27, 2026), five measured samples after one warm-up pair gave these median wall times. Each pair builds unchanged sources, then changes the offset expression in `application/users/service.ghi` and builds again. The next unchanged build uses that edited source. Both compiler versions use the same copied project, output path and populated Go/module caches; phases run sequentially with no test suite running alongside them.
 
@@ -266,6 +275,15 @@ On the DDD API example, Windows amd64, Core i9-13900HX and Go 1.26.3 (September 
 | After editing one service | 3.822 s | 3.859 s |
 
 The unchanged build takes about 30% less time. The edited case is effectively unchanged within the observed variation; this implementation does not claim faster per-file Ghi semantic analysis. Dependency checksum verification alone still takes about 1.5 seconds on this project. Cold caches, other dependency sets and other platforms can differ. Sample zero is the warm-up pair and is excluded from these medians. [Raw samples](tests/performance/results/incremental-build-windows-amd64-go1.26.3.csv).
+
+The final v0.2.4 pipeline overlaps checksum verification with Ghi analysis, while still requiring successful verification before accepting cached or newly generated output. Repeating the same benchmark protocol yields:
+
+| DDD API build | Before caching/overlap | Final v0.2.4 pipeline |
+| --- | ---: | ---: |
+| Unchanged sources | 3.987 s | 2.095 s |
+| After editing one service | 3.822 s | 2.934 s |
+
+These medians are about 47% and 23% lower respectively. The earlier five-sample baseline is reused; Go/module caches remain warm, and there are no parallel tests during measurement. The changed-file speedup comes from overlapping independent work and Go package reuse; Ghi semantic checking after edits is still project-wide. Failed checksum verification preserves the previous executable. [Final build samples](tests/performance/results/parallel-build-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 

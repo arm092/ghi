@@ -102,7 +102,38 @@ func (p *program) stageDependencies(ctx context.Context, dir, goPath string) err
 		return err
 	}
 	if managed {
-		_, err = run("mod", "verify")
+		p.verification, err = startDependencyVerification(ctx, goPath, dir)
 	}
 	return err
+}
+
+// Verification only reads downloaded modules; lowering writes a separate build
+// tree. Both must finish successfully before generated output is published.
+type dependencyVerification struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error
+}
+
+func startDependencyVerification(ctx context.Context, goPath, dir string) (*dependencyVerification, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	v := &dependencyVerification{cancel: cancel, done: make(chan struct{})}
+	command := exec.CommandContext(ctx, goPath, "mod", "verify")
+	command.Dir, command.Env = dir, toolchain.Env()
+	go func() {
+		defer close(v.done)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			v.err = fmt.Errorf("prepare Go dependencies: %w\n%s", err, output)
+		}
+	}()
+	return v, nil
+}
+
+func (p *program) verifyDependencies() error {
+	if p.verification == nil {
+		return nil
+	}
+	<-p.verification.done
+	return p.verification.err
 }

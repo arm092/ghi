@@ -1,5 +1,6 @@
 namespace main
 import base.Base as RemoteBase
+import base.GenericBase
 import flag "go:flag"
 import fmt "go:fmt"
 import testing "go:testing"
@@ -20,6 +21,16 @@ class Derived extends Base {
 }
 class Inherited extends Base {}
 class CrossInherited extends RemoteBase {}
+class ConcreteInherited extends GenericBase[int] { constructor() { parent(0) } }
+class GenericInherited[T ~int] extends GenericBase[T] { constructor(value T) { parent(value) } }
+func genericConcrete(b *testing.B) {
+ c := new ConcreteInherited()
+ for i := 0; i < b.N; i++ { sink = c.add(i) }
+}
+func genericOpen(b *testing.B) {
+ c := new GenericInherited[int](0)
+ for i := 0; i < b.N; i++ { sink = c.add(i) }
+}
 func crossInherited(b *testing.B) {
  c := new CrossInherited()
  for i := 0; i < b.N; i++ { sink = c.add(i) }

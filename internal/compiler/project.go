@@ -30,6 +30,7 @@ type namespace struct {
 type program struct {
 	Debug               bool
 	Exports             map[string]string
+	verification        *dependencyVerification
 	SourceCopies        map[ast.Node]ast.Node
 	SpecializedNames    map[string]string
 	Root                string

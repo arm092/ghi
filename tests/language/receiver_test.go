@@ -143,6 +143,7 @@ class Base {
  public func make() Base { return new Base() }
  public func length() int { return len("abc") }
 }
+
 `,
 		"child/child.ghi": `namespace child
 import base.Base
@@ -182,5 +183,68 @@ func main() {
 	}
 	if got := strings.ReplaceAll(string(output), "\r\n", "\n"); got != "4 5 1 1 1 3\nOK 7 1 3\n" {
 		t.Fatalf("unexpected cross-namespace behavior: %s", got)
+	}
+}
+
+func TestGenericInheritedSpecialization(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"base/repository.ghi": `namespace base
+class Repository[T any] {
+ protected value T
+ constructor(value T) { this.value = value }
+ public func get() T { return this.value }
+ public func read() T { return this.get() }
+ public func shadow(a int, b int) T { U := a; Item := b; _, _ = U, Item; var result T = this.value; return result }
+ public func values() []T { return []T{this.value} }
+ public func alias(other Repository[T]) T { copy := this; copy = other; return copy.get() }
+ public func rebound(other Repository[T]) T { this = other; return this.get() }
+ public func later() func() T { return () T => { return this.get() } }
+ public func fail() { throw new Exception("generic failure") }
+}
+`,
+		"main.ghi": `namespace main
+import base.Repository
+import strings "go:strings"
+class Item { public id int; constructor(id int) { this.id = id } }
+class Generic[U any] extends Repository[U] { constructor(value U) { parent(value) } }
+class Items extends Generic[Item] { constructor(value Item) { parent(value) } }
+class Integers extends Generic[int] {
+ constructor(value int) { parent(value) }
+ public override func get() int { return parent.get() + 1 }
+}
+class Nested[V any] extends Repository[[]V] { constructor(value []V) { parent(value) } }
+func main() {
+ a := new Integers(4)
+ println(a.get(), a.read(), a.shadow(8,9), a.values()[0], a.alias(new Repository[int](2)), a.rebound(new Repository[int](3)), a.later()())
+ println(new Generic[string]("text").shadow(1,2))
+ println(new Items(new Item(7)).shadow(1,2).id)
+ println(new Nested[int]([]int{6}).get()[0])
+ try { new Generic[string]("x").fail() } catch err Exception {
+  frame := err.stackTrace[0]
+  println(strings.HasPrefix(frame.functionName, "base.Repository.fail"), strings.HasSuffix(frame.file, "repository.ghi"), frame.line)
+ }
+}
+`,
+	}
+	for name, source := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, debug := range []bool{false, true} {
+		built, err := compiler.Build(context.Background(), compiler.Options{Dir: dir, Debug: debug})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command(built.Executable).CombinedOutput()
+		want := "5 5 4 4 2 3 5\ntext\n7\n6\ntrue true 12\n"
+		if err != nil || strings.ReplaceAll(string(out), "\r\n", "\n") != want {
+			t.Fatalf("debug=%v: %v\n%s", debug, err, out)
+		}
 	}
 }

@@ -1,8 +1,13 @@
 package cli_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"ghi/internal/compiler"
+	"github.com/arm092/mojave/pkg/mojave"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +15,78 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestCachedBuildWaitsForDependencyVerification(t *testing.T) {
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	module := "module example.test/verified\ngo 1.26.0\n"
+	for name, content := range map[string]string{"go.mod": module, "value.go": "package verified\nfunc Value() int {return 1}\n"} {
+		file, err := writer.Create("example.test/verified@v1.0.0/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/example.test/verified/@v/v1.0.0.info":
+			w.Write([]byte(`{"Version":"v1.0.0","Time":"2026-01-01T00:00:00Z"}`))
+		case "/example.test/verified/@v/v1.0.0.mod":
+			w.Write([]byte(module))
+		case "/example.test/verified/@v/v1.0.0.zip":
+			w.Write(archive.Bytes())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("GOPROXY", server.URL)
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOFLAGS", "-modcacherw")
+	cache := t.TempDir()
+	t.Setenv("GOMODCACHE", cache)
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"mojave.json": `{"version":1,"goDependencies":{"example.test/verified":"v1.0.0"}}`,
+		"main.ghi":    "namespace main\nimport verified \"go:example.test/verified\"\nfunc main(){println(verified.Value())}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := mojave.Install(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	result, err := compiler.Build(context.Background(), compiler.Options{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(result.Executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same API and valid Go code: only checksum verification should reject it.
+	moduleSource := filepath.Join(cache, "example.test/verified@v1.0.0/value.go")
+	if err := os.Chmod(moduleSource, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(moduleSource, []byte("package verified\nfunc Value() int {return 99}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = compiler.Build(context.Background(), compiler.Options{Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "modified") {
+		t.Fatalf("altered dependency accepted: %v", err)
+	}
+	after, err := os.ReadFile(result.Executable)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("failed verification replaced the executable")
+	}
+}
 
 // A cached successful check must never hide edits, missing files or invalid
 // code, nor replace the last working executable after a failed compilation.

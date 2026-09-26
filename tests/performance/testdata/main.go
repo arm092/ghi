@@ -25,6 +25,21 @@ func (c *Derived) add(n int) int { c.value += n * 2; return c.value }
 type Adder interface{ add(int) int }
 type Inherited struct{ Base }
 type CrossInherited struct{ base.Base }
+type ConcreteInherited struct{ base.GenericBase[int] }
+type GenericInherited[T ~int] struct{ base.GenericBase[T] }
+
+func genericConcrete(b *testing.B) {
+	c := &ConcreteInherited{}
+	for i := 0; i < b.N; i++ {
+		sink = c.Add(i)
+	}
+}
+func genericOpen(b *testing.B) {
+	c := &GenericInherited[int]{}
+	for i := 0; i < b.N; i++ {
+		sink = c.Add(i)
+	}
+}
 
 func crossInherited(b *testing.B) {
 	c := &CrossInherited{}
