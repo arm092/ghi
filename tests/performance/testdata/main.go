@@ -119,6 +119,16 @@ func failureDeep(b *testing.B) {
 	}
 }
 
+func failureVeryDeep(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		if value, err := deepFailure(300); err != nil {
+			sink = 7
+		} else {
+			sink = value
+		}
+	}
+}
+
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }
 func httpHandler(b *testing.B) {
 	handler := &Handler{}

@@ -63,28 +63,54 @@ func ReportPanic() {
 // Cache only immutable frame descriptions, never public mutable StackFrames.
 // Full PC sequences distinguish callers, recursion and inline call sites.
 type stackKey struct { count int; pcs [64]uintptr }
+type deepStackKey struct { count int; pcs [256]uintptr }
 type stackFrameData struct { name,file string; line int }
-var stackCache = struct {
+type frameCache[K comparable] struct {
  mu sync.RWMutex
- entries map[stackKey][]stackFrameData
- keys []stackKey
+ entries map[K][]stackFrameData
+ keys []K
  next int
-}{entries:make(map[stackKey][]stackFrameData)}
+}
+var stackCache = frameCache[stackKey]{entries:make(map[stackKey][]stackFrameData)}
+var deepStackCache = frameCache[deepStackKey]{entries:make(map[deepStackKey][]stackFrameData)}
 func CaptureStack() []StackFrame {
  var key stackKey
  key.count=goruntime.Callers(2,key.pcs[:])
  if key.count<len(key.pcs) {
   data:=cachedStack(key)
-  trace:=make([]StackFrame,len(data))
-  for i,frame:=range data {trace[i]=GhiNew_StackFrame(frame.name,frame.file,frame.line)}
-  return trace
+  return materializeStack(data)
  }
- // Deep stacks stay complete and bypass the bounded cache.
- pcs:=make([]uintptr,128)
- count:=goruntime.Callers(2,pcs)
- for count==len(pcs) {pcs=make([]uintptr,len(pcs)*2);count=goruntime.Callers(2,pcs)}
+ return captureDeepStack()
+}
+// Keep larger keys and buffers off the common shallow-stack path.
+func captureDeepStack() []StackFrame {
+ var key deepStackKey
+ key.count=goruntime.Callers(3,key.pcs[:])
+ if key.count<len(key.pcs) {
+  if data,ok:=deepStackCache.load(key);ok {return materializeStack(data)}
+  data:=decodeDeepStack(key)
+  return materializeStack(deepStackCache.store(key,data,16))
+ }
+ // Arbitrarily deep stacks stay complete and bypass both bounded caches.
+ pcs:=make([]uintptr,512)
+ count:=goruntime.Callers(3,pcs)
+ for count==len(pcs) {pcs=make([]uintptr,len(pcs)*2);count=goruntime.Callers(3,pcs)}
  trace:=[]StackFrame{}
  walkStack(pcs[:count],func(name,file string,line int){trace=append(trace,GhiNew_StackFrame(name,file,line))})
+ return trace
+}
+// Each trace owns its backing objects. One allocation for all objects avoids
+// a heap allocation per frame without sharing mutable state between throws.
+func materializeStack(data []stackFrameData) []StackFrame {
+ objects:=make([]ghiData_StackFrame,len(data))
+ trace:=make([]StackFrame,len(data))
+ for i,frame:=range data {
+  object:=&objects[i]
+  object.F_6768692e72756e74696d65_StackFrame_functionName=frame.name
+  object.F_6768692e72756e74696d65_StackFrame_file=frame.file
+  object.F_6768692e72756e74696d65_StackFrame_line=frame.line
+  trace[i]=object
+ }
  return trace
 }
 func cachedStack(key stackKey) []stackFrameData {
@@ -92,23 +118,36 @@ func cachedStack(key stackKey) []stackFrameData {
  data,ok:=stackCache.entries[key]
  stackCache.mu.RUnlock()
  if ok {return data}
- data=decodeStack(key)
- stackCache.mu.Lock()
+ return stackCache.store(key,decodeStack(key),128)
+}
+func (cache *frameCache[K]) load(key K) ([]stackFrameData,bool) {
+ cache.mu.RLock()
+ data,ok:=cache.entries[key]
+ cache.mu.RUnlock()
+ return data,ok
+}
+func (cache *frameCache[K]) store(key K,data []stackFrameData,limit int) []stackFrameData {
+ cache.mu.Lock()
  // Another goroutine may have decoded the same trace while we were outside
  // the lock. The descriptions returned to readers are never mutated.
- if existing,ok:=stackCache.entries[key];ok {data=existing} else {
-  if len(stackCache.keys)==128 {
-   delete(stackCache.entries,stackCache.keys[stackCache.next])
-   stackCache.keys[stackCache.next]=key
-   stackCache.next=(stackCache.next+1)%128
-  } else {stackCache.keys=append(stackCache.keys,key)}
-  stackCache.entries[key]=data
+ if existing,ok:=cache.entries[key];ok {data=existing} else {
+  if len(cache.keys)==limit {
+   delete(cache.entries,cache.keys[cache.next])
+   cache.keys[cache.next]=key
+   cache.next=(cache.next+1)%limit
+  } else {cache.keys=append(cache.keys,key)}
+  cache.entries[key]=data
  }
- stackCache.mu.Unlock()
+ cache.mu.Unlock()
  return data
 }
 // Keep the PC slice consumed by CallersFrames on the miss path only.
 func decodeStack(key stackKey) []stackFrameData {
+ data:=[]stackFrameData{}
+ walkStack(key.pcs[:key.count],func(name,file string,line int){data=append(data,stackFrameData{name,file,line})})
+ return data
+}
+func decodeDeepStack(key deepStackKey) []stackFrameData {
  data:=[]stackFrameData{}
  walkStack(key.pcs[:key.count],func(name,file string,line int){data=append(data,stackFrameData{name,file,line})})
  return data

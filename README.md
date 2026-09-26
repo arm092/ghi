@@ -187,9 +187,9 @@ A second comparison on the same machine/toolchain measures inheritance specializ
 
 The inherited-method fixture improves about 6.6 times, and virtual dispatch about 2.1 times. Both have zero allocations per operation. The Ghi benchmark binary grows from 5,921,792 to 5,922,816 bytes (1 KiB, about 0.02%); the Go binary is 5,882,368 bytes in both runs. These sizes include default Go debug information. Binary growth in larger class hierarchies can differ. Exception allocation counts remain unchanged at eight in the failure fixture; this pass does not optimize exception handling.
 
-The development runtime now caches immutable frame descriptions for up to 128 distinct complete PC sequences shorter than 64 entries, replacing old entries in insertion order. Addresses are captured at every throw; stack traces remain immediately available. Every exception receives fresh mutable `StackFrame` objects and its own slice. Repeated throws of an exception keep its existing nonempty trace, including user-supplied frames. Deep stacks bypass the cache and grow their capture buffer until the whole stack fits. Cache misses still require symbol resolution, and the cache retains a bounded amount of metadata for the process lifetime.
+The runtime caches immutable frame descriptions for up to 128 distinct complete PC sequences shorter than 64 entries, replacing old entries in insertion order. Addresses are captured at every throw; stack traces remain immediately available. Every exception receives fresh mutable `StackFrame` objects and its own slice. Repeated throws of an exception keep its existing nonempty trace, including user-supplied frames. Cache misses still require symbol resolution, and the cache retains a bounded amount of metadata for the process lifetime.
 
-An exception-focused comparison against the inheritance-optimized compiler on the same Windows machine and Go 1.26.3 gives the following medians. The deep fixture adds 96 recursive calls and does not use the cache. [Exception samples](tests/performance/results/exceptions-windows-amd64-go1.26.3.csv).
+The first exception-focused comparison against the inheritance-optimized compiler on the same Windows machine and Go 1.26.3 gives the following medians. In that version, the deep fixture added 96 recursive calls and bypassed the cache. [Exception samples](tests/performance/results/exceptions-windows-amd64-go1.26.3.csv).
 
 | Ghi workload | Before (ns/op) | After (ns/op) | Before / after bytes | Before / after allocations |
 | --- | ---: | ---: | ---: | ---: |
@@ -198,6 +198,19 @@ An exception-focused comparison against the inheritance-optimized compiler on th
 | Deep exception, uncached stack | 22091 | 22205 | 11072 / 10608 | 111 / 112 |
 
 The repeated-exception fixture is about 2.5 times faster and allocates about 74% fewer bytes. The deep path remains approximately the same speed, with one additional temporary allocation and fewer bytes overall. These results do not predict first-throw or cache-miss latency. The benchmark binary grows by 8 KiB. Ordinary Go errors still do less work: the Go failure fixture does not capture a stack. Fatal reporting also reuses an exception's existing trace instead of capturing a redundant second stack.
+
+The development runtime additionally caches up to 16 complete deeper PC sequences shorter than 256 entries. Longer stacks bypass both caches and grow their capture buffer until the whole stack fits. Cached traces allocate their mutable frame objects together in one backing array, reducing allocation count without sharing objects between exceptions. Retaining one frame keeps that trace's backing array alive; the extra cache also retains bounded metadata. A cache hit still walks the current Go stack and unwinds the exception through `panic`/`recover`.
+
+A subsequent comparison against the first stack-cache implementation, using the same machine, Go 1.26.3 and five samples per fixture, measured the following medians. The before and after runs were performed without the test suite running alongside them. [Frame allocation and deep-cache samples](tests/performance/results/exception-frames-windows-amd64-go1.26.3.csv).
+
+| Ghi workload | Before (ns/op) | After (ns/op) | Before / after bytes | Before / after allocations |
+| --- | ---: | ---: | ---: | ---: |
+| Successful operation inside `try` | 6.337 | 6.135 | 0 / 0 | 0 / 0 |
+| Repeated shallow exception | 1086 | 1008 | 272 / 256 | 6 / 4 |
+| Exception with 96 recursive calls | 21509 | 6670 | 10608 / 5968 | 112 / 4 |
+| Exception with 300 recursive calls, uncached | 63155 | 57641 | 40880 / 37808 | 320 / 318 |
+
+The 96-call fixture is about 3.2 times faster once its deeper stack is cached. The shallow fixture improves modestly in this run (about 7%); small timing differences should not be treated as a universal speedup. The 300-call fixture remains uncached and uses fewer capture-buffer allocations. The Ghi benchmark binary grows by 10 KiB, from 5,933,056 to 5,943,296 bytes; the Go binary remains 5,883,392 bytes. These measurements do not cover cold cache misses, application throughput or contention under load. Full trace capture remains more expensive than returning a Go error without a trace.
 
 ## Files, namespaces and imports
 

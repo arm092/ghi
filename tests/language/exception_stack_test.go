@@ -24,6 +24,10 @@ func pattern(bits int, remaining int) Exception {
  if bits & 1 == 0 { return pattern(bits >> 1, remaining - 1) }
  return pattern((bits >> 1) + 256, remaining - 1)
 }
+func deepPattern(depth int, bits int) Exception {
+ if depth == 0 { return pattern(bits, 8) }
+ return deepPattern(depth - 1, bits)
+}
 func main() {
  first := new Exception()
  for i := 0; i < 300; i++ {
@@ -38,7 +42,7 @@ func main() {
  custom := new Exception()
  custom.stackTrace = []StackFrame{new StackFrame("custom", "custom.ghi", 123)}
  try { throw custom } catch err Exception { println(err.stackTrace[0].functionName, err.stackTrace[0].line) }
- for _, depth := range []int{60, 64, 96, 180} {
+ for _, depth := range []int{60, 64, 96, 180, 256, 400} {
   trace := captureDeep(depth).stackTrace
   count := 0
   for _, frame := range trace { if frame.functionName == "main.deep" { count++ } }
@@ -53,11 +57,20 @@ func main() {
   for _, frame := range err.stackTrace { if frame.functionName == "main.pattern" { count++ } }
   if count != 9 { panic("wrong cached depth") }
  }
+ for path := 0; path < 40; path++ {
+  err := deepPattern(64, path)
+  count := 0
+  for _, frame := range err.stackTrace { if frame.functionName == "main.deepPattern" { count++ } }
+  if count != 65 { panic("wrong deep cached depth") }
+  err.stackTrace[0].functionName = "edited"
+  if err.stackTrace[1].functionName == "edited" { panic("aliased frames") }
+ }
  done := make(chan int, 16)
  for worker := 0; worker < 16; worker++ {
   go func() {
    for i := 0; i < 100; i++ {
     err := capture()
+    if i & 1 == 0 { err = captureDeep(96) }
     if err.stackTrace[0].functionName != "main.fail" { done <- 0; return }
     err.stackTrace[0].functionName = "worker"
    }
