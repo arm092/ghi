@@ -4,6 +4,7 @@ import (
 	"context"
 	"ghi/internal/compiler"
 	"ghi/internal/toolchain"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,11 +45,37 @@ func TestComparison(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "main."+ext), append(source, driver...), 0600); err != nil {
 			t.Fatal(err)
 		}
+		if err := filepath.WalkDir("testdata/packages", func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || filepath.Ext(path) != "."+ext {
+				return nil
+			}
+			rel, err := filepath.Rel("testdata/packages", path)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(dir, rel)
+			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(target, data, 0600)
+		}); err != nil {
+			t.Fatal(err)
+		}
 		binary := filepath.Join(dir, "bench.exe")
 		started := time.Now()
 		if language == "Ghi" {
 			_, err = compiler.Build(ctx, compiler.Options{Dir: dir, Output: binary})
 		} else {
+			if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module benchmark\n\ngo 1.26\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
 			command := exec.CommandContext(ctx, goPath, "build", "-o", binary, "main.go")
 			command.Dir, command.Env = dir, toolchain.Env()
 			var output []byte

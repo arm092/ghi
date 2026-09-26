@@ -1,0 +1,11 @@
+namespace base
+
+class Base {
+	public value int
+
+	public func add(n int) int {
+		this.value += n
+
+		return this.value
+	}
+}

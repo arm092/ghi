@@ -1,6 +1,7 @@
 package main
 
 import (
+	"benchmark/base"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,6 +24,14 @@ func (c *Derived) add(n int) int { c.value += n * 2; return c.value }
 
 type Adder interface{ add(int) int }
 type Inherited struct{ Base }
+type CrossInherited struct{ base.Base }
+
+func crossInherited(b *testing.B) {
+	c := &CrossInherited{}
+	for i := 0; i < b.N; i++ {
+		sink = c.Add(i)
+	}
+}
 
 func inherited(b *testing.B) {
 	c := &Inherited{}

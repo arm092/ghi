@@ -187,6 +187,16 @@ A second comparison on the same machine/toolchain measures inheritance specializ
 
 The inherited-method fixture improves about 6.6 times, and virtual dispatch about 2.1 times. Both have zero allocations per operation. The Ghi benchmark binary grows from 5,921,792 to 5,922,816 bytes (1 KiB, about 0.02%); the Go binary is 5,882,368 bytes in both runs. These sizes include default Go debug information. Binary growth in larger class hierarchies can differ. Exception allocation counts remain unchanged at eight in the failure fixture; this pass does not optimize exception handling.
 
+The development compiler also specializes small inherited methods across namespaces. Imports and named types retain their original bindings; virtual calls, `parent`, private class members, captured receivers and original exception source locations keep their semantics. Copies are limited to 128 AST nodes per method body. Generic inheritance, rebinding/address-taking of `this`, inaccessible namespace declarations and conflicting built-in names retain the shared implementation. Debug builds disable receiver specialization. This extension is not included in v0.2.3.
+
+A cross-namespace fixture uses a base class in a separate package and calls its inherited method on a concrete descendant. On the same Windows amd64 machine with Go 1.26.3 (September 27, 2026), medians of five 150 ms samples are:
+
+| Workload | Ghi before (ns/op) | Ghi after (ns/op) | Go after (ns/op) |
+| --- | ---: | ---: | ---: |
+| Cross-namespace inherited method | 2.638 | 0.461 | 0.456 |
+
+This specific call improves about 5.7 times, with zero bytes and zero allocations per operation in all variants. The Ghi benchmark binary changes from 5,947,392 to 5,946,368 bytes (1 KiB smaller); the Go binary remains 5,885,440 bytes. Sizes include Go debug information. Before and after runs use identical fixtures and the same Go toolchain; each alternates Ghi and Go process order. These microbenchmarks demonstrate removal of dispatch overhead for an eligible method, not an application-wide speedup. Other workloads and larger hierarchies can have different results and binary growth. [Raw samples](tests/performance/results/cross-namespace-windows-amd64-go1.26.3.csv).
+
 The runtime caches immutable frame descriptions for up to 128 distinct complete PC sequences shorter than 64 entries, replacing old entries in insertion order. Addresses are captured at every throw; stack traces remain immediately available. Every exception receives fresh mutable `StackFrame` objects and its own slice. Repeated throws of an exception keep its existing nonempty trace, including user-supplied frames. Cache misses still require symbol resolution, and the cache retains a bounded amount of metadata for the process lifetime.
 
 The first exception-focused comparison against the inheritance-optimized compiler on the same Windows machine and Go 1.26.3 gives the following medians. In that version, the deep fixture added 96 recursive calls and bypassed the cache. [Exception samples](tests/performance/results/exceptions-windows-amd64-go1.26.3.csv).

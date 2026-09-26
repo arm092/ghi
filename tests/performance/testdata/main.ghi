@@ -1,4 +1,5 @@
 namespace main
+import base.Base as RemoteBase
 import flag "go:flag"
 import fmt "go:fmt"
 import testing "go:testing"
@@ -18,6 +19,11 @@ class Derived extends Base {
  public override func add(n int) int { this.value += n * 2; return this.value }
 }
 class Inherited extends Base {}
+class CrossInherited extends RemoteBase {}
+func crossInherited(b *testing.B) {
+ c := new CrossInherited()
+ for i := 0; i < b.N; i++ { sink = c.add(i) }
+}
 func inherited(b *testing.B) {
  c := new Inherited()
  for i := 0; i < b.N; i++ { sink = c.add(i) }

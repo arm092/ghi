@@ -23,6 +23,8 @@ func main() {
  if sink != 21 { panic("method checksum") }
  inherited(&probe)
  if sink != 21 { panic("inherited checksum") }
+ crossInherited(&probe)
+ if sink != 21 { panic("cross-namespace inherited checksum") }
  virtual(&probe)
  if sink != 12 { panic("virtual checksum") }
  create(&probe)
@@ -42,6 +44,7 @@ func main() {
  measure("Fields", fields)
  measure("Method", method)
  measure("Inherited", inherited)
+ measure("CrossInherited", crossInherited)
  measure("Virtual", virtual)
  measure("Create", create)
  measure("Nullable", nullable)
