@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.2](https://github.com/arm092/ghi/releases/tag/v0.2.2), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.1](https://github.com/arm092/ghi-goland/releases/tag/v0.1.1).
+**Current release:** [Ghi v0.2.3](https://github.com/arm092/ghi/releases/tag/v0.2.3), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.1](https://github.com/arm092/ghi-goland/releases/tag/v0.1.1).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -36,7 +36,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.2).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.3).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.2/ghi_v0.2.2_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.3/ghi_v0.2.3_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -72,7 +72,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.2 on macOS, use the portable archive or Homebrew. A native v0.2.2 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.3 on macOS, use the portable archive or Homebrew. A native v0.2.3 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -147,7 +147,7 @@ Generic types remain typed Go generics. Classes use generated interfaces and sto
 
 Ghi uses the Go compiler and runtime, but generated abstractions can add overhead. Performance depends on the workload; compiling to Go does not guarantee identical execution time.
 
-The development compiler specializes method and constructor receivers for classes with no descendants in the compiled project. Direct `this` member access can then use a concrete Go pointer, allowing Go to inline calls. Public class types, alias types and virtual dispatch retain their existing semantics. Methods that rebind `this` or take its address keep the original implementation. Debug builds disable this optimization. This change is not included in v0.2.2.
+Since v0.2.3, the compiler specializes method and constructor receivers for classes with no descendants in the compiled project. Direct `this` member access can then use a concrete Go pointer, allowing Go to inline calls. Public class types, alias types and virtual dispatch retain their existing semantics. Methods that rebind `this` or take its address keep the original implementation. Debug builds disable this optimization. This optimization is available starting with v0.2.3.
 
 The development compiler also generates concrete copies of small method bodies for inheritance hierarchies within one namespace, when both the concrete class and the method owner have no generic parameters. Original shared bodies remain available for `parent` calls and other dynamic receivers. Copies stay in the original file to preserve import bindings, and stack traces retain the original method names and source lines. Large methods, generic owners/classes and cross-namespace inheritance keep the shared implementation. Constructors in inheritance hierarchies are unchanged.
 
@@ -199,7 +199,7 @@ The first exception-focused comparison against the inheritance-optimized compile
 
 The repeated-exception fixture is about 2.5 times faster and allocates about 74% fewer bytes. The deep path remains approximately the same speed, with one additional temporary allocation and fewer bytes overall. These results do not predict first-throw or cache-miss latency. The benchmark binary grows by 8 KiB. Ordinary Go errors still do less work: the Go failure fixture does not capture a stack. Fatal reporting also reuses an exception's existing trace instead of capturing a redundant second stack.
 
-The development runtime additionally caches up to 16 complete deeper PC sequences shorter than 256 entries. Longer stacks bypass both caches and grow their capture buffer until the whole stack fits. Cached traces allocate their mutable frame objects together in one backing array, reducing allocation count without sharing objects between exceptions. Retaining one frame keeps that trace's backing array alive; the extra cache also retains bounded metadata. A cache hit still walks the current Go stack and unwinds the exception through `panic`/`recover`.
+Since v0.2.3, the runtime additionally caches up to 16 complete deeper PC sequences shorter than 256 entries. Longer stacks bypass both caches and grow their capture buffer until the whole stack fits. Cached traces allocate their mutable frame objects together in one backing array, reducing allocation count without sharing objects between exceptions. Retaining one frame keeps that trace's backing array alive; the extra cache also retains bounded metadata. A cache hit still walks the current Go stack and unwinds the exception through `panic`/`recover`.
 
 A subsequent comparison against the first stack-cache implementation, using the same machine, Go 1.26.3 and five samples per fixture, measured the following medians. The before and after runs were performed without the test suite running alongside them. [Frame allocation and deep-cache samples](tests/performance/results/exception-frames-windows-amd64-go1.26.3.csv).
 
@@ -212,7 +212,7 @@ A subsequent comparison against the first stack-cache implementation, using the 
 
 The 96-call fixture is about 3.2 times faster once its deeper stack is cached. The shallow fixture improves modestly in this run (about 7%); small timing differences should not be treated as a universal speedup. The 300-call fixture remains uncached and uses fewer capture-buffer allocations. The Ghi benchmark binary grows by 10 KiB, from 5,933,056 to 5,943,296 bytes; the Go binary remains 5,883,392 bytes. These measurements do not cover cold cache misses, application throughput or contention under load. Full trace capture remains more expensive than returning a Go error without a trace.
 
-The next development optimization captures up to 256 PCs in one traversal, then selects the existing shallow or deep cache. Previously, a cacheable deep trace required a 64-PC traversal followed by another traversal into the larger buffer. Traces of 256 PCs or more still grow their capture buffer and remain complete. The larger initial buffer is stack-local; the cache keys and public trace ownership are unchanged.
+A further v0.2.3 optimization captures up to 256 PCs in one traversal, then selects the existing shallow or deep cache. Previously, a cacheable deep trace required a 64-PC traversal followed by another traversal into the larger buffer. Traces of 256 PCs or more still grow their capture buffer and remain complete. The larger initial buffer is stack-local; the cache keys and public trace ownership are unchanged.
 
 A comparison against the preceding implementation on the same Windows machine and Go 1.26.3, with five samples per fixture, produced these medians. [Single-pass capture samples](tests/performance/results/exception-single-pass-windows-amd64-go1.26.3.csv).
 
@@ -226,7 +226,7 @@ The cached 96-call fixture takes about 23% less time. The shallow fixture remain
 
 ### Build performance
 
-The development compiler loads Go export metadata in one batched `go list` request for the project's external imports. Previously it launched a separate request whenever a needed package was not in the per-build export map. The map is recreated for every compilation, so source and dependency changes are still checked by Go. Failed batches fall back to individual imports to preserve source-located diagnostics. Dependency downloads, checksum verification and language validation remain enabled.
+Since v0.2.3, the compiler loads Go export metadata in one batched `go list` request for the project's external imports. Previously it launched a separate request whenever a needed package was not in the per-build export map. The map is recreated for every compilation, so source and dependency changes are still checked by Go. Failed batches fall back to individual imports to preserve source-located diagnostics. Dependency downloads, checksum verification and language validation remain enabled.
 
 On the DDD API example, Windows amd64 and Go 1.26.3, the following wall times were observed. Each row is one before/after observation, not a statistical median. Go's build and module caches were already populated; "initial" means the first invocation on the copied benchmark project, not a cold toolchain. The edited case changes an application log string in `main.ghi`. [Build samples](tests/performance/results/build-imports-windows-amd64-go1.26.3.csv).
 
@@ -239,6 +239,27 @@ On the DDD API example, Windows amd64 and Go 1.26.3, the following wall times we
 The repeated build takes about 39% less time in this run. Its export-loading subprocesses decrease from 14 to 1 (3.01 s to 0.31 s). Total Ghi lowering, which includes export loading and type checks, decreases from 3.39 s to 0.62 s. Dependency preparation remains about 1.8 s and Go compilation/linking about 1.5 s. Stage timings were collected with temporary instrumentation; the released CLI output is unchanged. Results depend on filesystem caches, dependencies and the Go toolchain. There is no persistent Ghi AST or executable cache in this change.
 
 A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping the module and OS caches populated. The first build took 40.68 s before and 16.53 s after; the immediate warm repeats took 6.25 s and 3.96 s. Batching lets Go schedule the complete set of imported packages together. These are single observations in before/after order, not a promise of a fixed cold-build speedup or a fresh-machine installation benchmark. [Isolated Go-cache samples](tests/performance/results/build-imports-cold-windows-amd64-go1.26.3.csv).
+
+### HTTP API and SQLite comparison
+
+The [HTTP benchmark](benchmarks/http-api/run.py) runs the actual `examples/ddd-api` Ghi server against a [read-only Go counterpart](benchmarks/http-api/go/main.go) for three users endpoints. The counterpart implements only the measured routes and inputs, not the complete DDD application. Both use the same Chi, UUID and SQLite versions, SQL, user-model normalization, JSON response fields, request-ID/logging/recovery/timeout middleware and one SQLite connection. Info logging is disabled for both. Each server starts with an independent copy of the same 1,000-user SQLite database.
+
+Measured on Windows amd64 with Go 1.26.3 and `GOMAXPROCS=8`: three samples of 20,000 requests per language, endpoint and concurrency level, with 300 warmup requests before each sample. Server order alternates between samples. The client uses localhost HTTP/1.1 keep-alive, validates the status and exact JSON bytes of every response, and uses Windows QueryPerformanceCounter for latency. All 720,000 measured responses passed validation. [Raw samples and source hashes](tests/performance/results/http-ddd-windows-amd64-go1.26.3.json).
+
+| Endpoint | Concurrent clients | Ghi requests/s | Go requests/s | Ghi / Go p95 latency |
+| --- | ---: | ---: | ---: | ---: |
+| List 20 users | 1 | 5,004 | 4,901 | 0.312 / 0.328 ms |
+| Get one user | 1 | 6,571 | 6,789 | 0.237 / 0.225 ms |
+| Missing user, expected 404 | 1 | 5,960 | 6,824 | 0.274 / 0.224 ms |
+| List 20 users | 16 | 8,886 | 8,870 | 5.026 / 4.970 ms |
+| Get one user | 16 | 11,788 | 12,766 | 3.746 / 3.451 ms |
+| Missing user, expected 404 | 16 | 13,985 | 14,019 | 3.091 / 3.142 ms |
+
+These are medians across samples. In this setup, list throughput is similar and successful single-user reads are about 3% to 8% lower for Ghi. The single-client 404 case is about 13% lower; Ghi captures exception stacks while the Go counterpart returns ordinary errors. Median process peak working sets across scenarios are approximately 22.0–22.6 MiB for Ghi and 21.6–22.3 MiB for Go, including startup and warmup. This is not per-request allocation or retained-heap measurement.
+
+The benchmark is a closed-loop read workload: client and server share a machine, SQLite serializes access through one connection, and filesystem/database caches are warm. It does not measure writes, remote databases, sustained production capacity, open-loop tail latency or the entire language's overhead. Run-to-run variation and the shared bottlenecks can hide small differences.
+
+To reproduce, install the DDD example's locked dependencies with `mojave install` from `examples/ddd-api`, then run `python benchmarks/http-api/run.py` from the repository root with Go and Python available. The runner builds both servers and the client, uses disposable databases under `.work`, and checks the Go counterpart's module versions against `mojave.lock`. Results default to `.work/http-ddd-results.json`; use `--output` to choose another destination.
 
 ## Files, namespaces and imports
 

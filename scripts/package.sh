@@ -13,8 +13,8 @@ for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
     bundle=$(mktemp -d)
     suffix=''
     if [ "$os" = windows ]; then suffix='.exe'; fi
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-X main.version=$version" -o "$bundle/ghi$suffix" ./cmd/ghi
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-X main.version=$mojave_version" -o "$bundle/mojave$suffix" github.com/arm092/mojave/cmd/mojave
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags="-X main.version=$version" -o "$bundle/ghi$suffix" ./cmd/ghi
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags="-X main.version=$mojave_version" -o "$bundle/mojave$suffix" github.com/arm092/mojave/cmd/mojave
     (cd "$bundle" && shasum -a 256 "ghi$suffix" > ghi.sha256)
     (cd "$bundle" && shasum -a 256 "mojave$suffix" > mojave.sha256)
     if [ "$os" = windows ]; then
