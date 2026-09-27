@@ -1,0 +1,144 @@
+namespace journal.storage
+
+import arm092.migrations.Migrator
+import context "go:context"
+import sql "go:database/sql"
+import errors "go:errors"
+import _ "go:modernc.org/sqlite"
+import url "go:net/url"
+import filepath "go:path/filepath"
+import strings "go:strings"
+import time "go:time"
+import journal.domain
+
+func rollback(tx *sql.Tx) {
+	try {
+		tx.Rollback()
+	} catch err GoError {
+		if !errors.Is(err.cause, sql.ErrTxDone) {
+			throw err
+		}
+	}
+}
+
+class Repository {
+	private db * sql.DB
+
+	constructor(path string, directory string) {
+		connection := url.URL{
+			Scheme: "file",
+			Path: "/" + strings.TrimPrefix(filepath.ToSlash(filepath.Abs(path)), "/"),
+			RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)",
+		}
+		this.db = sql.Open("sqlite", connection.String())
+		this.db.SetMaxOpenConns(1)
+		try {
+			this.db.Exec("PRAGMA journal_mode = WAL")
+			migrator := new Migrator(this.db, directory)
+			migrator.Up()
+		} catch err Exception {
+			this.db.Close()
+			throw err
+		}
+	}
+
+	public func Close() {
+		this.db.Close()
+	}
+
+	public func Ping(ctx context.Context) {
+		this.db.PingContext(ctx)
+	}
+
+	public func Create(ctx context.Context, title string) domain.Request {
+		tx := this.db.BeginTx(ctx, nil)
+		defer rollback(tx)
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		result := tx.ExecContext(ctx, "INSERT INTO requests(title, status, created_at, updated_at) VALUES (?, ?, ?, ?)", title, domain.Status.Open, now, now)
+		id := result.LastInsertId()
+		tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES (?, ?, ?)", id, domain.Status.Open, now)
+		tx.Commit()
+
+		return domain.Request{
+			ID: id,
+			Title: title,
+			Status: domain.Status.Open,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	}
+
+	public func Get(ctx context.Context, id int64) domain.Request {
+		var item domain.Request
+		try {
+			this.db.QueryRowContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id).Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new domain.NotFound()
+			}
+			throw err
+		}
+
+		return item
+	}
+
+	public func List(ctx context.Context, status string, limit int, offset int) []domain.Request {
+		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE (? = '' OR status = ?) ORDER BY id DESC LIMIT ? OFFSET ?", status, status, limit, offset)
+		defer rows.Close()
+		items := []domain.Request{}
+		for rows.Next() {
+			var item domain.Request
+			rows.Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+			items = append(items, item)
+		}
+		rows.Err()
+
+		return items
+	}
+
+	public func Update(ctx context.Context, id int64, title string, status string) domain.Request {
+		tx := this.db.BeginTx(ctx, nil)
+		defer rollback(tx)
+		var item domain.Request
+		try {
+			tx.QueryRowContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id).Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new domain.NotFound()
+			}
+			throw err
+		}
+		item.Title = title
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		tx.ExecContext(ctx, "UPDATE requests SET title = ?, status = ?, updated_at = ? WHERE id = ?", title, status, item.UpdatedAt, id)
+		if item.Status != status {
+			tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES (?, ?, ?)", id, status, item.UpdatedAt)
+		}
+		item.Status = status
+		tx.Commit()
+
+		return item
+	}
+
+	public func Delete(ctx context.Context, id int64) {
+		result := this.db.ExecContext(ctx, "DELETE FROM requests WHERE id = ?", id)
+		if result.RowsAffected() == 0 {
+			throw new domain.NotFound()
+		}
+	}
+
+	public func History(ctx context.Context, id int64) []domain.Event {
+		this.Get(ctx, id)
+		rows := this.db.QueryContext(ctx, "SELECT id, status, created_at FROM request_events WHERE request_id = ? ORDER BY id", id)
+		defer rows.Close()
+		events := []domain.Event{}
+		for rows.Next() {
+			var event domain.Event
+			rows.Scan(&event.ID, &event.Status, &event.CreatedAt)
+			events = append(events, event)
+		}
+		rows.Err()
+
+		return events
+	}
+}

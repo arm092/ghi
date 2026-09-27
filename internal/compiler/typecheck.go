@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"ghi/internal/proctree"
 	"go/ast"
 	"go/importer"
 	"go/types"
@@ -48,10 +49,10 @@ func (loader *exportLoader) open(path string) (io.ReadCloser, error) {
 
 func (loader *exportLoader) load(paths ...string) error {
 	args := append([]string{"list", "-mod=readonly", "-deps", "-export", "-json"}, paths...)
-	command := exec.CommandContext(loader.ctx, loader.goPath, args...)
+	command := exec.Command(loader.goPath, args...)
 	command.Dir = loader.dir
 	command.Env = toolchain.Env()
-	output, err := command.Output()
+	output, err := proctree.Output(loader.ctx, command)
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok {
 			return fmt.Errorf("load Go package %s: %s", strings.Join(paths, ", "), exit.Stderr)

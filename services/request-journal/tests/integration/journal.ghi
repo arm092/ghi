@@ -1,0 +1,96 @@
+namespace tests.integration
+
+import context "go:context"
+import sql "go:database/sql"
+import httptest "go:net/http/httptest"
+import filepath "go:path/filepath"
+import runtime "go:runtime"
+import testing "go:testing"
+import time "go:time"
+import journal.application.Service
+import journal.domain
+import journal.httpapi
+import journal.storage.Repository
+
+func migrations() string {
+	_, source, _, _ := runtime.Caller(0)
+
+	return filepath.Join(filepath.Dir(source), "..", "..", "migrations")
+}
+
+func TestAtomicStatusHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "journal.db")
+	repository := new Repository(path, migrations())
+	defer repository.Close()
+	service := new Service(repository)
+	ctx := context.Background()
+	item := service.Create(ctx, "Fix notification delivery")
+	db := sql.Open("sqlite", path)
+	defer db.Close()
+	db.Exec("CREATE TRIGGER reject_history BEFORE INSERT ON request_events BEGIN SELECT RAISE(ABORT, 'simulated failure'); END")
+	failed := false
+	try {
+		service.Update(ctx, item.ID, "Changed", domain.Status.Resolved)
+	} catch err GoError {
+		failed = true
+	}
+	if !failed {
+		t.Fatal("history failure was ignored")
+	}
+	saved := service.Get(ctx, item.ID)
+	if saved.Status != domain.Status.Open || saved.Title != item.Title || len(service.History(ctx, item.ID)) != 1 {
+		t.Fatal("failed update did not roll back atomically")
+	}
+	db.Exec("DROP TRIGGER reject_history")
+	service.Update(ctx, item.ID, "Fixed", domain.Status.Resolved)
+	service.Update(ctx, item.ID, "Fixed again", domain.Status.Resolved)
+	if len(service.History(ctx, item.ID)) != 2 {
+		t.Fatal("unchanged status created duplicate history")
+	}
+	service.Delete(ctx, item.ID)
+	var remaining int
+	db.QueryRow("SELECT COUNT(*) FROM request_events").Scan(&remaining)
+	if remaining != 0 {
+		t.Fatal("delete left orphan history")
+	}
+}
+
+func TestStorageErrorsStayPrivate(t *testing.T) {
+	repository := new Repository(filepath.Join(t.TempDir(), "journal.db"), migrations())
+	router := httpapi.Router(new Service(repository))
+	repository.Close()
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/requests", nil))
+	if response.Code != 500 || response.Body.String() != "{\"error\":\"internal server error\"}\n" {
+		t.Fatalf("storage details leaked: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestForeignKeysAfterCancellation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reconnect.db")
+	repository := new Repository(path, migrations())
+	defer repository.Close()
+	ctx := context.Background()
+	item := repository.Create(ctx, "Must cascade")
+	db := sql.Open("sqlite", path)
+	defer db.Close()
+	db.Exec("CREATE TRIGGER slow_insert BEFORE INSERT ON requests BEGIN SELECT (WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<100000000) SELECT sum(x) FROM n); END")
+	deadline, cancel := context.WithTimeout(ctx, 20 * time.Millisecond)
+	defer cancel()
+	failed := false
+	try {
+		repository.Create(deadline, "Cancelled")
+	} catch err GoError {
+		failed = true
+	}
+	if !failed {
+		t.Fatal("expensive insert did not time out")
+	}
+	db.Exec("DROP TRIGGER slow_insert")
+	repository.Delete(ctx, item.ID)
+	var remaining int
+	db.QueryRow("SELECT COUNT(*) FROM request_events").Scan(&remaining)
+	if remaining != 0 {
+		t.Fatal("replacement connection lost foreign key enforcement")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"ghi/internal/proctree"
 	"ghi/internal/toolchain"
 	"io"
 	"os"
@@ -91,10 +92,10 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		args = append(args, "-gcflags=all=-N -l")
 	}
 	args = append(args, "-o", staging, ".")
-	command := exec.CommandContext(ctx, goPath, args...)
+	command := exec.Command(goPath, args...)
 	command.Dir = workspace
 	command.Env = toolchain.Env()
-	log, err := command.CombinedOutput()
+	log, err := proctree.CombinedOutput(ctx, command)
 	if err != nil {
 		return Result{}, fmt.Errorf("Go build failed: %w\n%s", err, log)
 	}

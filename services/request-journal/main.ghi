@@ -1,0 +1,73 @@
+namespace main
+
+import context "go:context"
+import errors "go:errors"
+import slog "go:log/slog"
+import net "go:net"
+import http "go:net/http"
+import os "go:os"
+import signal "go:os/signal"
+import syscall "go:syscall"
+import time "go:time"
+import journal.application.Service
+import journal.httpapi
+import journal.storage.Repository
+
+func setting(name string, fallback string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	return value
+}
+
+func run() {
+	repository := new Repository(setting("JOURNAL_DB", "journal.db"), setting("JOURNAL_MIGRATIONS", "migrations"))
+	defer repository.Close()
+	server := &http.Server{
+		Handler: httpapi.Router(new Service(repository)),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout: 10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout: 60 * time.Second,
+	}
+	listener := net.Listen("tcp", setting("JOURNAL_ADDR", "127.0.0.1:8080"))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	done := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		deadline, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+		defer cancel()
+		try {
+			server.Shutdown(deadline)
+		} catch err GoError {
+			slog.Error("shutdown_failed", "error", err.message)
+			server.Close()
+		}
+		close(done)
+	}()
+	slog.Info("listening", "address", listener.Addr().String())
+	try {
+		server.Serve(listener)
+	} catch err GoError {
+		if !errors.Is(err.cause, http.ErrServerClosed) {
+			stop()
+			<-done
+			throw err
+		}
+	}
+	stop()
+	<-done
+}
+
+func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	try {
+		run()
+	} catch err Exception {
+		slog.Error("startup_failed", "error", err.message)
+		os.Exit(1)
+	}
+}

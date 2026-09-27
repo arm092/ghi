@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"ghi/internal/proctree"
 	"ghi/internal/toolchain"
 	"go/ast"
 	"io"
@@ -88,11 +89,11 @@ func Test(ctx context.Context, options TestOptions) error {
 		args = append(args, "-run", options.Run)
 	}
 	args = append(args, "./...")
-	cmd := exec.CommandContext(ctx, prepared.goPath, args...)
+	cmd := exec.Command(prepared.goPath, args...)
 	cmd.Dir = prepared.workspace
 	cmd.Env = toolchain.Env()
 	cmd.Stdout, cmd.Stderr = options.Log, options.Log
-	if err := cmd.Run(); err != nil {
+	if err := proctree.Run(ctx, cmd); err != nil {
 		return fmt.Errorf("Ghi tests failed: %w", err)
 	}
 	return nil

@@ -1,0 +1,177 @@
+namespace journal.httpapi
+
+import context "go:context"
+import json "go:encoding/json"
+import chi "go:github.com/go-chi/chi/v5"
+import io "go:io"
+import slog "go:log/slog"
+import http "go:net/http"
+import strconv "go:strconv"
+import strings "go:strings"
+import time "go:time"
+import journal.application.Service
+import journal.domain
+
+type Input struct {
+	Title string `json:"title"`
+	Status string `json:"status"`
+}
+
+class BadRequest extends Exception {
+	constructor() {
+		parent("expected a single JSON object with known fields", 400)
+	}
+}
+
+func decode(w http.ResponseWriter, r *http.Request) Input {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var input Input
+	try {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		decoder.Decode(&input)
+		var trailing any
+		try {
+			decoder.Decode(&trailing)
+		} catch err GoError {
+			if err.cause == io.EOF {
+				return input
+			}
+			throw err
+		}
+	} catch err GoError {
+		throw new BadRequest()
+	}
+	throw new BadRequest()
+}
+
+func send(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(body)
+}
+
+// Consume small rejected bodies before replying. Closing a Windows socket with
+// unread request data can reset the connection before the response is received.
+func discardBody(w http.ResponseWriter, r *http.Request) {
+	try {
+		io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, 4096))
+	} catch err GoError {
+		// Oversized or interrupted bodies are already bounded by MaxBytesReader.
+	}
+}
+
+func guard(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 5 * time.Second)
+		defer cancel()
+		try {
+			next(w, r.WithContext(ctx))
+		} catch err BadRequest {
+			send(w, 400, map[string]string{
+				"error": err.message,
+			})
+		} catch err domain.InvalidInput {
+			send(w, 422, map[string]string{
+				"error": err.message,
+			})
+		} catch err domain.NotFound {
+			send(w, 404, map[string]string{
+				"error": err.message,
+			})
+		} catch err Exception {
+			slog.Error("request_failed", "method", r.Method, "path", r.URL.Path, "error", err.message)
+			send(w, 500, map[string]string{
+				"error": "internal server error",
+			})
+		}
+	}
+}
+
+func id(r *http.Request) int64 {
+	value := int64(0)
+	try {
+		value = strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	} catch err GoError {
+		throw new domain.InvalidInput("id must be a positive integer")
+	}
+	if value < 1 {
+		throw new domain.InvalidInput("id must be a positive integer")
+	}
+
+	return value
+}
+
+func number(value string, fallback int) int {
+	if value == "" {
+		return fallback
+	}
+	try {
+		return strconv.Atoi(value)
+	} catch err GoError {
+		throw new domain.InvalidInput("pagination parameters must be integers")
+	}
+}
+
+func Router(service Service) http.Handler {
+	router := chi.NewRouter()
+	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		discardBody(w, r)
+		send(w, 404, map[string]string{
+			"error": "route not found",
+		})
+	})
+	router.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		discardBody(w, r)
+		allowed := []string{}
+		for _, method := range []string{
+			"GET",
+			"POST",
+			"PUT",
+			"DELETE",
+		} {
+			if router.Match(chi.NewRouteContext(), method, r.URL.Path) {
+				allowed = append(allowed, method)
+			}
+		}
+		w.Header().Set("Allow", strings.Join(allowed, ", "))
+		send(w, 405, map[string]string{
+			"error": "method not allowed",
+		})
+	})
+	router.Get("/health", guard(func(w http.ResponseWriter, r *http.Request) {
+		service.Health(r.Context())
+		send(w, 200, map[string]string{
+			"status": "ok",
+		})
+	}))
+	router.Get("/requests", guard(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		send(w, 200, service.List(r.Context(), query.Get("status"), number(query.Get("limit"), 20), number(query.Get("offset"), 0)))
+	}))
+	router.Post("/requests", guard(func(w http.ResponseWriter, r *http.Request) {
+		input := decode(w, r)
+		if input.Status != "" {
+			throw new domain.InvalidInput("new requests always start with status open")
+		}
+		item := service.Create(r.Context(), input.Title)
+		w.Header().Set("Location", "/requests/" + strconv.FormatInt(item.ID, 10))
+		send(w, 201, item)
+	}))
+	router.Get("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+		send(w, 200, service.Get(r.Context(), id(r)))
+	}))
+	router.Put("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+		input := decode(w, r)
+		send(w, 200, service.Update(r.Context(), id(r), input.Title, input.Status))
+	}))
+	router.Delete("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+		service.Delete(r.Context(), id(r))
+		w.WriteHeader(204)
+	}))
+	router.Get("/requests/{id}/history", guard(func(w http.ResponseWriter, r *http.Request) {
+		send(w, 200, service.History(r.Context(), id(r)))
+	}))
+
+	return router
+}

@@ -1,0 +1,67 @@
+namespace journal.application
+
+import context "go:context"
+import strings "go:strings"
+import utf8 "go:unicode/utf8"
+import journal.domain
+import journal.storage.Repository
+
+func title(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.ContainsRune(value, 0) || value == "" || utf8.RuneCountInString(value) > 200 {
+		throw new domain.InvalidInput("title must contain 1 to 200 characters without NUL")
+	}
+
+	return value
+}
+
+func validateStatus(value string) {
+	if value != domain.Status.Open && value != domain.Status.InProgress && value != domain.Status.Resolved {
+		throw new domain.InvalidInput("status must be open, in_progress or resolved")
+	}
+}
+
+class Service {
+	private repository Repository
+
+	constructor(repository Repository) {
+		this.repository = repository
+	}
+
+	public func Health(ctx context.Context) {
+		this.repository.Ping(ctx)
+	}
+
+	public func Create(ctx context.Context, value string) domain.Request {
+		return this.repository.Create(ctx, title(value))
+	}
+
+	public func Get(ctx context.Context, id int64) domain.Request {
+		return this.repository.Get(ctx, id)
+	}
+
+	public func List(ctx context.Context, status string, limit int, offset int) []domain.Request {
+		if status != "" {
+			validateStatus(status)
+		}
+		if limit < 1 || limit > 100 || offset < 0 {
+			throw new domain.InvalidInput("limit must be 1 to 100 and offset must be nonnegative")
+		}
+
+		return this.repository.List(ctx, status, limit, offset)
+	}
+
+	public func Update(ctx context.Context, id int64, value string, status string) domain.Request {
+		validateStatus(status)
+
+		return this.repository.Update(ctx, id, title(value), status)
+	}
+
+	public func Delete(ctx context.Context, id int64) {
+		this.repository.Delete(ctx, id)
+	}
+
+	public func History(ctx context.Context, id int64) []domain.Event {
+		return this.repository.History(ctx, id)
+	}
+}

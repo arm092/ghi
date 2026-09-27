@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"ghi/internal/proctree"
 	"go/version"
 	"io"
 	"net/http"
@@ -73,9 +74,9 @@ func Env() []string {
 func compatible(ctx context.Context, path string) bool {
 	probe, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	command := exec.CommandContext(probe, path, "version")
+	command := exec.Command(path, "version")
 	command.Env = Env()
-	out, err := command.Output()
+	out, err := proctree.Output(probe, command)
 	if err != nil {
 		return false
 	}

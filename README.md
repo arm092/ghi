@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.4](https://github.com/arm092/ghi/releases/tag/v0.2.4), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.2](https://github.com/arm092/ghi-goland/releases/tag/v0.1.2).
+**Current release:** [Ghi v0.2.5](https://github.com/arm092/ghi/releases/tag/v0.2.5), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.3](https://github.com/arm092/ghi-goland/releases/tag/v0.1.3).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -16,6 +16,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 - [Installation](#installation)
 - [Quick start](#quick-start)
+- [Development watch mode](#development-watch-mode)
 - [How compilation works](#how-compilation-works)
 - [Performance](#performance)
 - [Files, namespaces and imports](#files-namespaces-and-imports)
@@ -36,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.4).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.5).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -49,7 +50,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.4/ghi_v0.2.4_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.5/ghi_v0.2.5_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -72,7 +73,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.4 on macOS, use the portable archive or Homebrew. A native v0.2.4 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.4/ghi_v0.2.4_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.5 on macOS, use the portable archive or Homebrew. A native v0.2.5 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.5/ghi_v0.2.5_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -132,6 +133,19 @@ ghi build -o hello .
 ```
 
 Use `-o hello.exe` on Windows. Run the compiled executable directly: `./hello` on macOS or `.\hello.exe` on Windows. `ghi run` accepts a source project, not an already compiled binary. Pass application arguments with `ghi run . -- argument1 argument2`.
+
+## Development watch mode
+
+```sh
+ghi watch .
+ghi watch --debug . -- application-argument
+```
+
+`watch` polls project contents and debounces saves, builds a fresh executable, then replaces the running development process only after compilation succeeds. A failed build prints diagnostics and leaves the previous service running. Saves during compilation schedule another build; an obsolete build is not started. A program that exits waits for the next source change instead of restarting in a loop. Arguments after `--` are forwarded, and the child runs in the project directory with inherited environment and terminal streams.
+
+Watched extensions are `.ghi`, `.go`, `.json`, `.lock`, `.sql`, `.mod` and `.sum`. Installed package files under `.ghi/packages` are included. Other hidden directories, `bin`, `vendor`, `node_modules` and each project or package root's test directory are excluded (nested production directories named tests remain watched); generated caches, database files and executables do not trigger rebuilds. Changes outside the project tree, including external local Go replacements, require a project edit or a new watch session. Dependency changes still require `mojave install` or `mojave update` as appropriate.
+
+Ctrl+C cancels compilation and stops the service. Unix uses a process group, with a one-second termination grace period before forced termination; Windows uses a job object and terminates the process tree on replacement or shutdown. This is a development workflow, not a production process supervisor. Watch mode does not run tests automatically.
 
 ## How compilation works
 
@@ -263,7 +277,7 @@ A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping 
 
 Normal `ghi build`, `ghi run` and `ghi check` reuse validated generated Go code in `.ghi/build/work`. The cache key includes source contents and paths, installed Ghi package sources, manifests and lockfiles, the compiler executable, selected Go toolchain, resolved Go settings and external Go export artifacts. Local Go `replace` dependencies are checked by Go too. Source discovery, Mojave validation, dependency downloads and checksum verification still run. Generated files are hashed before reuse; missing or damaged cache data causes regeneration.
 
-Unchanged inputs skip Ghi lowering and semantic checking. In the current source checkout, edits invalidate the changed namespace and its transitive consumers. Unaffected namespaces reuse their validated generated bodies; their declarations are still checked to reconstruct type information. Receiver specialization requires the affected inheritance component to be checked together, and changes to the class inheritance graph invalidate all namespace certificates conservatively. Compiler, toolchain, environment, dependency and manifest changes also invalidate certificates. This namespace-level semantic reuse is newer than the v0.2.4 binary release.
+Unchanged inputs skip Ghi lowering and semantic checking. In the current source checkout, edits invalidate the changed namespace and its transitive consumers. Unaffected namespaces reuse their validated generated bodies; their declarations are still checked to reconstruct type information. Receiver specialization requires the affected inheritance component to be checked together, and changes to the class inheritance graph invalidate all namespace certificates conservatively. Compiler, toolchain, environment, dependency and manifest changes also invalidate certificates. Namespace-level semantic reuse is included in v0.2.5.
 
 Only changed generated files are written to the stable workspace, allowing Go to reuse unaffected compiled packages. This is not a persistent per-file Ghi AST cache: source discovery, parsing and structural validation still run. The compiler also seeds its temporary output from the previous executable, allowing Go to skip unnecessary linking after checking build IDs; failed builds preserve the previous output. Embedders can supply `compiler.Options.Stats` to observe checked and reused namespaces; runtime implementation namespaces are excluded from those counters.
 
@@ -295,6 +309,10 @@ The subsequent namespace semantic cache was compared directly with the published
 | Edited application service | 1.722 s | 1.771 s |
 
 This dependency-heavy example shows **no end-to-end speedup** from namespace reuse in this run: dependency preparation and checksum verification dominate the overlapping pipeline. The changed-source ranges were 1.652–1.783 s before and 1.715–1.797 s after. A separate behavioral check confirms that editing only the entry namespace rechecks that namespace and reuses three unchanged namespaces, while an inheritance change rechecks the affected component. These results establish selective semantic work, not a promise of lower wall time on every project. [Check samples](tests/performance/results/namespace-check-windows-amd64-go1.26.3.csv).
+
+Dependency preparation now edits the staged module with `golang.org/x/mod`, avoiding two Go subprocesses. Go still downloads/resolves the selected modules and checks download sums. Ghi verifies every ZIP entry and extracted source file against the locked `h1` checksum, with bounded parallel file reads and directory enumeration that avoids a separate stat for every file. Verification is performed on every compilation, including cache hits; it is not bypassed based on timestamps. Damaged archives or extracted contents prevent accepting output and preserve the previous executable.
+
+A final comparison against the namespace-cache implementation, using the same five-sample DDD `ghi check` protocol, measured 1.714 → 1.773 s unchanged and 1.788 → 1.849 s after an edit. The final pipeline also includes cancellation of subprocess trees. Although dependency preparation removes redundant Go commands and uses parallel hashing, this complete Windows run was about 3% slower; it does not establish an end-to-end compilation speedup. These are warm-cache Windows amd64 results, not fresh-install or cross-platform guarantees. [Dependency preparation samples](tests/performance/results/dependency-verification-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 
@@ -779,11 +797,52 @@ Configuration uses `GHI_TASK_ADDR`, `GHI_TASK_DB` (default `tasks.db`) and `GHI_
 
 For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `store/migrations/`, and set `GHI_TASK_MIGRATIONS` to the deployed SQL directory. The source-tree migration path is only a development default. Use an `.exe` output name on Windows. Rollbacks are explicit maintenance operations through `Migrator.Down`; the example never runs them automatically.
 
-### Compiler fixes in the current source checkout
+### Standalone request journal
+
+[Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
+
+The fresh-consumer workflow has been verified on Windows amd64 with published **Ghi v0.2.4**, **Mojave v0.1.0** and **arm092/migrations v0.4.0**, using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+
+```sh
+cd services/request-journal
+mojave install
+ghi test .
+ghi run .
+```
+
+| Method and route | Behavior |
+| --- | --- |
+| `GET /health` | Database readiness |
+| `POST /requests` | Create with `{"title":"Restore notifications"}`; returns 201 |
+| `GET /requests?status=open&limit=20&offset=0` | Filtered, paginated list, newest first |
+| `GET /requests/{id}` | Read one request |
+| `PUT /requests/{id}` | Replace title and status, e.g. `{"title":"Restored","status":"resolved"}` |
+| `GET /requests/{id}/history` | Ordered status history |
+| `DELETE /requests/{id}` | Delete request and its history; returns 204 |
+
+Statuses are `open`, `in_progress` and `resolved`; reopening is supported. New requests start as `open`. Updating a title without changing status does not add a history event. Request changes and history insertion share a transaction. Queries use bound SQL parameters. Foreign keys and the busy timeout are configured for every SQLite connection, including replacements after cancellation.
+
+The API returns JSON: malformed/oversized bodies and unknown fields return 400, invalid values return 422, missing resources return 404 and internal failures return a generic 500. Titles contain 1–200 characters after trimming and cannot include NUL; pagination accepts a limit of 1–100 and a nonnegative offset. Bodies are limited to 4 KiB. The service binds to localhost by default and has no authentication layer.
+
+| Environment variable | Default |
+| --- | --- |
+| `JOURNAL_ADDR` | `127.0.0.1:8080` |
+| `JOURNAL_DB` | `journal.db` (file path) |
+| `JOURNAL_MIGRATIONS` | `migrations` (relative to the working directory) |
+
+Startup applies pending migrations, and a migration failure prevents the listener from opening. Run from the project directory, or set absolute database/migration paths. For deployment, use `ghi build -o bin/journal .` (`bin/journal.exe` on Windows), then copy the executable and `migrations/`. Go and Ghi are not needed to run the binary. Database files should live on persistent storage. Shutdown handles interrupt/SIGTERM with a five-second HTTP grace period.
+
+`ghi test .` checks atomic rollback on history failure, connection replacement after cancellation, cascading deletion and sanitized storage errors. The Python 3 smoke runner copies the project into a fresh temporary directory, installs locked dependencies, runs Ghi tests, builds and starts the executable, exercises real HTTP requests including concurrent writes, restarts against the same database, and checks failed migration rollback:
+
+```sh
+python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/mojave
+```
+
+### Compiler fixes in v0.2.5
 
 Generic numeric fields support compound assignment and increment/decrement, including inherited access, without treating compiler-generated field addresses as nullable. Generated forwarding methods use private parameter names, so a parent method parameter named `U` or `Item` does not collide with a descendant type parameter or concrete type of the same name. These fixes preserve source-level names and apply in normal and debug builds.
 
-Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These compiler changes are newer than the v0.2.4 binaries.
+Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These diagnostics and generic fixes are included in v0.2.5.
 
 Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 

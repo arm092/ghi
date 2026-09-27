@@ -2,8 +2,8 @@ package compiler
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"ghi/internal/proctree"
 	"go/version"
 	"os"
 	"os/exec"
@@ -12,6 +12,7 @@ import (
 
 	"ghi/internal/toolchain"
 	"github.com/arm092/mojave/pkg/mojave"
+	"golang.org/x/mod/modfile"
 )
 
 // stageDependencies keeps the original manifest and lockfile unchanged. Go
@@ -51,36 +52,38 @@ func (p *program) stageDependencies(ctx context.Context, dir, goPath string) err
 		}
 	}
 	run := func(args ...string) ([]byte, error) {
-		command := exec.CommandContext(ctx, goPath, args...)
+		command := exec.Command(goPath, args...)
 		command.Dir = dir
 		command.Env = toolchain.Env()
-		output, err := command.CombinedOutput()
+		output, err := proctree.CombinedOutput(ctx, command)
 		if err != nil {
 			return nil, fmt.Errorf("prepare Go dependencies: %w\n%s", err, output)
 		}
 		return output, nil
 	}
-	output, err := run("mod", "edit", "-json")
+	module, err := modfile.Parse("go.mod", manifest, nil)
 	if err != nil {
-		return err
-	}
-	type moduleRef struct{ Path, Version string }
-	var module struct {
-		Go      string
-		Replace []struct{ Old, New moduleRef }
-	}
-	if err := json.Unmarshal(output, &module); err != nil {
 		return fmt.Errorf("read Go module metadata: %w", err)
 	}
+	moduleGo := ""
+	if module.Go != nil {
+		moduleGo = module.Go.Version
+	}
 	compilerVersion := version.Lang(runtime.Version())
-	if module.Go != "" && version.Compare(version.Lang("go"+module.Go), compilerVersion) > 0 {
-		return fmt.Errorf("project requires Go %s; this Ghi compiler supports %s", module.Go, compilerVersion)
+	if moduleGo != "" && version.Compare(version.Lang("go"+moduleGo), compilerVersion) > 0 {
+		return fmt.Errorf("project requires Go %s; this Ghi compiler supports %s", moduleGo, compilerVersion)
 	}
 	targetGo := "1.26.0"
-	if managed && module.Go != "" {
-		targetGo = module.Go
+	if managed && moduleGo != "" {
+		targetGo = moduleGo
 	}
-	args := []string{"mod", "edit", "-module=" + generatedModule, "-go=" + targetGo, "-toolchain=none"}
+	if err := module.AddModuleStmt(generatedModule); err != nil {
+		return err
+	}
+	if err := module.AddGoStmt(targetGo); err != nil {
+		return err
+	}
+	module.DropToolchainStmt()
 	for _, replace := range module.Replace {
 		if replace.New.Version != "" {
 			continue
@@ -89,20 +92,27 @@ func (p *program) stageDependencies(ctx context.Context, dir, goPath string) err
 		if !filepath.IsAbs(replacement) {
 			replacement = filepath.Join(p.Root, filepath.FromSlash(replacement))
 		}
-		old := replace.Old.Path
-		if replace.Old.Version != "" {
-			old += "@" + replace.Old.Version
+		if err := module.AddReplace(replace.Old.Path, replace.Old.Version, filepath.ToSlash(replacement), ""); err != nil {
+			return err
 		}
-		args = append(args, "-replace="+old+"="+filepath.ToSlash(replacement))
 	}
-	if _, err := run(args...); err != nil {
+	manifest, err = module.Format()
+	if err != nil {
 		return err
 	}
-	if _, err = run("mod", "download", "all"); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), manifest, 0644); err != nil {
+		return err
+	}
+	args := []string{"mod", "download"}
+	if managed {
+		args = append(args, "-json")
+	}
+	output, err := run(append(args, "all")...)
+	if err != nil {
 		return err
 	}
 	if managed {
-		p.verification, err = startDependencyVerification(ctx, goPath, dir)
+		p.verification, err = startDependencyVerification(ctx, output, sums)
 	}
 	return err
 }
@@ -115,17 +125,16 @@ type dependencyVerification struct {
 	err    error
 }
 
-func startDependencyVerification(ctx context.Context, goPath, dir string) (*dependencyVerification, error) {
+func startDependencyVerification(ctx context.Context, downloads, sums []byte) (*dependencyVerification, error) {
+	modules, err := downloadedModules(downloads, sums)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	v := &dependencyVerification{cancel: cancel, done: make(chan struct{})}
-	command := exec.CommandContext(ctx, goPath, "mod", "verify")
-	command.Dir, command.Env = dir, toolchain.Env()
 	go func() {
 		defer close(v.done)
-		output, err := command.CombinedOutput()
-		if err != nil {
-			v.err = fmt.Errorf("prepare Go dependencies: %w\n%s", err, output)
-		}
+		v.err = verifyDownloadedModules(ctx, modules)
 	}()
 	return v, nil
 }

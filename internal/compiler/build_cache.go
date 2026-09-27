@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"ghi/internal/proctree"
 	"ghi/internal/toolchain"
 	"io"
 	"io/fs"
@@ -77,9 +78,9 @@ func (p *program) buildCacheKey(ctx context.Context, workspace, goPath string) s
 	if identity == "" {
 		return ""
 	}
-	command := exec.CommandContext(ctx, goPath, "env", "-json")
+	command := exec.Command(goPath, "env", "-json")
 	command.Dir, command.Env = workspace, toolchain.Env()
-	output, err := command.Output()
+	output, err := proctree.Output(ctx, command)
 	if err != nil {
 		return ""
 	}

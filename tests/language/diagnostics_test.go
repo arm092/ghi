@@ -43,3 +43,23 @@ func TestSourceDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestImportedConstructorDiagnosticAlias(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "project with spaces")
+	for name, source := range map[string]string{
+		"lib/box.ghi": "namespace app.box\nclass Box[T any] { constructor(value T){} }\n",
+		"main.ghi":    "namespace main\nimport app.box.Box as Alias\nfunc main(){new Alias[int]()}\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := compiler.Check(context.Background(), compiler.Options{Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "main.ghi:3:") || !strings.Contains(err.Error(), "call to Alias[int]") || strings.Contains(err.Error(), "ghi_type_import_") {
+		t.Fatalf("import alias diagnostic: %v", err)
+	}
+}

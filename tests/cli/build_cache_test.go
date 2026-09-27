@@ -165,6 +165,40 @@ func TestCachedBuildWaitsForDependencyVerification(t *testing.T) {
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("failed verification replaced the executable")
 	}
+	// Restore the extracted source, then alter only the cached ZIP while its
+	// ziphash and the locked checksum still describe the original download.
+	if err := os.WriteFile(moduleSource, []byte("package verified\nfunc Value() int {return 1}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var altered bytes.Buffer
+	zw := zip.NewWriter(&altered)
+	for name, content := range map[string]string{"go.mod": module, "value.go": "package verified\nfunc Value() int {return 99}\n"} {
+		entry, err := zw.Create("example.test/verified@v1.0.0/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(cache, "cache/download/example.test/verified/@v/v1.0.0.zip")
+	if err := os.Chmod(zipPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(zipPath, altered.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = compiler.Build(context.Background(), compiler.Options{Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "zip has been modified") {
+		t.Fatalf("altered ZIP accepted: %v", err)
+	}
+	after, err = os.ReadFile(result.Executable)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("ZIP failure replaced executable")
+	}
 }
 
 // A cached successful check must never hide edits, missing files or invalid

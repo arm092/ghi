@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"errors"
+	"go/types"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +21,11 @@ func (p *program) sourceError(err error) error {
 		return nil
 	}
 	replacements := map[string]string{}
+	var typed types.Error
+	diagnosticFile := ""
+	if errors.As(err, &typed) {
+		diagnosticFile = p.Fset.Position(typed.Pos).Filename
+	}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
 			for _, e := range file.Unit.Enums {
@@ -27,10 +34,19 @@ func (p *program) sourceError(err error) error {
 				}
 			}
 			for _, selected := range file.Unit.TypeImports {
+				if diagnosticFile != "" && file.Path != diagnosticFile {
+					continue
+				}
 				for _, spec := range file.Tree.Imports {
 					path, _ := strconv.Unquote(spec.Path.Value)
 					if path == generatedModule+"/"+strings.ReplaceAll(selected.Namespace, ".", "/") && spec.Name != nil {
 						replacements[spec.Name.Name+"."+selected.Name] = selected.Alias
+						// NewReplacer makes one pass: map qualified generated names
+						// directly instead of expecting a second alias replacement.
+						prefix := spec.Name.Name + "."
+						replacements[prefix+"GhiNew_"+selected.Name] = selected.Alias
+						replacements[prefix+"ghiData_"+selected.Name] = selected.Alias
+						replacements[prefix+"GhiInit_"+selected.Name] = selected.Alias + ".constructor"
 					}
 				}
 			}
