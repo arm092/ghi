@@ -147,6 +147,21 @@ Watched extensions are `.ghi`, `.go`, `.json`, `.lock`, `.sql`, `.mod` and `.sum
 
 Ctrl+C cancels compilation and stops the service. Unix uses a process group, with a one-second termination grace period before forced termination; Windows uses a job object and terminates the process tree on replacement or shutdown. This is a development workflow, not a production process supervisor. Watch mode does not run tests automatically.
 
+### Test watching (development source after v0.2.5)
+
+Build the CLI from the current source checkout to use the following workflow; it is not included in the v0.2.5 download:
+
+```sh
+ghi test --watch .
+ghi test --watch -run '^TestRepository' -v -timeout 30s .
+```
+
+Test watching runs immediately, includes production sources and the project's root `tests/` directory, and reruns after changes. Runs are serialized; edits during a run schedule one subsequent run after saves settle. Failed tests and compiler errors keep the watcher running. A result from a run with observed source changes is marked as outdated instead of reported as a current pass. Installed dependencies retain their own test exclusions. The watched file extensions and output exclusions are the same as ordinary watch mode. Ctrl+C cancels the active test process tree and exits; invalid filters, timeouts and project paths fail at startup.
+
+### Source diagnostics (development source after v0.2.5)
+
+The development CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
+
 ## How compilation works
 
 1. Ghi loads `.ghi` sources, namespaces and installed Mojave dependencies.
@@ -313,6 +328,15 @@ This dependency-heavy example shows **no end-to-end speedup** from namespace reu
 Dependency preparation now edits the staged module with `golang.org/x/mod`, avoiding two Go subprocesses. Go still downloads/resolves the selected modules and checks download sums. Ghi verifies every ZIP entry and extracted source file against the locked `h1` checksum, with bounded parallel file reads and directory enumeration that avoids a separate stat for every file. Verification is performed on every compilation, including cache hits; it is not bypassed based on timestamps. Damaged archives or extracted contents prevent accepting output and preserve the previous executable.
 
 A final comparison against the namespace-cache implementation, using the same five-sample DDD `ghi check` protocol, measured 1.714 → 1.773 s unchanged and 1.788 → 1.849 s after an edit. The final pipeline also includes cancellation of subprocess trees. Although dependency preparation removes redundant Go commands and uses parallel hashing, this complete Windows run was about 3% slower; it does not establish an end-to-end compilation speedup. These are warm-cache Windows amd64 results, not fresh-install or cross-platform guarantees. [Dependency preparation samples](tests/performance/results/dependency-verification-windows-amd64-go1.26.3.csv).
+
+The subsequent development change reuses the 32 KiB copy buffers used for module archive/source hashing instead of allocating one for every file. A CPU profile identified allocation/GC work alongside decompression and filesystem operations. All bytes are still read and checked on every compilation, and subprocess-tree cancellation remains enabled. Against the published v0.2.5 compiler, seven measured samples after warm-up gave:
+
+| DDD `ghi check` | v0.2.5 median | Buffer reuse median |
+| --- | ---: | ---: |
+| Unchanged | 2.075 s | 1.582 s |
+| Edited service | 2.096 s | 1.665 s |
+
+This run was about 24% and 21% faster respectively. Each compiler used a separate identical project checkout and its own Ghi build cache; invocation order alternated to reduce ordering bias. Module/Go caches were warm, with no concurrent test runs. Windows amd64 and Go 1.26.3 were used; results do not establish cross-platform gains. [Raw samples](tests/performance/results/check-buffer-reuse-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 

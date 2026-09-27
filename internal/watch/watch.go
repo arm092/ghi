@@ -64,15 +64,15 @@ func startChild(o Options, path string) (*child, error) {
 // Snapshot hashes source/configuration content, so atomic saves and same-size,
 // same-mtime edits are detected. Outputs, databases and tests do not trigger a
 // restart. Installed package source is included separately from build caches.
-func snapshot(root string) (string, error) {
+func snapshot(root string, includeTests bool) (string, error) {
 	h := sha256.New()
-	scan := func(base string) error {
+	scan := func(base string, tests bool) error {
 		return filepath.WalkDir(base, func(path string, e fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if e.IsDir() {
-				if path != base && (strings.HasPrefix(e.Name(), ".") || e.Name() == "bin" || e.Name() == "vendor" || e.Name() == "node_modules" || path == filepath.Join(base, "tests")) {
+				if path != base && (strings.HasPrefix(e.Name(), ".") || e.Name() == "bin" || e.Name() == "vendor" || e.Name() == "node_modules" || (!tests && path == filepath.Join(base, "tests"))) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -93,7 +93,7 @@ func snapshot(root string) (string, error) {
 			return nil
 		})
 	}
-	if err := scan(root); err != nil {
+	if err := scan(root, includeTests); err != nil {
 		return "", err
 	}
 	packages := filepath.Join(root, ".ghi", "packages")
@@ -104,7 +104,7 @@ func snapshot(root string) (string, error) {
 		}
 		for _, entry := range entries {
 			if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-				if err := scan(filepath.Join(packages, entry.Name())); err != nil {
+				if err := scan(filepath.Join(packages, entry.Name()), false); err != nil {
 					return "", err
 				}
 			}
@@ -140,7 +140,7 @@ func Run(ctx context.Context, o Options) error {
 	if !info.IsDir() {
 		return fmt.Errorf("watch project path must be a directory: %s", root)
 	}
-	observed, err := snapshot(root)
+	observed, err := snapshot(root, false)
 	if err != nil {
 		return err
 	}
@@ -215,7 +215,7 @@ func Run(ctx context.Context, o Options) error {
 			cancelBuild = nil
 			builds = nil
 			// Include edits that happened during compilation before its next poll.
-			current, scanErr := snapshot(root)
+			current, scanErr := snapshot(root, false)
 			if scanErr != nil {
 				fmt.Fprintln(o.Stderr, "[watch] scan:", scanErr)
 				pending = true
@@ -231,7 +231,7 @@ func Run(ctx context.Context, o Options) error {
 				continue
 			}
 			if result.err != nil {
-				fmt.Fprintln(o.Stderr, "[watch] build failed:", result.err)
+				fmt.Fprintln(o.Stderr, "[watch] build failed:", compiler.FormatDiagnostic(result.err, root, nil))
 				continue
 			}
 			pending = false
@@ -248,7 +248,7 @@ func Run(ctx context.Context, o Options) error {
 			}
 			fmt.Fprintln(o.Stderr, "[watch] started")
 		case <-ticker.C:
-			current, err := snapshot(root)
+			current, err := snapshot(root, false)
 			if err != nil {
 				fmt.Fprintln(o.Stderr, "[watch] scan:", err)
 				continue

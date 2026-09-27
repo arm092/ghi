@@ -135,7 +135,7 @@ func TestCheckEditorOverlay(t *testing.T) {
 		t.Fatalf("valid overlay: %d %s", code, out)
 	}
 	invalid := "namespace main\nimport model\n\nfunc main() {\n println(model.Value())\n missing()\n}\n"
-	if out, code := invoke(invalid, args...); code != 1 || !strings.Contains(out, sourcePath+":6:2") {
+	if out, code := invoke(invalid, args...); code != 1 || !strings.Contains(out, sourcePath+":6:2") || strings.Contains(out, "6 |") {
 		t.Fatalf("buffer diagnostic: %d %s", code, out)
 	}
 	if out, code := invoke("", "check", dir); code != 0 {

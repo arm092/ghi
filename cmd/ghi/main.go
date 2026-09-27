@@ -52,7 +52,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [--watch] [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V" {
@@ -107,7 +107,11 @@ func run(args []string) int {
 			return 2
 		}
 		if err := compiler.Check(ctx, options); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			if *stdin {
+				fmt.Fprintln(os.Stderr, err)
+			} else {
+				fmt.Fprintln(os.Stderr, compiler.FormatDiagnostic(err, dir, nil))
+			}
 			return 1
 		}
 		fmt.Println("Check passed")
@@ -148,7 +152,7 @@ func run(args []string) int {
 	defer stop()
 	result, err := compiler.Build(ctx, compiler.Options{Dir: dir, Output: *output, Debug: *debug, Log: os.Stderr})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, compiler.FormatDiagnostic(err, dir, nil))
 		return 1
 	}
 	if args[0] == "build" {

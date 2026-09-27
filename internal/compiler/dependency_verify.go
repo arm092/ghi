@@ -21,6 +21,10 @@ import (
 
 type downloadedModule struct{ Path, Version, Sum, Zip, Dir, Error string }
 
+// Each verification reads thousands of files. Reuse bounded copy buffers rather
+// than allocating a fresh 32 KiB buffer for every archive entry and source file.
+var moduleCopyBuffers = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
+
 // Go still resolves and downloads modules and verifies download checksums. The
 // selected download list gives exact cache paths; bind them to the locked sums,
 // then reread every archive entry and extracted file on every compilation.
@@ -183,7 +187,9 @@ func parallelModuleHash(ctx context.Context, files []string, open func(string) (
 			return
 		}
 		h := sha256.New()
-		_, err = io.Copy(h, contextReader{ctx, r})
+		buffer := moduleCopyBuffers.Get().([]byte)
+		_, err = io.CopyBuffer(h, contextReader{ctx, r}, buffer)
+		moduleCopyBuffers.Put(buffer)
 		closeErr := r.Close()
 		if err == nil {
 			err = closeErr

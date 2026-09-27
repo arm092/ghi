@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"ghi/internal/compiler"
+	"ghi/internal/watch"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -14,6 +16,7 @@ func runTests(args []string) int {
 	flags := flag.NewFlagSet("test", flag.ContinueOnError)
 	filter := flags.String("run", "", "test name regular expression")
 	timeout := flags.Duration("timeout", time.Minute, "maximum duration per test suite")
+	watching := flags.Bool("watch", false, "rerun tests after source or test changes")
 	verbose := flags.Bool("v", false, "show passing tests")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -30,10 +33,17 @@ func runTests(args []string) int {
 	if flags.NArg() == 1 {
 		dir = flags.Arg(0)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *watching {
+		if err := watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: *filter, Timeout: *timeout, Verbose: *verbose, Log: os.Stdout}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	if err := compiler.Test(ctx, compiler.TestOptions{Dir: dir, Run: *filter, Timeout: *timeout, Verbose: *verbose, Log: os.Stdout}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, compiler.FormatDiagnostic(err, dir, nil))
 		return 1
 	}
 	return 0

@@ -36,6 +36,7 @@ func main() {
  os.WriteFile("address", []byte(listener.Addr().String()), 0600)
  http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tests.Value() + os.Args[1]) }))
 }
+
 `
 	write := func(path, content string) {
 		t.Helper()
@@ -137,4 +138,69 @@ func Value() string { return "one:" }
 	})
 	cancel()
 	wait(func() bool { return get(address) == "" })
+}
+
+func TestWatchTestsLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("main.ghi", "namespace main\nfunc main() {}\n")
+	write("app/value.ghi", "namespace app\nfunc Value() int {return 1}\n")
+	source := "namespace tests.unit\nimport app\nimport testing \"go:testing\"\nfunc TestValue(t *testing.T) {if app.Value() != 1 {t.Fatal(\"wrong value\")}}\nfunc TestExcluded(t *testing.T) {t.Fatal(\"filter ignored\")}\n"
+	write("tests/unit/value.ghi", source)
+	ctx, cancel := context.WithCancel(context.Background())
+	var log watchLog
+	done := make(chan error, 1)
+	go func() {
+		done <- watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: "^TestValue$", Timeout: 10 * time.Second, Log: &log, Interval: 50 * time.Millisecond, Debounce: 50 * time.Millisecond})
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("test watch did not stop")
+		}
+	})
+	wait := func(token string, count int) {
+		t.Helper()
+		deadline := time.Now().Add(35 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Count(log.text(), token) >= count {
+				return
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		t.Fatalf("missing %s: %s", token, log.text())
+	}
+	wait("[test-watch] passed", 1)
+	write("tests/unit/value.ghi", strings.Replace(source, "!= 1", "!= 2", 1))
+	wait("[test-watch] failed", 1)
+	write("app/value.ghi", "namespace app\nfunc Value() int {return 2}\n")
+	wait("[test-watch] passed", 2)
+	write("tests/unit/value.ghi", "namespace tests.unit\ninvalid syntax\n")
+	wait("[test-watch] failed", 2)
+	write("tests/unit/value.ghi", strings.Replace(source, "!= 1", "!= 2", 1))
+	wait("[test-watch] passed", 3)
+}
+
+func TestWatchTestsRejectsInvalidOptions(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "source.ghi")
+	if err := os.WriteFile(file, []byte("namespace main"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, options := range []watch.TestOptions{{Dir: dir, Filter: "["}, {Dir: dir, Timeout: -1}, {Dir: file}} {
+		if err := watch.Tests(context.Background(), options); err == nil {
+			t.Fatal("invalid options accepted")
+		}
+	}
 }

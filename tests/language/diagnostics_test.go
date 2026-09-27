@@ -62,4 +62,31 @@ func TestImportedConstructorDiagnosticAlias(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "main.ghi:3:") || !strings.Contains(err.Error(), "call to Alias[int]") || strings.Contains(err.Error(), "ghi_type_import_") {
 		t.Fatalf("import alias diagnostic: %v", err)
 	}
+	pretty := compiler.FormatDiagnostic(err, dir, nil)
+	if !strings.HasPrefix(pretty, err.Error()) || !strings.Contains(pretty, "3 | func main(){new Alias[int]()}") || !strings.Contains(pretty, "^") {
+		t.Fatalf("missing source context: %s", pretty)
+	}
+}
+
+func TestDiagnosticContextUsesOverlayAndByteColumns(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "project with spaces")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "main.ghi")
+	if err := os.WriteFile(path, []byte("saved content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	line := "\t_ = \"Ղ\"; wrong()"
+	err := fmt.Errorf("%s:2:%d: cannot use wrong (variable of type string) as int value in argument", path, strings.Index(line, "wrong")+1)
+	pretty := compiler.FormatDiagnostic(err, dir, map[string][]byte{path: []byte("namespace main\r\n" + line + "\r\n")})
+	for _, expected := range []string{"2 |     _ = \"Ղ\"; wrong()", "  |              ^~~~~", "expected: int; received: variable of type string"} {
+		if !strings.Contains(pretty, expected) {
+			t.Fatalf("missing %q:\n%s", expected, pretty)
+		}
+	}
+	outside := compiler.FormatDiagnostic(err, filepath.Join(dir, "other"), nil)
+	if outside != err.Error() {
+		t.Fatal("rendered source outside project")
+	}
 }
