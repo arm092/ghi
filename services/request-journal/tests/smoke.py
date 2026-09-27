@@ -112,10 +112,40 @@ def main():
                 request("POST", "/requests", payload, 422)
             for payload in ('{"title":"x","unknown":1}', '{"title":"x"} {}', '{', '"text"', '{"title":"' + 'x' * 5000 + '"}'):
                 request("POST", "/requests", payload, 400, raw=True)
+            saved_item = request("GET", identity)
+            saved_history = request("GET", identity + "/history")
             request("PUT", identity, {"title": "x", "status": "missing"}, 422)
+            invalid = request("PUT", identity, {"title": " ", "status": "missing"}, 422)
+            assert invalid["fields"] == [
+                {"field": "title", "code": "required"},
+                {"field": "title", "code": "min_length"},
+                {"field": "status", "code": "one_of"},
+            ]
+            invalid = request("GET", "/requests?limit=0&offset=-1&status=missing", expected=422)
+            assert invalid["fields"] == [
+                {"field": "status", "code": "one_of"},
+                {"field": "limit", "code": "min_value"},
+                {"field": "offset", "code": "min_value"},
+            ]
+            invalid = request("POST", "/requests", {"title": "\u0000hello"}, 422)
+            assert invalid["fields"] == [{"field": "title", "code": "nul_character"}]
+            unicode_item = request("POST", "/requests", {"title": "Ղ" * 200}, 201)
+            request("POST", "/requests", {"title": "Ղ" * 201}, 422)
+            request("DELETE", "/requests/" + str(unicode_item["id"]), expected=204)
+            assert request("GET", identity) == saved_item, "invalid update changed storage"
+            assert request("GET", identity + "/history") == saved_history, "invalid update changed history"
+            invalid = request("POST", "/requests", {"title": " ", "status": "resolved"}, 422)
+            assert invalid["fields"] == [
+                {"field": "title", "code": "required"},
+                {"field": "title", "code": "min_length"},
+                {"field": "status", "code": "initial_status"},
+            ]
+            invalid = request("GET", "/requests?limit=abc", expected=422)
+            assert invalid["fields"] == [{"field": "limit", "code": "integer"}]
             for query in ("limit=0", "limit=101", "offset=-1", "limit=abc", "status=missing"):
                 request("GET", "/requests?" + query, expected=422)
-            request("GET", "/requests/not-an-id", expected=422)
+            invalid = request("GET", "/requests/not-an-id", expected=422)
+            assert invalid["fields"] == [{"field": "id", "code": "positive_integer"}]
             request("GET", "/requests/999999", expected=404)
             request("PUT", "/requests/999999", {"title": "x", "status": "open"}, 404)
             request("GET", "/requests/999999/history", expected=404)

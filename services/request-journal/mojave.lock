@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "manifestHash": "51f9259029933b6c7eb2ba5b9afd6e45482f534f7e216a25dcbca387adb9704f",
+  "manifestHash": "aa35fd9efe4342d6e9c5d9ce3f57b4e5839bd1ee0510147108b97522b1f15d71",
   "packages": [
     {
       "identity": "arm092/migrations",
@@ -14,6 +14,14 @@
         "github.com/jackc/pgx/v5": "v5.11.0",
         "modernc.org/sqlite": "v1.59.0"
       }
+    },
+    {
+      "identity": "arm092/validation",
+      "namespace": "arm092.validation",
+      "repository": "https://github.com/arm092/ghi-validation.git",
+      "ref": "v0.1.0",
+      "commit": "741bdd703247609c4917f201bd848c4db6685458",
+      "integrity": "2f64cd814c26ecdf78a5de4b2b66b8d7761a28feccaff689bb787bee080c33ce"
     }
   ],
   "go": {

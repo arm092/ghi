@@ -4,6 +4,10 @@
     "arm092/migrations": {
       "repository": "https://github.com/arm092/ghi-migrations.git",
       "ref": "v0.4.0"
+    },
+    "arm092/validation": {
+      "repository": "https://github.com/arm092/ghi-validation.git",
+      "ref": "v0.1.0"
     }
   },
   "goDependencies": {

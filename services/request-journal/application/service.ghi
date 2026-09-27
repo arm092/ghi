@@ -1,23 +1,41 @@
 namespace journal.application
 
+import arm092.validation.Validator
 import context "go:context"
+import math "go:math"
 import strings "go:strings"
-import utf8 "go:unicode/utf8"
 import journal.domain
 import journal.storage.Repository
 
-func title(value string) string {
+func title(check Validator, value string) string {
 	value = strings.TrimSpace(value)
-	if strings.ContainsRune(value, 0) || value == "" || utf8.RuneCountInString(value) > 200 {
-		throw new domain.InvalidInput("title must contain 1 to 200 characters without NUL")
+	check.RequiredText("title", value)
+	check.TextLength("title", value, 1, 200)
+	if strings.ContainsRune(value, 0) {
+		check.Reject("title", "nul_character")
 	}
 
 	return value
 }
 
-func validateStatus(value string) {
-	if value != domain.Status.Open && value != domain.Status.InProgress && value != domain.Status.Resolved {
-		throw new domain.InvalidInput("status must be open, in_progress or resolved")
+func validateStatus(check Validator, value string) {
+	check.OneOf("status", value, []string{
+		domain.Status.Open,
+		domain.Status.InProgress,
+		domain.Status.Resolved,
+	})
+}
+
+func requireValid(check Validator) {
+	if !check.Valid() {
+		failure := new domain.InvalidInput("invalid request fields")
+		for _, violation := range check.Errors() {
+			failure.violations = append(failure.violations, domain.FieldViolation{
+				Field: violation.Field(),
+				Code: violation.Code(),
+			})
+		}
+		throw failure
 	}
 }
 
@@ -32,8 +50,15 @@ class Service {
 		this.repository.Ping(ctx)
 	}
 
-	public func Create(ctx context.Context, value string) domain.Request {
-		return this.repository.Create(ctx, title(value))
+	public func Create(ctx context.Context, value string, status string = "") domain.Request {
+		check := new Validator()
+		value = title(check, value)
+		if status != "" {
+			check.Reject("status", "initial_status")
+		}
+		requireValid(check)
+
+		return this.repository.Create(ctx, value)
 	}
 
 	public func Get(ctx context.Context, id int64) domain.Request {
@@ -41,20 +66,24 @@ class Service {
 	}
 
 	public func List(ctx context.Context, status string, limit int, offset int) []domain.Request {
+		check := new Validator()
 		if status != "" {
-			validateStatus(status)
+			validateStatus(check, status)
 		}
-		if limit < 1 || limit > 100 || offset < 0 {
-			throw new domain.InvalidInput("limit must be 1 to 100 and offset must be nonnegative")
-		}
+		check.IntRange("limit", limit, 1, 100)
+		check.IntRange("offset", offset, 0, math.MaxInt)
+		requireValid(check)
 
 		return this.repository.List(ctx, status, limit, offset)
 	}
 
 	public func Update(ctx context.Context, id int64, value string, status string) domain.Request {
-		validateStatus(status)
+		check := new Validator()
+		value = title(check, value)
+		validateStatus(check, status)
+		requireValid(check)
 
-		return this.repository.Update(ctx, id, title(value), status)
+		return this.repository.Update(ctx, id, value, status)
 	}
 
 	public func Delete(ctx context.Context, id int64) {

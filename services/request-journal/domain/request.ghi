@@ -26,8 +26,16 @@ class NotFound extends Exception {
 	}
 }
 
+type FieldViolation struct {
+	Field string `json:"field"`
+	Code string `json:"code"`
+}
+
 class InvalidInput extends Exception {
+	public violations []FieldViolation
+
 	constructor(message string) {
 		parent(message, 422)
+		this.violations = []FieldViolation{}
 	}
 }

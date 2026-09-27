@@ -318,7 +318,7 @@ These v0.2.4 medians are about 47% and 23% lower respectively. The earlier five-
 
 The subsequent namespace semantic cache was compared directly with the published v0.2.4 compiler using `ghi check` on the same DDD project, machine and Go version. Five measured pairs after one warm-up pair per compiler gave:
 
-| Check scenario | v0.2.4 median | Current source median |
+| Check scenario | v0.2.4 median | Namespace cache median |
 | --- | ---: | ---: |
 | Unchanged sources | 1.685 s | 1.710 s |
 | Edited application service | 1.722 s | 1.771 s |
@@ -336,7 +336,7 @@ The subsequent development change reuses the 32 KiB copy buffers used for module
 | Unchanged | 2.075 s | 1.582 s |
 | Edited service | 2.096 s | 1.665 s |
 
-This run was about 24% and 21% faster respectively. Each compiler used a separate identical project checkout and its own Ghi build cache; invocation order alternated to reduce ordering bias. Module/Go caches were warm, with no concurrent test runs. Windows amd64 and Go 1.26.3 were used; results do not establish cross-platform gains. [Raw samples](tests/performance/results/check-buffer-reuse-windows-amd64-go1.26.3.csv).
+This run was about 24% and 21% faster respectively. Each compiler used a separate identical project checkout and its own Ghi build cache; invocation order alternated to reduce ordering bias. Module/Go caches were warm; other system activity was not controlled. Windows amd64 and Go 1.26.3 were used; results do not establish cross-platform gains. [Raw samples](tests/performance/results/check-buffer-reuse-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 
@@ -825,7 +825,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The fresh-consumer workflow has been verified on Windows amd64 with published **Ghi v0.2.4**, **Mojave v0.1.0** and **arm092/migrations v0.4.0**, using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with published **Ghi v0.2.5**, **Mojave v0.1.0**, **arm092/migrations v0.4.0** and [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
@@ -847,6 +847,14 @@ ghi run .
 Statuses are `open`, `in_progress` and `resolved`; reopening is supported. New requests start as `open`. Updating a title without changing status does not add a history event. Request changes and history insertion share a transaction. Queries use bound SQL parameters. Foreign keys and the busy timeout are configured for every SQLite connection, including replacements after cancellation.
 
 The API returns JSON: malformed/oversized bodies and unknown fields return 400, invalid values return 422, missing resources return 404 and internal failures return a generic 500. Titles contain 1–200 characters after trimming and cannot include NUL; pagination accepts a limit of 1–100 and a nonnegative offset. Bodies are limited to 4 KiB. The service binds to localhost by default and has no authentication layer.
+
+Validation uses the published `arm092/validation` package. Title length counts Unicode code points. Semantic checks collect all violations before accessing storage, and a rejected update preserves both the record and its history. Each 422 response includes field names and stable codes, for example:
+
+```json
+{"error":"invalid request fields","fields":[{"field":"title","code":"required"},{"field":"title","code":"min_length"},{"field":"status","code":"one_of"}]}
+```
+
+Independent rules may report more than one violation for a field. Create requests reject an explicit nonempty status with `initial_status`; NUL characters produce `nul_character`. Invalid integer syntax stops at the conversion boundary with `integer` for pagination or `positive_integer` for an ID; semantic checks run after conversion succeeds.
 
 | Environment variable | Default |
 | --- | --- |
