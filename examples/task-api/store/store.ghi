@@ -1,5 +1,6 @@
 namespace app.store
 
+import arm092.migrations.Migrator
 import sql "go:database/sql"
 import _ "go:modernc.org/sqlite"
 
@@ -10,10 +11,19 @@ type Task struct {
 
 class Store {
 	private db * sql.DB
-	constructor(path string) {
+	constructor(path string, migrations string = "") {
 		this.db = sql.Open("sqlite", path)
 		this.db.SetMaxOpenConns(1)
-		this.db.Exec("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL)")
+		try {
+			if migrations == "" {
+				migrations = MigrationDirectory()
+			}
+			migrator := new Migrator(this.db, migrations)
+			migrator.Up()
+		} catch err Exception {
+			this.db.Close()
+			throw err
+		}
 	}
 	public func Close() {
 		this.db.Close()

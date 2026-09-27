@@ -14,12 +14,19 @@ import (
 )
 
 type Options struct {
+	// Stats optionally reports semantic namespace reuse for tooling/profiling.
+	Stats *CheckStats
 	// Overlay replaces existing project source contents in memory.
 	Overlay map[string][]byte
 	Dir     string
 	Output  string
 	Log     io.Writer
 	Debug   bool
+}
+
+type CheckStats struct {
+	CheckedNamespaces []string
+	ReusedNamespaces  []string
 }
 
 type Result struct{ Executable string }

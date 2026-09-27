@@ -13,6 +13,7 @@ import (
 )
 
 type sourceFile struct {
+	Cached []byte
 	Path   string
 	Source []byte
 	Tree   *ast.File
@@ -28,6 +29,8 @@ type namespace struct {
 }
 
 type program struct {
+	Semantic            *semanticCache
+	CacheEnvironment    string
 	Debug               bool
 	Exports             map[string]string
 	verification        *dependencyVerification

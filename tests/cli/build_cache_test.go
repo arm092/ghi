@@ -11,10 +11,89 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 )
+
+func TestSemanticNamespaceReuse(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, source string) {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("base/base.ghi", `namespace base
+import strconv "go:strconv"
+class Box[T any] {
+ public value T
+ constructor(value T) { this.value = value }
+ public func get() T { return this.value }
+ public func parse(s string = "7") int { return strconv.Atoi(s) }
+ public func fail() { throw new Exception("cached") }
+}
+`)
+	write("model/model.ghi", `namespace model
+import base.Box
+class Number extends Box[int] { constructor(value int = 4) { parent(value) } }
+`)
+	write("independent/value.ghi", "namespace independent\nfunc Value() int { return 9 }\n")
+	main := `namespace main
+import model.Number
+import independent
+import strings "go:strings"
+func main() {
+ n := new Number()
+ println(n.get(), n.parse(), independent.Value())
+ try { n.fail() } catch err Exception { println(strings.HasSuffix(err.stackTrace[0].file,"base.ghi"),err.stackTrace[0].line) }
+}
+`
+	write("main.ghi", main)
+	var stats compiler.CheckStats
+	options := compiler.Options{Dir: dir, Stats: &stats}
+	build := func() {
+		t.Helper()
+		result, err := compiler.Build(context.Background(), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := exec.Command(result.Executable).CombinedOutput()
+		if err != nil || strings.ReplaceAll(string(out), "\r\n", "\n") != "4 7 9\ntrue 8\n" {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+	build()
+	if len(stats.ReusedNamespaces) != 0 {
+		t.Fatalf("cold reuse: %+v", stats)
+	}
+	write("main.ghi", main+"\n// edit caller\n")
+	build()
+	if !slices.Equal(stats.CheckedNamespaces, []string{"main"}) || !slices.Equal(stats.ReusedNamespaces, []string{"base", "independent", "model"}) {
+		t.Fatalf("caller edit: %+v", stats)
+	}
+	write("model/model.ghi", `namespace model
+import base.Box
+class Number extends Box[int] { constructor(value int = 4) { parent(value) } public func extra() int { return this.get() } }
+`)
+	build()
+	if !slices.Equal(stats.ReusedNamespaces, []string{"independent"}) {
+		t.Fatalf("inheritance edit: %+v", stats)
+	}
+	write("independent/value.ghi", "namespace independent\nfunc Value() string { return \"changed\" }\n")
+	write("main.ghi", strings.Replace(main, "independent.Value()", "independent.Value() + 1", 1))
+	if err := compiler.Check(context.Background(), options); err == nil {
+		t.Fatal("changed dependency API accepted")
+	}
+	if slices.Contains(stats.ReusedNamespaces, "main") || slices.Contains(stats.ReusedNamespaces, "independent") {
+		t.Fatalf("stale dependency reused: %+v", stats)
+	}
+}
 
 func TestCachedBuildWaitsForDependencyVerification(t *testing.T) {
 	var archive bytes.Buffer

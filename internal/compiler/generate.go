@@ -99,6 +99,9 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 	}
 	if ns := p.Namespaces["main"]; ns != nil {
 		for _, file := range ns.Files {
+			if file.Cached != nil {
+				continue
+			}
 			if fn := file.Unit.Functions["main"]; fn != nil && fn.Node != nil && fn.Node.Body != nil {
 				call, _ := parser.ParseExpr(p.runtimeSymbol("ReportPanic", file, ns) + "()")
 				fn.Node.Body.List = append([]ast.Stmt{&ast.DeferStmt{Call: call.(*ast.CallExpr)}}, fn.Node.Body.List...)
@@ -143,11 +146,17 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 		}
 		for index, file := range ns.Files {
 			var buf bytes.Buffer
+			name := fmt.Sprintf("ghi_source_%d.go", index)
+			if file.Cached != nil {
+				if err := os.WriteFile(filepath.Join(target, name), file.Cached, 0644); err != nil {
+					return err
+				}
+				continue
+			}
 			config := printer.Config{Mode: printer.SourcePos | printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
 			if err := config.Fprint(&buf, p.Fset, file.Tree); err != nil {
 				return err
 			}
-			name := fmt.Sprintf("ghi_source_%d.go", index)
 			if err := os.WriteFile(filepath.Join(target, name), buf.Bytes(), 0644); err != nil {
 				return err
 			}

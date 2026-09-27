@@ -19,7 +19,7 @@ func (p *program) specializeLeafReceivers(info *types.Info) {
 		}
 	}
 	for _, c := range classes {
-		if c.Interface || parents[c] {
+		if c.Interface || parents[c] || p.reusedNamespace(c.Namespace) {
 			continue
 		}
 		methods := append([]*functionDecl{}, c.Methods...)

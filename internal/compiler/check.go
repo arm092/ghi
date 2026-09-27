@@ -34,6 +34,9 @@ func prepareProject(ctx context.Context, options Options) (*preparedProject, err
 }
 
 func prepareProjectMode(ctx context.Context, options Options, testing bool) (*preparedProject, error) {
+	if options.Stats != nil {
+		*options.Stats = CheckStats{}
+	}
 	root := options.Dir
 	if root == "" {
 		root = "."
@@ -97,10 +100,32 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 			}
 			os.RemoveAll(workspace)
 			prepared.workspace, prepared.cache = cache.workspace, cache
+			if options.Stats != nil {
+				for _, ns := range p.Ordered {
+					if ns != p.Runtime {
+						options.Stats.ReusedNamespaces = append(options.Stats.ReusedNamespaces, ns.Name)
+					}
+				}
+			}
 			return prepared, nil
+		}
+		if cache.key != "" {
+			p.Semantic = p.prepareSemanticCache(cache)
 		}
 	}
 	generationErr := p.generate(ctx, workspace, prepared.goPath)
+	if options.Stats != nil {
+		for _, ns := range p.Ordered {
+			if ns == p.Runtime {
+				continue
+			}
+			if p.reusedNamespace(ns) {
+				options.Stats.ReusedNamespaces = append(options.Stats.ReusedNamespaces, ns.Name)
+			} else {
+				options.Stats.CheckedNamespaces = append(options.Stats.CheckedNamespaces, ns.Name)
+			}
+		}
+	}
 	if err := p.verifyDependencies(); err != nil {
 		prepared.close()
 		return nil, err
@@ -115,7 +140,7 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 			return nil, err
 		}
 	}
-	if cache != nil && cache.key != "" && cache.store(workspace) == nil {
+	if cache != nil && cache.key != "" && cache.store(workspace, p) == nil {
 		os.RemoveAll(workspace)
 		prepared.workspace, prepared.cache = cache.workspace, cache
 	}

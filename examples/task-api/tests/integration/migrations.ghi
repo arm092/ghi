@@ -1,0 +1,69 @@
+namespace tests.integration
+
+import app.httpapi
+import app.service
+import app.store
+import arm092.migrations.MigrationError
+import arm092.migrations.Migrator
+import sql "go:database/sql"
+import httptest "go:net/http/httptest"
+import os "go:os"
+import filepath "go:path/filepath"
+import testing "go:testing"
+
+func TestMigrationLifecycle(t *testing.T) {
+	directory := t.TempDir()
+	for _, entry := range os.ReadDir(store.MigrationDirectory()) {
+		data := os.ReadFile(filepath.Join(store.MigrationDirectory(), entry.Name()))
+		os.WriteFile(filepath.Join(directory, entry.Name()), data, 0600)
+	}
+	path := filepath.Join(t.TempDir(), "migrations.db")
+	repository := new store.Store(path, directory)
+	repository.Add("persistent")
+	repository.Close()
+	repository = new store.Store(path, directory)
+	if len(repository.List()) != 1 {
+		t.Fatal("migration replay lost data")
+	}
+	repository.Close()
+	db := sql.Open("sqlite", path)
+	defer db.Close()
+	migrator := new Migrator(db, directory)
+	if migrator.Up() != 0 {
+		t.Fatal("migration was applied twice")
+	}
+	if migrator.Down(1) != 1 || migrator.Up() != 1 {
+		t.Fatal("rollback and reapply failed")
+	}
+	os.WriteFile(filepath.Join(directory, "002_broken.sql"), []byte("CREATE TABLE incomplete(id INTEGER); INSERT INTO missing VALUES(1);"), 0600)
+	failed := false
+	try {
+		repository = new store.Store(path, directory)
+		repository.Close()
+	} catch err MigrationError {
+		failed = true
+	}
+	if !failed {
+		t.Fatal("broken migration succeeded")
+	}
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='incomplete'").Scan(&count)
+	if count != 0 {
+		t.Fatal("failed migration left partial schema")
+	}
+	db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count)
+	if count != 1 {
+		t.Fatal("failed migration was recorded")
+	}
+}
+
+func TestStorageFailureResponse(t *testing.T) {
+	repository := new store.Store(filepath.Join(t.TempDir(), "closed.db"))
+	handler := new httpapi.Handler(new service.Service(repository))
+	repository.Close()
+	response := httptest.NewRecorder()
+	handler.Serve(response, httptest.NewRequest("GET", "/tasks", nil))
+	if response.Code != 500 || response.Body.String() != "{\"error\":\"storage operation failed\"}\n" {
+		t.Fatalf("unexpected storage failure response: %d %s", response.Code, response.Body.String())
+	}
+}

@@ -1,6 +1,11 @@
 {
   "version": 1,
-  "dependencies": {},
+  "dependencies": {
+    "arm092/migrations": {
+      "repository": "https://github.com/arm092/ghi-migrations.git",
+      "ref": "v0.4.0"
+    }
+  },
   "goDependencies": {
     "modernc.org/sqlite": "v1.59.0"
   }

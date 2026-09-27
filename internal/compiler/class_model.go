@@ -210,7 +210,11 @@ func (p *program) parameters(f *functionDecl, to *sourceFile, ns *namespace, con
 		if f.Owner != nil {
 			typ = p.typeText(param.Type, f.Owner, to, ns, context...)
 		}
-		result = append(result, param.Names[0].Name+" "+typ)
+		// Wrapper names live in the descendant's generic scope. Source names
+		// may shadow its type parameters or concrete ancestor arguments.
+		for range param.Names {
+			result = append(result, fmt.Sprintf("ghi_arg_%d %s", len(result), typ))
+		}
 	}
 	return strings.Join(result, ", ")
 }
@@ -227,8 +231,8 @@ func (p *program) results(f *functionDecl, to *sourceFile, ns *namespace, contex
 		if len(field.Names) == 0 {
 			result = append(result, typ)
 		} else {
-			for _, name := range field.Names {
-				result = append(result, name.Name+" "+typ)
+			for range field.Names {
+				result = append(result, typ)
 			}
 		}
 	}
@@ -239,7 +243,7 @@ func argumentNames(f *functionDecl) string {
 	for _, param := range f.Node.Type.Params.List {
 		for _, name := range param.Names {
 			if name.Name != "this" {
-				names = append(names, name.Name)
+				names = append(names, fmt.Sprintf("ghi_arg_%d", len(names)))
 			}
 		}
 	}
@@ -300,13 +304,13 @@ func (p *program) prepareClasses() error {
 			for _, c := range file.Unit.Classes {
 				key := ns.Name + "." + c.Name
 				if seen[key] {
-					return fmt.Errorf("duplicate class %s", key)
+					return fmt.Errorf("%s:%d: duplicate class %s", file.Path, c.Line, key)
 				}
 				seen[key] = true
 				if c.ParentName != "" {
 					c.Parent = p.classNamed(c.ParentName, file, ns)
 					if c.Parent == nil || c.Parent.Interface {
-						return fmt.Errorf("class %s: unknown parent class %s", c.Name, c.ParentName)
+						return fmt.Errorf("%s:%d: class %s: unknown parent class %s", file.Path, c.Line, c.Name, c.ParentName)
 					}
 					expr, err := parser.ParseExpr(c.ParentName)
 					if err != nil {
@@ -320,7 +324,7 @@ func (p *program) prepareClasses() error {
 				for _, name := range c.InterfaceNames {
 					target := p.classNamed(name, file, ns)
 					if target == nil || !target.Interface {
-						return fmt.Errorf("class %s: unknown interface %s", c.Name, name)
+						return fmt.Errorf("%s:%d: class %s: unknown interface %s", file.Path, c.Line, c.Name, name)
 					}
 					c.Interfaces = append(c.Interfaces, target)
 				}
@@ -331,7 +335,7 @@ func (p *program) prepareClasses() error {
 		ancestors := map[*classDecl]bool{}
 		for a := c; a != nil; a = a.Parent {
 			if ancestors[a] {
-				return fmt.Errorf("inheritance cycle at %s", c.Name)
+				return fmt.Errorf("%s:%d: inheritance cycle at %s", c.File.Path, c.Line, c.Name)
 			}
 			ancestors[a] = true
 		}
@@ -343,17 +347,17 @@ func (p *program) prepareClasses() error {
 				base = c.Parent.method(method.Name)
 			}
 			if method.Override && (base == nil || base.Visibility == "private") {
-				return fmt.Errorf("%s.%s: override requires an accessible parent method", c.Name, method.Name)
+				return fmt.Errorf("%s: %s.%s: override requires an accessible parent method", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 			}
 			if base != nil {
 				if !method.Override {
-					return fmt.Errorf("%s.%s: overriding a parent method requires override", c.Name, method.Name)
+					return fmt.Errorf("%s: %s.%s: overriding a parent method requires override", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 				}
 				if p.signature(method, c) != p.signature(base, c) {
-					return fmt.Errorf("%s.%s: incompatible override signature", c.Name, method.Name)
+					return fmt.Errorf("%s: %s.%s: incompatible override signature", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 				}
 				if visibilityRank(method.Visibility) < visibilityRank(base.Visibility) {
-					return fmt.Errorf("%s.%s: override reduces visibility", c.Name, method.Name)
+					return fmt.Errorf("%s: %s.%s: override reduces visibility", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 				}
 			}
 		}
@@ -361,7 +365,7 @@ func (p *program) prepareClasses() error {
 			for _, requirement := range iface.Methods {
 				method := c.method(requirement.Name)
 				if method == nil || method.Visibility != "public" || (iface.TypeParams == nil && p.signature(method, c) != p.signature(requirement, c)) {
-					return fmt.Errorf("class %s does not implement %s.%s", c.Name, iface.Name, requirement.Name)
+					return fmt.Errorf("%s:%d: class %s does not implement %s.%s", c.File.Path, c.Line, c.Name, iface.Name, requirement.Name)
 				}
 			}
 		}

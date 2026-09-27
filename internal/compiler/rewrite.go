@@ -51,6 +51,9 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 	var failure error
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
+			if file.Cached != nil {
+				continue
+			}
 			owners := map[*ast.FuncDecl]*classDecl{}
 			for _, c := range file.Unit.Classes {
 				if c.Interface {
@@ -134,7 +137,14 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 											// Taking the field address evaluates the receiver once and
 											// lets Go perform the compound operation directly.
 											address := &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldRef(field))}}
-											n.Lhs[0] = &ast.StarExpr{Star: selector.Pos(), X: address}
+											star := &ast.StarExpr{Star: selector.Pos(), X: address}
+											// A generated field accessor always returns the address of
+											// initialized storage, including storage of a type parameter.
+											if p.CheckedDereferences == nil {
+												p.CheckedDereferences = map[*ast.StarExpr]bool{}
+											}
+											p.CheckedDereferences[star] = true
+											n.Lhs[0] = star
 											changed = true
 											return n
 										}
@@ -187,7 +197,23 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								// import the same namespace in this file.
 								constructor = expressionText(qualified.X) + ".GhiNew_" + c.Name
 							}
-							n.Fun, _ = parser.ParseExpr(constructor + typeArgumentsText(typeArguments))
+							constructed, _ := parser.ParseExpr(constructor)
+							ast.Inspect(constructed, func(node ast.Node) bool {
+								if id, ok := node.(*ast.Ident); ok {
+									id.NamePos = base.Pos()
+								}
+								return true
+							})
+							// Keep the source type argument nodes: reparsing them assigns
+							// positions near the start of an unrelated source file.
+							switch indexed := n.Fun.(type) {
+							case *ast.IndexExpr:
+								indexed.X = constructed
+							case *ast.IndexListExpr:
+								indexed.X = constructed
+							default:
+								n.Fun = constructed
+							}
 							fillDefaults(n, c.Constructor, 0, p.classDefaultTransform(c, classBindings(c, typeArguments), file, ns))
 							changed = true
 							return node
@@ -228,7 +254,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 									reject("method " + method.Name + " is " + method.Visibility)
 									return node
 								}
-								selector.Sel = ast.NewIdent("GhiM_" + method.Name)
+								selector.Sel.Name = "GhiM_" + method.Name
 								fillDefaults(n, method, 0, func(value ast.Expr) ast.Expr {
 									bindings := p.inheritedCallBindings(c, method.Owner, selector.X, value, info, file, ns)
 									return p.classDefaultTransform(method.Owner, bindings, file, ns)(value)
@@ -253,7 +279,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								reject("method " + method.Name + " is " + method.Visibility)
 								return node
 							}
-							n.Sel = ast.NewIdent("GhiM_" + method.Name)
+							n.Sel.Name = "GhiM_" + method.Name
 							changed = true
 						}
 					}

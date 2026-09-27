@@ -12,6 +12,24 @@ import (
 
 // Concrete receiver optimization must preserve the interface type of aliases,
 // captured/rebound receivers, generic fields and inherited virtual calls.
+func TestGenericFieldCompoundAssignment(t *testing.T) {
+	runMatchSource(t, `namespace main
+class Counter[value ~int] {
+ public value value
+ constructor(initial value) { this.value = initial }
+ public func change(n value) value { this.value += n; this.value++; this.value -= 2; this.value *= 3; this.value--; return this.value }
+}
+var calls = 0
+func receiver(c Counter[int]) Counter[int] { calls++; return c }
+func main() {
+ c := new Counter[int](4)
+ println(c.change(2))
+ receiver(c).value += 2
+ println(c.value, calls)
+}
+`, "14\n16 1\n")
+}
+
 func TestReceiverSpecializationSemantics(t *testing.T) {
 	runMatchSource(t, `namespace main
 class Cell[T any] {
@@ -195,7 +213,7 @@ class Repository[T any] {
  constructor(value T) { this.value = value }
  public func get() T { return this.value }
  public func read() T { return this.get() }
- public func shadow(a int, b int) T { U := a; Item := b; _, _ = U, Item; var result T = this.value; return result }
+ public func shadow(U int, Item int) T { _, _ = U, Item; var result T = this.value; return result }
  public func values() []T { return []T{this.value} }
  public func alias(other Repository[T]) T { copy := this; copy = other; return copy.get() }
  public func rebound(other Repository[T]) T { this = other; return this.get() }

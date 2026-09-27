@@ -19,7 +19,7 @@ func (p *program) emitClass(c *classDecl) error {
 	}
 	for _, field := range c.allFields() {
 		typ := p.typeText(field.Type, field.Owner, c.File, c.Namespace, c)
-		fmt.Fprintf(&out, "%s() %s\n%s(value %s)\n", fieldGet(field), typ, fieldSet(field), typ)
+		fmt.Fprintf(&out, "%s() %s\n%s(ghi_value %s)\n", fieldGet(field), typ, fieldSet(field), typ)
 		fmt.Fprintf(&out, "%s() *%s\n", fieldRef(field), typ)
 	}
 	for _, m := range c.allMethods() {
@@ -27,9 +27,9 @@ func (p *program) emitClass(c *classDecl) error {
 	}
 	out.WriteString("}\n")
 	if len(c.InterfaceNames) > 0 {
-		fmt.Fprintf(&out, "func ghiVerify_%s%s(value %s%s) {\n", c.Name, parameters, c.Name, arguments)
+		fmt.Fprintf(&out, "func ghiVerify_%s%s(ghi_value %s%s) {\n", c.Name, parameters, c.Name, arguments)
 		for _, name := range c.InterfaceNames {
-			fmt.Fprintf(&out, "var _ %s = value\n", name)
+			fmt.Fprintf(&out, "var _ %s = ghi_value\n", name)
 		}
 		out.WriteString("}\n")
 	}
@@ -45,7 +45,7 @@ func (p *program) emitClass(c *classDecl) error {
 		for _, f := range c.allFields() {
 			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace, c)
 			fmt.Fprintf(&out, "func (this *%s) %s() %s { return this.F_%s_%s }\n", receiver, fieldGet(f), typ, f.Owner.key(), f.Name)
-			fmt.Fprintf(&out, "func (this *%s) %s(value %s) { this.F_%s_%s = value }\n", receiver, fieldSet(f), typ, f.Owner.key(), f.Name)
+			fmt.Fprintf(&out, "func (this *%s) %s(ghi_value %s) { this.F_%s_%s = ghi_value }\n", receiver, fieldSet(f), typ, f.Owner.key(), f.Name)
 			fmt.Fprintf(&out, "func (this *%s) %s() *%s { return &this.F_%s_%s }\n", receiver, fieldRef(f), typ, f.Owner.key(), f.Name)
 		}
 		for _, m := range c.allMethods() {

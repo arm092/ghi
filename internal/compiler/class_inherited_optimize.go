@@ -23,6 +23,19 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 	}
 	p.SourceCopies = map[ast.Node]ast.Node{}
 	p.SpecializedNames = map[string]string{}
+	if p.Semantic != nil {
+		for name, display := range p.Semantic.names {
+			for ns := range p.Semantic.reused {
+				prefix := namespacePath(p.Namespaces[ns]) + "."
+				if ns == "main" {
+					prefix = "main."
+				}
+				if strings.HasPrefix(name, prefix) {
+					p.SpecializedNames[name] = display
+				}
+			}
+		}
+	}
 	names := make([]string, 0, len(classes))
 	for name := range classes {
 		names = append(names, name)
@@ -30,10 +43,13 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 	sort.Strings(names)
 	for _, className := range names {
 		c := classes[className]
-		if c.Interface {
+		if c.Interface || p.reusedNamespace(c.Namespace) {
 			continue
 		}
 		for _, method := range c.allMethods() {
+			if p.reusedNamespace(method.Owner.Namespace) {
+				continue
+			}
 			if method.Owner == c && !parents[c] {
 				continue
 			}

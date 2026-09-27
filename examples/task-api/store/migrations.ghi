@@ -1,0 +1,19 @@
+namespace app.store
+
+import os "go:os"
+import filepath "go:path/filepath"
+import runtime "go:runtime"
+
+func MigrationDirectory() string {
+	configured := os.Getenv("GHI_TASK_MIGRATIONS")
+	if configured != "" {
+		return configured
+	}
+	// Source-tree default for ghi run/test; deployments set GHI_TASK_MIGRATIONS.
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		throw new Exception("Set GHI_TASK_MIGRATIONS to the SQL migration directory")
+	}
+
+	return filepath.Join(filepath.Dir(source), "migrations")
+}

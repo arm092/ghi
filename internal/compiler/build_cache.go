@@ -23,8 +23,11 @@ type buildCache struct {
 }
 
 type buildCacheState struct {
-	Key   string
-	Files map[string]string
+	Key              string
+	Files            map[string]string
+	Namespaces       map[string]string
+	Helpers          []int
+	SpecializedNames map[string]string
 }
 
 // The OS releases the nonblocking lock even if the compiler is killed. Busy,
@@ -105,11 +108,6 @@ func (p *program) buildCacheKey(ctx context.Context, workspace, goPath string) s
 	// Go validates its own build cache. Export artifact identities also cover
 	// local replace modules and build constraints; a changed API invalidates Ghi.
 	encoder.Encode(loader.exports)
-	for _, ns := range p.Ordered {
-		for _, file := range ns.Files {
-			encoder.Encode([]string{file.Path, string(file.Source)})
-		}
-	}
 	for _, name := range []string{"mojave.json", "mojave.lock", "go.mod", "go.sum"} {
 		data, err := os.ReadFile(filepath.Join(p.Root, name))
 		if err != nil && !os.IsNotExist(err) {
@@ -126,6 +124,12 @@ func (p *program) buildCacheKey(ctx context.Context, workspace, goPath string) s
 	}
 	if ctx.Err() != nil {
 		return ""
+	}
+	p.CacheEnvironment = hex.EncodeToString(h.Sum(nil))
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			encoder.Encode([]string{file.Path, string(file.Source)})
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -161,30 +165,35 @@ func cacheFiles(dir string) (map[string]string, error) {
 }
 
 func (c *buildCache) valid() bool {
+	state := c.snapshot()
+	return state != nil && state.Key == c.key
+}
+
+func (c *buildCache) snapshot() *buildCacheState {
 	data, err := os.ReadFile(filepath.Join(c.dir, "state.json"))
 	if err != nil {
-		return false
+		return nil
 	}
 	var state buildCacheState
-	if json.Unmarshal(data, &state) != nil || state.Key != c.key || len(state.Files) == 0 {
-		return false
+	if json.Unmarshal(data, &state) != nil || len(state.Files) == 0 {
+		return nil
 	}
 	files, err := cacheFiles(c.workspace)
 	if err != nil || len(files) != len(state.Files) {
-		return false
+		return nil
 	}
 	for name, digest := range files {
 		if state.Files[name] != digest {
-			return false
+			return nil
 		}
 	}
-	return true
+	return &state
 }
 
 // Publish only after semantic validation. Keep stable filenames and unchanged
 // bytes/mtimes so Go can reuse unaffected packages. Invalidate before writing;
 // an interrupted sync can never be mistaken for a complete cached generation.
-func (c *buildCache) store(staging string) error {
+func (c *buildCache) store(staging string, p *program) error {
 	files, err := cacheFiles(staging)
 	if err != nil {
 		return err
@@ -220,7 +229,15 @@ func (c *buildCache) store(staging string) error {
 			return err
 		}
 	}
-	data, err := json.Marshal(buildCacheState{Key: c.key, Files: files})
+	state := buildCacheState{Key: c.key, Files: files, SpecializedNames: p.SpecializedNames}
+	if p.Semantic != nil {
+		state.Namespaces = p.Semantic.keys
+	}
+	for count := range p.Helpers {
+		state.Helpers = append(state.Helpers, count)
+	}
+	sort.Ints(state.Helpers)
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}

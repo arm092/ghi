@@ -263,7 +263,9 @@ A separate run gave each compiler a fresh, independent `GOCACHE`, while keeping 
 
 Normal `ghi build`, `ghi run` and `ghi check` reuse validated generated Go code in `.ghi/build/work`. The cache key includes source contents and paths, installed Ghi package sources, manifests and lockfiles, the compiler executable, selected Go toolchain, resolved Go settings and external Go export artifacts. Local Go `replace` dependencies are checked by Go too. Source discovery, Mojave validation, dependency downloads and checksum verification still run. Generated files are hashed before reuse; missing or damaged cache data causes regeneration.
 
-Unchanged inputs skip Ghi lowering and semantic checking. After a source edit, Ghi currently checks and lowers the whole project because receiver specialization depends on the complete class hierarchy. Only changed generated files are written to the stable workspace, allowing Go to reuse unaffected compiled packages. This is incremental reuse of generated output and Go packages, not a persistent per-file Ghi AST cache. The compiler also seeds its temporary output from the previous executable, allowing Go to skip unnecessary linking after checking build IDs; failed builds preserve the previous output.
+Unchanged inputs skip Ghi lowering and semantic checking. In the current source checkout, edits invalidate the changed namespace and its transitive consumers. Unaffected namespaces reuse their validated generated bodies; their declarations are still checked to reconstruct type information. Receiver specialization requires the affected inheritance component to be checked together, and changes to the class inheritance graph invalidate all namespace certificates conservatively. Compiler, toolchain, environment, dependency and manifest changes also invalidate certificates. This namespace-level semantic reuse is newer than the v0.2.4 binary release.
+
+Only changed generated files are written to the stable workspace, allowing Go to reuse unaffected compiled packages. This is not a persistent per-file Ghi AST cache: source discovery, parsing and structural validation still run. The compiler also seeds its temporary output from the previous executable, allowing Go to skip unnecessary linking after checking build IDs; failed builds preserve the previous output. Embedders can supply `compiler.Options.Stats` to observe checked and reused namespaces; runtime implementation namespaces are excluded from those counters.
 
 Debug builds, test runs and unsaved editor overlays use fresh temporary workspaces. Concurrent builds use an OS lock; a busy, read-only or unavailable cache falls back to temporary compilation. The lock is released by the OS when the process exits, including after a crash. To clear generated build data, remove `.ghi/build` while no compilation is running; installed packages under `.ghi/packages` are separate. Dependency checksum verification runs concurrently with Ghi analysis; both must succeed before generated output or an executable can be accepted.
 
@@ -283,7 +285,16 @@ The final v0.2.4 pipeline overlaps checksum verification with Ghi analysis, whil
 | Unchanged sources | 3.987 s | 2.095 s |
 | After editing one service | 3.822 s | 2.934 s |
 
-These medians are about 47% and 23% lower respectively. The earlier five-sample baseline is reused; Go/module caches remain warm, and there are no parallel tests during measurement. The changed-file speedup comes from overlapping independent work and Go package reuse; Ghi semantic checking after edits is still project-wide. Failed checksum verification preserves the previous executable. [Final build samples](tests/performance/results/parallel-build-windows-amd64-go1.26.3.csv).
+These v0.2.4 medians are about 47% and 23% lower respectively. The earlier five-sample baseline is reused; Go/module caches remain warm, and there are no parallel tests during measurement. The changed-file speedup comes from overlapping independent work and Go package reuse; v0.2.4 semantic checking after edits was still project-wide. Failed checksum verification preserves the previous executable. [Final build samples](tests/performance/results/parallel-build-windows-amd64-go1.26.3.csv).
+
+The subsequent namespace semantic cache was compared directly with the published v0.2.4 compiler using `ghi check` on the same DDD project, machine and Go version. Five measured pairs after one warm-up pair per compiler gave:
+
+| Check scenario | v0.2.4 median | Current source median |
+| --- | ---: | ---: |
+| Unchanged sources | 1.685 s | 1.710 s |
+| Edited application service | 1.722 s | 1.771 s |
+
+This dependency-heavy example shows **no end-to-end speedup** from namespace reuse in this run: dependency preparation and checksum verification dominate the overlapping pipeline. The changed-source ranges were 1.652–1.783 s before and 1.715–1.797 s after. A separate behavioral check confirms that editing only the entry namespace rechecks that namespace and reuses three unchanged namespaces, while an inheritance change rechecks the affected component. These results establish selective semantic work, not a promise of lower wall time on every project. [Check samples](tests/performance/results/namespace-check-windows-amd64-go1.26.3.csv).
 
 ### HTTP API and SQLite comparison
 
@@ -746,10 +757,33 @@ Native Go assistance uses the configured SDK and locally installed dependencies.
 | [Objects](examples/objects) | Classes, interfaces and inheritance |
 | [Inheritance](examples/inheritance) | Generic repositories and specialization |
 | [Constraints](examples/constraints) | Imported and composite interface bounds |
-| [Task API](examples/task-api) | Backend application with dependencies |
+| [Task API](examples/task-api) | Small HTTP service, SQLite persistence, published migration package and integration tests |
 | [DDD API](examples/ddd-api) | Routes, controllers, services, repositories, models, migrations and tests |
 
 From a cloned checkout, use `ghi run examples/hello`. For projects with dependencies, run `mojave install` inside that example first.
+
+### Published-package service
+
+The [Task API](examples/task-api) is verified with the published **Ghi v0.2.4**, **Mojave v0.1.0** and **arm092/migrations v0.4.0** on Windows amd64. Its lockfile pins the migration package commit and Go dependency checksums. No local package checkout or unpublished compiler is required.
+
+```sh
+cd examples/task-api
+mojave install
+ghi test .
+ghi run .
+```
+
+The server listens on `127.0.0.1:8080`. `POST /tasks` accepts `{"Title":"Ship Ghi"}` and returns the created task with status 201; `GET /tasks` returns the task list. Empty or overlong titles return 422, malformed JSON returns 400, and storage failures return a generic 500 response. The handler, service and repository live in `httpapi/`, `service/` and `store/`; tests are under `tests/integration/`.
+
+Configuration uses `GHI_TASK_ADDR`, `GHI_TASK_DB` (default `tasks.db`) and `GHI_TASK_MIGRATIONS`. SQL migrations live in `store/migrations/`, including an explicit rollback file. Startup applies pending migrations through the published `Migrator`; replay preserves existing data and checksum mismatches or migration failures stop startup. Tests use temporary databases and cover HTTP behavior, persistence after reopen, migration replay, rollback/reapply, atomic failure and a sanitized storage error response.
+
+For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `store/migrations/`, and set `GHI_TASK_MIGRATIONS` to the deployed SQL directory. The source-tree migration path is only a development default. Use an `.exe` output name on Windows. Rollbacks are explicit maintenance operations through `Migrator.Down`; the example never runs them automatically.
+
+### Compiler fixes in the current source checkout
+
+Generic numeric fields support compound assignment and increment/decrement, including inherited access, without treating compiler-generated field addresses as nullable. Generated forwarding methods use private parameter names, so a parent method parameter named `U` or `Item` does not collide with a descendant type parameter or concrete type of the same name. These fixes preserve source-level names and apply in normal and debug builds.
+
+Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These compiler changes are newer than the v0.2.4 binaries.
 
 Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 

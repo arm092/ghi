@@ -136,7 +136,8 @@ func (checker *packageChecker) check(ns *namespace) *types.Package {
 	for _, file := range ns.Files {
 		files = append(files, file.Tree)
 	}
-	config := types.Config{Importer: checker, GoVersion: "go1.26", Error: func(err error) {
+	reused := checker.program.reusedNamespace(ns)
+	config := types.Config{Importer: checker, GoVersion: "go1.26", IgnoreFuncBodies: reused, DisableUnusedImportCheck: reused, Error: func(err error) {
 		if checker.first == nil {
 			checker.first = err
 		}
@@ -174,6 +175,7 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			}
 		}
 	}
+	p.reuseSemanticNamespaces()
 	loader := &exportLoader{ctx: ctx, goPath: goPath, dir: workspace, exports: p.Exports}
 	if loader.exports == nil {
 		loader.exports = map[string]string{}

@@ -323,6 +323,9 @@ func (p *program) validateEnumValues(info *types.Info) error {
 	var failure error
 	for _, ns := range p.Ordered {
 		for _, f := range ns.Files {
+			if f.Cached != nil {
+				continue
+			}
 			ast.Inspect(f.Tree, func(node ast.Node) bool {
 				if fn, ok := node.(*ast.FuncDecl); ok && strings.HasPrefix(fn.Name.Name, "GhiEnum_") {
 					return false
