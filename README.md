@@ -850,7 +850,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.6 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.7 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
@@ -897,6 +897,29 @@ Startup applies pending migrations, and a migration failure prevents the listene
 ```sh
 python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/mojave
 ```
+
+### Request Journal in Docker
+
+Build from the service directory using the published Ghi v0.2.7 Linux archive, bundled Mojave v0.1.0 and the committed package lock:
+
+```sh
+cd services/request-journal
+docker build --platform linux/amd64 -t ghi-request-journal:0.2.7 .
+docker volume create ghi-journal-data
+docker run -d --name ghi-journal --read-only --tmpfs /tmp:rw,noexec,nosuid --mount type=volume,source=ghi-journal-data,target=/data -p 127.0.0.1:8080:8080 ghi-request-journal:0.2.7
+```
+
+The build verifies the release archive checksum, installs Go in the build stage, installs locked packages, runs Ghi tests and compiles the service. The final image runs as UID 10001 and contains the executable and SQL migrations without Go, Ghi or Mojave. Inside the container, the service binds to `0.0.0.0:8080`, stores SQLite data at `/data/journal.db`, and loads SQL from `/app/migrations`. The host port is bound to localhost. `/health` is the container health check.
+
+Stop gracefully with `docker stop --time 10 ghi-journal`. Remove and recreate the container with the same volume to retain requests and history. Removing the volume deletes the database. Mount a writable `/data` owned by UID 10001 if using a host directory instead of a named volume.
+
+Run the deployment check from the service directory:
+
+```sh
+python tests/docker_smoke.py
+```
+
+Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.7 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
 
 ### Compiler fixes in v0.2.5
 

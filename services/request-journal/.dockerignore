@@ -1,0 +1,8 @@
+.git
+.ghi
+.idea
+bin
+__pycache__
+*.db*
+*.out
+*.cover
