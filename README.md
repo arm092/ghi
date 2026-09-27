@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.5](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5).
+**Current release:** [Ghi v0.2.7](https://github.com/arm092/ghi/releases/tag/v0.2.7), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.5](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -37,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.6).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.7).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -45,12 +45,14 @@ Download the archive for your operating system and CPU from the [compiler releas
 | Windows | ARM64 | `windows_arm64.zip` |
 | macOS | Intel | `darwin_amd64.tar.gz` |
 | macOS | Apple silicon | `darwin_arm64.tar.gz` |
+| Linux | Intel/AMD 64-bit | `linux_amd64.tar.gz` |
+| Linux | ARM64 | `linux_arm64.tar.gz` |
 
 Extract the complete archive, keeping both executables, their checksum files and the installer together. Outer archive hashes are in `checksums.txt` on the release page.
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.6/ghi_v0.2.6_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.7/ghi_v0.2.7_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -73,7 +75,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.6 on macOS, use the portable archive or Homebrew. A native v0.2.6 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.6/ghi_v0.2.6_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.7 on macOS, use the portable archive or Homebrew. A native v0.2.7 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.7/ghi_v0.2.7_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -82,6 +84,10 @@ sh install.sh
 ```
 
 The default directory is `~/.local/bin`. The installer configures zsh or bash startup files; open a new terminal afterwards. Set `GHI_INSTALL_DIR` to choose another directory or `GHI_NO_PATH=1` to manage PATH yourself.
+
+### Linux
+
+Extract the matching Linux archive and run `sh install.sh`. The default directory is `~/.local/bin`; `GHI_INSTALL_DIR` and `GHI_NO_PATH=1` work as on macOS. The script verifies binary checksums using `sha256sum` or `shasum` and prepares Go automatically. Install Git to use Git-hosted Mojave packages.
 
 ### Automatic Go setup
 
@@ -96,7 +102,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The full release test suite was run locally on Windows. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
+The v0.2.7 release test suite and `go vet ./...` passed locally on Windows amd64. Linux amd64 and Linux ARM64 archives passed installation, managed Go setup, project creation/execution and source coverage checks in Alpine containers. ARM64 execution used Docker emulation, not native ARM hardware. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -162,7 +168,7 @@ Test watching runs immediately, includes production sources and the project's ro
 
 The CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
 
-### Source coverage (development source after v0.2.6)
+### Source coverage (v0.2.7)
 
 Build the current CLI source to use:
 
@@ -898,7 +904,7 @@ Generic numeric fields support compound assignment and increment/decrement, incl
 
 Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These diagnostics and generic fixes are included in v0.2.5.
 
-Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles currently cover Windows and macOS; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
+Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles cover Windows, macOS and Linux; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 
 ### Building the tools from source
 

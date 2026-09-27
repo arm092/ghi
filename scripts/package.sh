@@ -7,7 +7,7 @@ version=${1:-dev}
 case "$version" in *[!a-zA-Z0-9._-]*|'') echo 'Invalid version' >&2; exit 1;; esac
 mojave_version=$(go list -m -f '{{.Version}}' github.com/arm092/mojave)
 mkdir -p dist
-for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
     os=${target%/*}
     arch=${target#*/}
     bundle=$(mktemp -d)

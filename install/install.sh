@@ -7,7 +7,17 @@ if [ ! -f "$bundle/ghi" ] || [ ! -f "$bundle/ghi.sha256" ]; then
     echo 'Extract the complete Ghi release archive before running this installer.' >&2
     exit 1
 fi
-(cd "$bundle" && shasum -a 256 -c ghi.sha256)
+verify_checksum() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        (cd "$bundle" && sha256sum -c "$1")
+    elif command -v shasum >/dev/null 2>&1; then
+        (cd "$bundle" && shasum -a 256 -c "$1")
+    else
+        echo 'Install sha256sum or shasum to verify the release.' >&2
+        exit 1
+    fi
+}
+verify_checksum ghi.sha256
 with_mojave=0
 # Preserve installation support for older compiler-only bundles.
 if [ -e "$bundle/mojave" ] || [ -e "$bundle/mojave.sha256" ]; then
@@ -15,7 +25,7 @@ if [ -e "$bundle/mojave" ] || [ -e "$bundle/mojave.sha256" ]; then
         echo 'Extract the complete Ghi release archive before running this installer.' >&2
         exit 1
     fi
-    (cd "$bundle" && shasum -a 256 -c mojave.sha256)
+    verify_checksum mojave.sha256
     with_mojave=1
 fi
 "$bundle/ghi" setup
