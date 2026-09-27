@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.5](https://github.com/arm092/ghi/releases/tag/v0.2.5), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.3](https://github.com/arm092/ghi-goland/releases/tag/v0.1.3).
+**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.3](https://github.com/arm092/ghi-goland/releases/tag/v0.1.3).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -37,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.5).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.6).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.5/ghi_v0.2.5_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.6/ghi_v0.2.6_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -73,7 +73,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.5 on macOS, use the portable archive or Homebrew. A native v0.2.5 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.5/ghi_v0.2.5_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.6 on macOS, use the portable archive or Homebrew. A native v0.2.6 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.6/ghi_v0.2.6_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -147,9 +147,9 @@ Watched extensions are `.ghi`, `.go`, `.json`, `.lock`, `.sql`, `.mod` and `.sum
 
 Ctrl+C cancels compilation and stops the service. Unix uses a process group, with a one-second termination grace period before forced termination; Windows uses a job object and terminates the process tree on replacement or shutdown. This is a development workflow, not a production process supervisor. Watch mode does not run tests automatically.
 
-### Test watching (development source after v0.2.5)
+### Test watching (v0.2.6)
 
-Build the CLI from the current source checkout to use the following workflow; it is not included in the v0.2.5 download:
+Available since v0.2.6:
 
 ```sh
 ghi test --watch .
@@ -158,9 +158,9 @@ ghi test --watch -run '^TestRepository' -v -timeout 30s .
 
 Test watching runs immediately, includes production sources and the project's root `tests/` directory, and reruns after changes. Runs are serialized; edits during a run schedule one subsequent run after saves settle. Failed tests and compiler errors keep the watcher running. A result from a run with observed source changes is marked as outdated instead of reported as a current pass. Installed dependencies retain their own test exclusions. The watched file extensions and output exclusions are the same as ordinary watch mode. Ctrl+C cancels the active test process tree and exits; invalid filters, timeouts and project paths fail at startup.
 
-### Source diagnostics (development source after v0.2.5)
+### Source diagnostics (v0.2.6)
 
-The development CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
+The CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
 
 ## How compilation works
 
@@ -329,7 +329,7 @@ Dependency preparation now edits the staged module with `golang.org/x/mod`, avoi
 
 A final comparison against the namespace-cache implementation, using the same five-sample DDD `ghi check` protocol, measured 1.714 → 1.773 s unchanged and 1.788 → 1.849 s after an edit. The final pipeline also includes cancellation of subprocess trees. Although dependency preparation removes redundant Go commands and uses parallel hashing, this complete Windows run was about 3% slower; it does not establish an end-to-end compilation speedup. These are warm-cache Windows amd64 results, not fresh-install or cross-platform guarantees. [Dependency preparation samples](tests/performance/results/dependency-verification-windows-amd64-go1.26.3.csv).
 
-The subsequent development change reuses the 32 KiB copy buffers used for module archive/source hashing instead of allocating one for every file. A CPU profile identified allocation/GC work alongside decompression and filesystem operations. All bytes are still read and checked on every compilation, and subprocess-tree cancellation remains enabled. Against the published v0.2.5 compiler, seven measured samples after warm-up gave:
+Version v0.2.6 reuses the 32 KiB copy buffers used for module archive/source hashing instead of allocating one for every file. A CPU profile identified allocation/GC work alongside decompression and filesystem operations. All bytes are still read and checked on every compilation, and subprocess-tree cancellation remains enabled. Against the published v0.2.5 compiler, seven measured samples after warm-up gave:
 
 | DDD `ghi check` | v0.2.5 median | Buffer reuse median |
 | --- | ---: | ---: |
@@ -825,7 +825,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The fresh-consumer workflow has been verified on Windows amd64 with published **Ghi v0.2.5**, **Mojave v0.1.0**, **arm092/migrations v0.4.0** and [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.6 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0** and [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
