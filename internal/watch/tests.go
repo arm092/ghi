@@ -81,11 +81,12 @@ func Tests(ctx context.Context, o TestOptions) error {
 	for {
 		if pending && done == nil && time.Since(lastChange) >= o.Debounce {
 			pending = false
-			var runCtx context.Context
-			runCtx, cancel = context.WithCancel(ctx)
+			runCtx, stopRun := context.WithCancel(ctx)
+			cancel = stopRun
 			done = make(chan error, 1)
 			fmt.Fprintln(o.Log, "[test-watch] running")
 			go func(result chan<- error) {
+				defer stopRun()
 				result <- compiler.Test(runCtx, compiler.TestOptions{Dir: root, Run: o.Filter, Timeout: o.Timeout, Verbose: o.Verbose, Log: o.Log})
 			}(done)
 		}
