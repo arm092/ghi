@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.7](https://github.com/arm092/ghi/releases/tag/v0.2.7), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.5](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5).
+**Current release:** [Ghi v0.2.7](https://github.com/arm092/ghi/releases/tag/v0.2.7), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.6](https://github.com/arm092/ghi-goland/releases/tag/v0.1.6).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -793,9 +793,11 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 ## GoLand support
 
-The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Version v0.1.5 is [under review in JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi). After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
+The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Version v0.1.6 is [under review in JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi). After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
 
-The [v0.1.5 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.6 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.6) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+
+Version v0.1.6 adds **Tools → Ghi → Test with Coverage** for Ghi v0.2.7+. The **Ghi Coverage** tool window shows covered/total statement counts and percentages by file. Editor markers distinguish executed and missed statement starts, including mixed lines. Starting a new run or editing sources clears prior results; failed, cancelled or superseded runs never publish stale profiles. Coverage is statement entry, not branch coverage. All 72 tests passed on platform 251; coverage integration and Plugin Verifier passed on both 251 and 262. These checks use the IntelliJ test framework, not a native window/mouse session.
 
 Version v0.1.5 also fixes shadowed catch variables in debugger views. Request Journal was exercised through real Delve/XDebugSession integrations on platforms 251 and 262: breakpoints, stepping, receivers, arguments, inherited exception fields and HTTP/SQLite behavior were checked. These were IDE integration tests, not mouse-driven verification of a native IDE window.
 
