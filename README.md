@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.3](https://github.com/arm092/ghi-goland/releases/tag/v0.1.3).
+**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.4](https://github.com/arm092/ghi-goland/releases/tag/v0.1.4).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -772,7 +772,7 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Its [JetBrains Marketplace submission](https://plugins.jetbrains.com/plugin/34508-ghi) is awaiting moderation. After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
 
-The [v0.1.1 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.1) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.4 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.4) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 The plugin provides:
 
