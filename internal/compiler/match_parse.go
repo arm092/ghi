@@ -12,7 +12,7 @@ const matchResultMarker = "ghi_match_result"
 // Match syntax becomes a switch in an immediately invoked function. Only token
 // spelling changes: original newlines, comments and literal bytes stay intact.
 // The result marker is resolved to a concrete type by the lowering pass.
-func normalizeMatches(filename string, source []byte) ([]byte, error) {
+func normalizeMatches(filename string, source []byte, mappings ...*coverageSourceMap) ([]byte, error) {
 	for {
 		tokens, err := lexSource(filename, source)
 		if err != nil {
@@ -60,10 +60,7 @@ func normalizeMatches(filename string, source []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		type edit struct {
-			start, end int
-			text       string
-		}
+		type edit = sourceEdit
 		edits := []edit{{tokens[start].Start, tokens[start].End, "(func() " + matchResultMarker + " { switch"}, {tokens[close].Start, tokens[close].End, "}})()"}}
 		foundDefault := false
 		for i := open + 1; i < close; {
@@ -128,6 +125,9 @@ func normalizeMatches(filename string, source []byte) ([]byte, error) {
 			return fail(start, "requires a final default arm")
 		}
 		sort.SliceStable(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
+		for _, m := range mappings {
+			m.apply(source, edits)
+		}
 		var out strings.Builder
 		previous := 0
 		for _, e := range edits {

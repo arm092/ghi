@@ -11,7 +11,7 @@ import (
 // normalizeArrows lowers block lambdas to Go function literals before class
 // extraction, so methods, closures and exception bodies share the same parser.
 // Edits never add or remove newlines, preserving source line diagnostics.
-func normalizeArrows(filename string, source []byte) ([]byte, error) {
+func normalizeArrows(filename string, source []byte, mappings ...*coverageSourceMap) ([]byte, error) {
 	tokens, err := lexSource(filename, source)
 	if err != nil {
 		return nil, err
@@ -74,16 +74,22 @@ func normalizeArrows(filename string, source []byte) ([]byte, error) {
 		return source, nil
 	}
 	var out strings.Builder
+	var edits []sourceEdit
 	for i := 0; i < len(source); i++ {
 		if starts[i] {
 			out.WriteString("func")
+			edits = append(edits, sourceEdit{i, i, "func"})
 		}
 		if arrows[i] {
 			out.WriteString("  ")
+			edits = append(edits, sourceEdit{i, i + 2, "  "})
 			i++
 			continue
 		}
 		out.WriteByte(source[i])
+	}
+	for _, m := range mappings {
+		m.apply(source, edits)
 	}
 	return []byte(out.String()), nil
 }

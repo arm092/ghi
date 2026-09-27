@@ -160,7 +160,7 @@ func TestWatchTestsLifecycle(t *testing.T) {
 	var log watchLog
 	done := make(chan error, 1)
 	go func() {
-		done <- watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: "^TestValue$", Timeout: 10 * time.Second, Log: &log, Interval: 50 * time.Millisecond, Debounce: 50 * time.Millisecond})
+		done <- watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: "^TestValue$", Cover: true, CoverProfile: filepath.Join(dir, "coverage.out"), Timeout: 10 * time.Second, Log: &log, Interval: 50 * time.Millisecond, Debounce: 50 * time.Millisecond})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -182,6 +182,7 @@ func TestWatchTestsLifecycle(t *testing.T) {
 		t.Fatalf("missing %s: %s", token, log.text())
 	}
 	wait("[test-watch] passed", 1)
+	wait("app/value.ghi: 100.0%", 1)
 	write("tests/unit/value.ghi", strings.Replace(source, "!= 1", "!= 2", 1))
 	wait("[test-watch] failed", 1)
 	write("app/value.ghi", "namespace app\nfunc Value() int {return 2}\n")
@@ -198,7 +199,7 @@ func TestWatchTestsRejectsInvalidOptions(t *testing.T) {
 	if err := os.WriteFile(file, []byte("namespace main"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, options := range []watch.TestOptions{{Dir: dir, Filter: "["}, {Dir: dir, Timeout: -1}, {Dir: file}} {
+	for _, options := range []watch.TestOptions{{Dir: dir, Filter: "["}, {Dir: dir, Timeout: -1}, {Dir: file}, {Dir: dir, CoverProfile: file}} {
 		if err := watch.Tests(context.Background(), options); err == nil {
 			t.Fatal("invalid options accepted")
 		}

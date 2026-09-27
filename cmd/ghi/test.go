@@ -18,6 +18,8 @@ func runTests(args []string) int {
 	timeout := flags.Duration("timeout", time.Minute, "maximum duration per test suite")
 	watching := flags.Bool("watch", false, "rerun tests after source or test changes")
 	verbose := flags.Bool("v", false, "show passing tests")
+	cover := flags.Bool("cover", false, "report Ghi source statement coverage")
+	profile := flags.String("coverprofile", "", "write Ghi coverage profile (implies --cover)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -36,13 +38,13 @@ func runTests(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if *watching {
-		if err := watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: *filter, Timeout: *timeout, Verbose: *verbose, Log: os.Stdout}); err != nil {
+		if err := watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Log: os.Stdout}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		return 0
 	}
-	if err := compiler.Test(ctx, compiler.TestOptions{Dir: dir, Run: *filter, Timeout: *timeout, Verbose: *verbose, Log: os.Stdout}); err != nil {
+	if err := compiler.Test(ctx, compiler.TestOptions{Dir: dir, Run: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Log: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, compiler.FormatDiagnostic(err, dir, nil))
 		return 1
 	}

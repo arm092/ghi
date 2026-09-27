@@ -18,11 +18,12 @@ type Options struct {
 	// Stats optionally reports semantic namespace reuse for tooling/profiling.
 	Stats *CheckStats
 	// Overlay replaces existing project source contents in memory.
-	Overlay map[string][]byte
-	Dir     string
-	Output  string
-	Log     io.Writer
-	Debug   bool
+	Overlay  map[string][]byte
+	Dir      string
+	Output   string
+	Log      io.Writer
+	Debug    bool
+	coverage *coveragePlan
 }
 
 type CheckStats struct {

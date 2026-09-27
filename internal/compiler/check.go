@@ -52,11 +52,12 @@ func prepareProjectMode(ctx context.Context, options Options, testing bool) (*pr
 	if !info.IsDir() {
 		return nil, fmt.Errorf("project path must be a directory: %s", root)
 	}
-	p, err := loadProjectOverlay(root, testing, options.Overlay)
+	p, err := loadProjectOverlay(root, testing, options.Overlay, options.coverage != nil)
 	if err != nil {
 		return nil, err
 	}
 	p.Debug = options.Debug
+	p.Coverage = options.coverage
 	// Go permits declarations implemented in assembly; Ghi projects do not.
 	// Validate before lowering so generated declarations are not involved.
 	for _, ns := range p.Ordered {

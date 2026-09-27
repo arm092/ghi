@@ -34,7 +34,16 @@ def main():
         run(args.ghi, "test", ".")
         executable = root / "bin" / ("journal.exe" if os.name == "nt" else "journal")
         run(args.ghi, "build", "-o", str(executable), ".")
-        environment = dict(os.environ, JOURNAL_ADDR="127.0.0.1:0", JOURNAL_DB=str(root / "journal.db"), JOURNAL_MIGRATIONS=str(root / "migrations"))
+        environment = dict(os.environ, JOURNAL_ADDR="127.0.0.1:0", JOURNAL_DB=str(root / "journal.db"), JOURNAL_MIGRATIONS=str(root / "migrations"), JOURNAL_SHUTDOWN_TIMEOUT="5s")
+        # Configuration must fail before opening the database or a listener,
+        # and typed parse errors must not disclose the supplied value.
+        for value in ("", "0s", "-1s", "private-invalid-duration"):
+            bad_env = dict(environment, JOURNAL_SHUTDOWN_TIMEOUT=value)
+            failed = subprocess.run([str(executable)], cwd=root, env=bad_env, capture_output=True, text=True, timeout=30)
+            output = failed.stdout + failed.stderr
+            assert failed.returncode != 0 and "JOURNAL_SHUTDOWN_TIMEOUT" in output
+            assert "private-invalid-duration" not in output and '"msg":"listening"' not in output
+            assert not (root / "journal.db").exists(), "invalid config created the database"
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         process = None
         log = None

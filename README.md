@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.4](https://github.com/arm092/ghi-goland/releases/tag/v0.1.4).
+**Current release:** [Ghi v0.2.6](https://github.com/arm092/ghi/releases/tag/v0.2.6), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.5](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -161,6 +161,23 @@ Test watching runs immediately, includes production sources and the project's ro
 ### Source diagnostics (v0.2.6)
 
 The CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
+
+### Source coverage (development source after v0.2.6)
+
+Build the current CLI source to use:
+
+```sh
+ghi test --cover .
+ghi test --coverprofile coverage.out -run TestCreate .
+ghi test --watch --cover .
+```
+
+`--cover` reports executed/total source statement entries per `.ghi` file and for the project. `--coverprofile` implies coverage and writes a profile after a successful run; its output path is relative to the command's working directory. Test namespaces, installed packages and generated runtime code are excluded. Uncalled production functions and namespaces remain in the denominator. Results from separate test suites are merged, and inherited method copies share the original statement identity.
+
+Coverage probes run before a statement, so a statement that throws is counted as entered. Constructors, methods, closures, labelled statements and exception bodies retain their source locations. This is statement-entry coverage, not branch/condition coverage: a control statement is one entry, its header initializer/update expressions are not separate entries, and match arms are expressions rather than source statements. Empty bodies and top-level initializer expressions have no statement entry.
+
+Profiles use Go's `mode: set` text format with project-relative Ghi filenames, byte-based columns and one-column spans at statement starts. Generic profile readers can consume them; tools that parse Go syntax to compute function coverage cannot parse Ghi class declarations. Counters are atomic and exist only in coverage test builds. Failed or cancelled runs leave a prior profile unchanged and do not print a successful coverage summary. Existing non-profile files and project input extensions are protected against accidental overwrite.
+
 
 ## How compilation works
 
@@ -770,9 +787,11 @@ The canonical formatter sorts imports by path, uses tabs, expands nonempty block
 
 ## GoLand support
 
-The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Its [JetBrains Marketplace submission](https://plugins.jetbrains.com/plugin/34508-ghi) is awaiting moderation. After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
+The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Version v0.1.5 is [under review in JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi). After approval, search for **Ghi** under **Settings → Plugins → Marketplace**.
 
-The [v0.1.4 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.4) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.5 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.5) is already available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+
+Version v0.1.5 also fixes shadowed catch variables in debugger views. Request Journal was exercised through real Delve/XDebugSession integrations on platforms 251 and 262: breakpoints, stepping, receivers, arguments, inherited exception fields and HTTP/SQLite behavior were checked. These were IDE integration tests, not mouse-driven verification of a native IDE window.
 
 The plugin provides:
 
@@ -825,7 +844,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.6 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0** and [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.6 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
@@ -861,8 +880,11 @@ Independent rules may report more than one violation for a field. Create request
 | `JOURNAL_ADDR` | `127.0.0.1:8080` |
 | `JOURNAL_DB` | `journal.db` (file path) |
 | `JOURNAL_MIGRATIONS` | `migrations` (relative to the working directory) |
+| `JOURNAL_SHUTDOWN_TIMEOUT` | `5s` (positive Go duration) |
 
-Startup applies pending migrations, and a migration failure prevents the listener from opening. Run from the project directory, or set absolute database/migration paths. For deployment, use `ghi build -o bin/journal .` (`bin/journal.exe` on Windows), then copy the executable and `migrations/`. Go and Ghi are not needed to run the binary. Database files should live on persistent storage. Shutdown handles interrupt/SIGTERM with a five-second HTTP grace period.
+Settings use `arm092/config`: defaults apply only when a variable is absent, explicit empty paths/addresses are rejected, and the shutdown timeout is parsed as a duration and must be positive. Configuration errors identify the variable without exposing its value and stop startup before database initialization. No `.env` file is loaded automatically.
+
+Startup applies pending migrations, and a migration failure prevents the listener from opening. Run from the project directory, or set absolute database/migration paths. For deployment, use `ghi build -o bin/journal .` (`bin/journal.exe` on Windows), then copy the executable and `migrations/`. Go and Ghi are not needed to run the binary. Database files should live on persistent storage. Shutdown handles interrupt/SIGTERM with the configured HTTP grace period (five seconds by default).
 
 `ghi test .` checks atomic rollback on history failure, connection replacement after cancellation, cascading deletion and sanitized storage errors. The Python 3 smoke runner copies the project into a fresh temporary directory, installs locked dependencies, runs Ghi tests, builds and starts the executable, exercises real HTTP requests including concurrent writes, restarts against the same database, and checks failed migration rollback:
 

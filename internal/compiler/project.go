@@ -32,6 +32,7 @@ type program struct {
 	Semantic            *semanticCache
 	CacheEnvironment    string
 	Debug               bool
+	Coverage            *coveragePlan
 	Exports             map[string]string
 	verification        *dependencyVerification
 	SourceCopies        map[ast.Node]ast.Node
@@ -57,7 +58,7 @@ func loadProjectMode(root string, testing bool) (*program, error) {
 	return loadProjectOverlay(root, testing, nil)
 }
 
-func loadProjectOverlay(root string, testing bool, overlay map[string][]byte) (*program, error) {
+func loadProjectOverlay(root string, testing bool, overlay map[string][]byte, coverage ...bool) (*program, error) {
 	remaining := make(map[string]bool, len(overlay))
 	for path := range overlay {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
@@ -97,7 +98,7 @@ func loadProjectOverlay(root string, testing bool, overlay map[string][]byte) (*
 				return err
 			}
 		}
-		name, tree, unit, err := parseFile(p.Fset, path, data)
+		name, tree, unit, err := parseFile(p.Fset, path, data, coverage...)
 		if err != nil {
 			return err
 		}

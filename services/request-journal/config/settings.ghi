@@ -1,0 +1,35 @@
+namespace journal.config
+
+import arm092.config.Env
+import strings "go:strings"
+import time "go:time"
+
+type Settings struct {
+	Address string
+	Database string
+	Migrations string
+	ShutdownTimeout time.Duration
+}
+
+func nonempty(name string, value string) string {
+	if strings.TrimSpace(value) == "" {
+		throw new Exception(name + " must not be empty")
+	}
+
+	return value
+}
+
+func Load() Settings {
+	env := new Env()
+	settings := Settings{
+		Address: nonempty("JOURNAL_ADDR", env.String("JOURNAL_ADDR", "127.0.0.1:8080")),
+		Database: nonempty("JOURNAL_DB", env.String("JOURNAL_DB", "journal.db")),
+		Migrations: nonempty("JOURNAL_MIGRATIONS", env.String("JOURNAL_MIGRATIONS", "migrations")),
+		ShutdownTimeout: env.Duration("JOURNAL_SHUTDOWN_TIMEOUT", 5 * time.Second),
+	}
+	if settings.ShutdownTimeout <= 0 {
+		throw new Exception("JOURNAL_SHUTDOWN_TIMEOUT must be positive")
+	}
+
+	return settings
+}

@@ -155,6 +155,11 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 	if err := p.validateConstruction(); err != nil {
 		return err
 	}
+	if p.Coverage != nil {
+		if err := p.instrumentCoverage(); err != nil {
+			return err
+		}
+	}
 	if err := p.lowerControl(); err != nil {
 		return err
 	}

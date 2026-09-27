@@ -22,12 +22,16 @@ type fieldDecl struct {
 	Owner            *classDecl
 }
 type functionDecl struct {
-	Name       string
-	Node       *ast.FuncDecl
-	Defaults   map[int]ast.Expr
-	Visibility string
-	Override   bool
-	Owner      *classDecl
+	// Class members are parsed as separate Go fragments. Preserve the tail
+	// offset so source tooling can recover columns on their declaration line.
+	SourceTail  token.Position
+	HeaderWidth int
+	Name        string
+	Node        *ast.FuncDecl
+	Defaults    map[int]ast.Expr
+	Visibility  string
+	Override    bool
+	Owner       *classDecl
 }
 type classDecl struct {
 	Name           string
@@ -45,11 +49,12 @@ type classDecl struct {
 	Interfaces     []*classDecl
 }
 type unit struct {
-	Enums       []*enumDecl
-	TypeImports []selectedTypeImport
-	Native      bool
-	Classes     []*classDecl
-	Functions   map[string]*functionDecl
+	CoverageSource *coverageSourceMap
+	Enums          []*enumDecl
+	TypeImports    []selectedTypeImport
+	Native         bool
+	Classes        []*classDecl
+	Functions      map[string]*functionDecl
 }
 
 func lexSource(filename string, source []byte) ([]lexeme, error) {
@@ -202,10 +207,11 @@ func parseFunction(fset *token.FileSet, filename, name, parameters, tail string,
 			}
 		}
 	}
-	return &functionDecl{Name: name, Node: fn, Defaults: defaults, Visibility: "private"}, nil
+	header := "func " + name + "(" + params + ")"
+	return &functionDecl{Name: name, Node: fn, Defaults: defaults, Visibility: "private", HeaderWidth: len(header) - strings.LastIndex(header, "\n") - 1}, nil
 }
 
-func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]byte, *unit, error) {
+func extractExtensions(fset *token.FileSet, filename string, source []byte, coverage ...bool) ([]byte, *unit, error) {
 	tokens, err := lexSource(filename, source)
 	if err != nil {
 		return nil, nil, err
@@ -220,11 +226,15 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 			}
 		}
 	}
-	source, err = normalizeMatches(filename, source)
+	var mapping *coverageSourceMap
+	if len(coverage) > 0 && coverage[0] {
+		mapping = &coverageSourceMap{}
+	}
+	source, err = normalizeMatches(filename, source, mapping)
 	if err != nil {
 		return nil, nil, err
 	}
-	source, err = normalizeArrows(filename, source)
+	source, err = normalizeArrows(filename, source, mapping)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -241,7 +251,10 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte) ([]b
 		return nil, nil, err
 	}
 	data := append([]byte(nil), source...)
-	u := &unit{Functions: map[string]*functionDecl{}}
+	if mapping != nil {
+		mapping.finish(source)
+	}
+	u := &unit{Functions: map[string]*functionDecl{}, CoverageSource: mapping}
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
@@ -422,6 +435,8 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 				return err
 			}
 			fn.Visibility = visibility
+			prefix := string(source[:resultStart])
+			fn.SourceTail = token.Position{Filename: filename, Line: 1 + strings.Count(prefix, "\n"), Column: resultStart - strings.LastIndex(prefix, "\n")}
 			fn.Override = override
 			fn.Owner = class
 			if name == "constructor" {

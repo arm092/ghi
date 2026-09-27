@@ -1,7 +1,15 @@
 {
   "version": 1,
-  "manifestHash": "aa35fd9efe4342d6e9c5d9ce3f57b4e5839bd1ee0510147108b97522b1f15d71",
+  "manifestHash": "6c73ba97034dda59a515db23c7a15556ea984d16e97c2903ee5b3fd603368966",
   "packages": [
+    {
+      "identity": "arm092/config",
+      "namespace": "arm092.config",
+      "repository": "https://github.com/arm092/ghi-config.git",
+      "ref": "v0.1.0",
+      "commit": "700a3c875d7788edcf002f2ec8adf7ad855ae539",
+      "integrity": "7c5fc9ab5aad449ff0537d46e55ccebd7a0125803d6ef09f4fc731f2b5ad4710"
+    },
     {
       "identity": "arm092/migrations",
       "namespace": "arm092.migrations",

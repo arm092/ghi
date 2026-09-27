@@ -3,11 +3,13 @@ namespace tests.integration
 import context "go:context"
 import sql "go:database/sql"
 import httptest "go:net/http/httptest"
+import os "go:os"
 import filepath "go:path/filepath"
 import runtime "go:runtime"
 import testing "go:testing"
 import time "go:time"
 import journal.application.Service
+import journal.config
 import journal.domain
 import journal.httpapi
 import journal.storage.Repository
@@ -16,6 +18,38 @@ func migrations() string {
 	_, source, _, _ := runtime.Caller(0)
 
 	return filepath.Join(filepath.Dir(source), "..", "..", "migrations")
+}
+
+func TestEnvironmentSettings(t *testing.T) {
+	for _, name := range []string{
+		"JOURNAL_ADDR",
+		"JOURNAL_DB",
+		"JOURNAL_MIGRATIONS",
+		"JOURNAL_SHUTDOWN_TIMEOUT",
+	} {
+		t.Setenv(name, "temporary")
+		os.Unsetenv(name)
+	}
+	defaults := config.Load()
+	if defaults.Address != "127.0.0.1:8080" || defaults.Database != "journal.db" || defaults.Migrations != "migrations" || defaults.ShutdownTimeout != 5 * time.Second {
+		t.Fatal("wrong absent-variable defaults")
+	}
+	t.Setenv("JOURNAL_DB", "custom.db")
+	t.Setenv("JOURNAL_SHUTDOWN_TIMEOUT", "1250ms")
+	explicit := config.Load()
+	if explicit.Database != "custom.db" || explicit.ShutdownTimeout != 1250 * time.Millisecond {
+		t.Fatal("typed environment override was ignored")
+	}
+	t.Setenv("JOURNAL_DB", "")
+	rejected := false
+	try {
+		config.Load()
+	} catch err Exception {
+		rejected = err.message == "JOURNAL_DB must not be empty"
+	}
+	if !rejected {
+		t.Fatal("explicit empty database path used a default")
+	}
 }
 
 func TestAtomicStatusHistory(t *testing.T) {

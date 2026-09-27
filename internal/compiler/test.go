@@ -20,15 +20,17 @@ import (
 )
 
 type TestOptions struct {
-	Dir     string
-	Run     string
-	Timeout time.Duration
-	Verbose bool
-	Log     io.Writer
+	Dir          string
+	Run          string
+	Timeout      time.Duration
+	Verbose      bool
+	Cover        bool
+	CoverProfile string
+	Log          io.Writer
 }
 
-// Test runs Ghi tests from the dedicated tests directory in a temporary workspace.
-func Test(ctx context.Context, options TestOptions) error {
+// ValidateTestOptions rejects invalid test options before starting a watcher.
+func ValidateTestOptions(options TestOptions) error {
 	if options.Run != "" {
 		if _, err := regexp.Compile(options.Run); err != nil {
 			return fmt.Errorf("invalid test filter: %w", err)
@@ -37,7 +39,22 @@ func Test(ctx context.Context, options TestOptions) error {
 	if options.Timeout < 0 {
 		return fmt.Errorf("test timeout must not be negative")
 	}
-	prepared, err := prepareProjectMode(ctx, Options{Dir: options.Dir, Log: options.Log}, true)
+	if err := validateCoverageProfile(options.CoverProfile); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Test runs Ghi tests from the dedicated tests directory in a temporary workspace.
+func Test(ctx context.Context, options TestOptions) error {
+	if err := ValidateTestOptions(options); err != nil {
+		return err
+	}
+	var coverage *coveragePlan
+	if options.Cover || options.CoverProfile != "" {
+		coverage = &coveragePlan{}
+	}
+	prepared, err := prepareProjectMode(ctx, Options{Dir: options.Dir, Log: options.Log, coverage: coverage}, true)
 	if err != nil {
 		return err
 	}
@@ -65,6 +82,11 @@ func Test(ctx context.Context, options TestOptions) error {
 		sort.Strings(names)
 		var source strings.Builder
 		fmt.Fprintf(&source, "package %s_test\nimport (\"testing\"; subject %q)\n", ns.GoName, namespacePath(ns))
+		if coverage != nil {
+			result := filepath.Join(prepared.workspace, fmt.Sprintf("coverage-%d.json", len(coverage.Results)))
+			coverage.Results = append(coverage.Results, result)
+			fmt.Fprintf(&source, "import (\"encoding/json\"; \"os\"; \"fmt\"; coverage %q)\nfunc TestMain(m *testing.M) { code:=m.Run(); data,err:=json.Marshal(coverage.CoverageSnapshot()); if err==nil {err=os.WriteFile(%q,data,0600)}; if err!=nil {fmt.Fprintln(os.Stderr,err);code=1}; os.Exit(code) }\n", namespacePath(prepared.program.Runtime), result)
+		}
 		for _, name := range names {
 			fmt.Fprintf(&source, "func %s(t *testing.T) { subject.%s(t) }\n", name, name)
 			count++
@@ -95,6 +117,9 @@ func Test(ctx context.Context, options TestOptions) error {
 	cmd.Stdout, cmd.Stderr = options.Log, options.Log
 	if err := proctree.Run(ctx, cmd); err != nil {
 		return fmt.Errorf("Ghi tests failed: %w", err)
+	}
+	if coverage != nil {
+		return coverage.report(options.Log, options.CoverProfile)
 	}
 	return nil
 }

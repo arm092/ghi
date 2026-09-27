@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sync"
 	"time"
 )
@@ -16,6 +15,8 @@ type TestOptions struct {
 	Dir, Filter        string
 	Timeout            time.Duration
 	Verbose            bool
+	Cover              bool
+	CoverProfile       string
 	Log                io.Writer
 	Interval, Debounce time.Duration
 }
@@ -38,11 +39,8 @@ func Tests(ctx context.Context, o TestOptions) error {
 		o.Log = io.Discard
 	}
 	o.Log = &lockedWriter{w: o.Log}
-	if o.Timeout < 0 {
-		return fmt.Errorf("test timeout must not be negative")
-	}
-	if _, err := regexp.Compile(o.Filter); err != nil {
-		return fmt.Errorf("invalid test filter: %w", err)
+	if err := compiler.ValidateTestOptions(compiler.TestOptions{Run: o.Filter, Timeout: o.Timeout, CoverProfile: o.CoverProfile}); err != nil {
+		return err
 	}
 	if o.Interval <= 0 {
 		o.Interval = 250 * time.Millisecond
@@ -87,7 +85,7 @@ func Tests(ctx context.Context, o TestOptions) error {
 			fmt.Fprintln(o.Log, "[test-watch] running")
 			go func(result chan<- error) {
 				defer stopRun()
-				result <- compiler.Test(runCtx, compiler.TestOptions{Dir: root, Run: o.Filter, Timeout: o.Timeout, Verbose: o.Verbose, Log: o.Log})
+				result <- compiler.Test(runCtx, compiler.TestOptions{Dir: root, Run: o.Filter, Timeout: o.Timeout, Verbose: o.Verbose, Cover: o.Cover, CoverProfile: o.CoverProfile, Log: o.Log})
 			}(done)
 		}
 		select {

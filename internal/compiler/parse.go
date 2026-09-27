@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.File, *unit, error) {
+func parseFile(fset *token.FileSet, filename string, data []byte, coverage ...bool) (string, *ast.File, *unit, error) {
 	// The declaration grammar starts with a namespace rather than a Go package.
 	// Go's scanner preserves comments, literals and automatic semicolon rules.
 	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
@@ -62,7 +62,7 @@ func parseFile(fset *token.FileSet, filename string, data []byte) (string, *ast.
 	if err != nil {
 		return "", nil, nil, err
 	}
-	normalized, unit, err := extractExtensions(fset, filename, importSource)
+	normalized, unit, err := extractExtensions(fset, filename, importSource, coverage...)
 	if err != nil {
 		return "", nil, nil, err
 	}

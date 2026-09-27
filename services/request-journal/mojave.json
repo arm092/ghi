@@ -1,6 +1,10 @@
 {
   "version": 1,
   "dependencies": {
+    "arm092/config": {
+      "repository": "https://github.com/arm092/ghi-config.git",
+      "ref": "v0.1.0"
+    },
     "arm092/migrations": {
       "repository": "https://github.com/arm092/ghi-migrations.git",
       "ref": "v0.4.0"
