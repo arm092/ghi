@@ -1,0 +1,279 @@
+File: Ghi.exe
+Build ID: D:\new_lang\.work\journal-bench-gfc2n4in\Ghi.exe2026-09-28 01:11:51.3112354 +0400 +04
+Type: cpu
+Time: 2026-09-28 01:14:05 +04
+Duration: 5s, Total samples = 7.91s (158.19%)
+Showing nodes accounting for 5.94s, 75.09% of 7.91s total
+Dropped 373 nodes (cum <= 0.04s)
+      flat  flat%   sum%        cum   cum%
+     2.19s 27.69% 27.69%      2.22s 28.07%  runtime.cgocall
+     0.39s  4.93% 32.62%      0.39s  4.93%  runtime.semawakeup
+     0.37s  4.68% 37.29%      0.37s  4.68%  runtime.semasleep
+     0.22s  2.78% 40.08%      0.22s  2.78%  runtime.netpollQueueTimer
+     0.16s  2.02% 42.10%      0.39s  4.93%  runtime.netpoll
+     0.11s  1.39% 43.49%      0.12s  1.52%  runtime.(*mspan).writeHeapBitsSmall
+     0.10s  1.26% 44.75%      0.10s  1.26%  runtime.nextFreeFast (inline)
+     0.10s  1.26% 46.02%      0.10s  1.26%  runtime.procyieldAsm
+     0.09s  1.14% 47.16%      0.12s  1.52%  internal/sync.(*Mutex).Lock (inline)
+     0.09s  1.14% 48.29%      0.09s  1.14%  runtime.memclrNoHeapPointers
+     0.08s  1.01% 49.30%      0.52s  6.57%  runtime.lock2
+     0.08s  1.01% 50.32%      0.08s  1.01%  runtime.runqgrab.osyield.func1
+     0.08s  1.01% 51.33%      0.09s  1.14%  runtime.step
+     0.06s  0.76% 52.09%      0.06s  0.76%  aeshashbody
+     0.06s  0.76% 52.84%      0.06s  0.76%  runtime.memmove
+     0.05s  0.63% 53.48%      0.05s  0.63%  internal/sync.(*Mutex).Unlock (inline)
+     0.05s  0.63% 54.11%      0.05s  0.63%  modernc.org/libc.(*TLS).Alloc
+     0.05s  0.63% 54.74%      0.06s  0.76%  modernc.org/sqlite/lib._sqlite3DbMallocRawNN
+     0.05s  0.63% 55.37%      0.84s 10.62%  modernc.org/sqlite/lib._sqlite3VdbeExec
+     0.05s  0.63% 56.01%      0.71s  8.98%  modernc.org/sqlite/lib._yy_reduce
+     0.05s  0.63% 56.64%      0.15s  1.90%  runtime.(*unwinder).resolveInternal
+     0.05s  0.63% 57.27%      0.21s  2.65%  runtime.stealWork
+     0.04s  0.51% 57.77%      0.04s  0.51%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     0.04s  0.51% 58.28%      0.06s  0.76%  modernc.org/sqlite/lib._lookupName
+     0.04s  0.51% 58.79%      0.47s  5.94%  modernc.org/sqlite/lib._sqlite3Select
+     0.04s  0.51% 59.29%      0.07s  0.88%  runtime.(*timer).stop
+     0.04s  0.51% 59.80%      0.04s  0.51%  runtime.findfunc
+     0.04s  0.51% 60.30%      0.08s  1.01%  runtime.unlock2
+     0.03s  0.38% 60.68%      0.16s  2.02%  bufio.(*Reader).Peek
+     0.03s  0.38% 61.06%      0.10s  1.26%  modernc.org/sqlite/lib._resolveExprStep
+     0.03s  0.38% 61.44%      0.05s  0.63%  modernc.org/sqlite/lib._sqlite3DbNNFreeNN
+     0.03s  0.38% 61.82%      0.87s 11.00%  modernc.org/sqlite/lib._sqlite3Step
+     0.03s  0.38% 62.20%      0.14s  1.77%  runtime.pcvalue
+     0.03s  0.38% 62.58%      0.11s  1.39%  sync.(*Pool).Get
+     0.02s  0.25% 62.83%      0.13s  1.64%  bufio.(*Reader).fill
+     0.02s  0.25% 63.08%      0.15s  1.90%  context.WithDeadlineCause
+     0.02s  0.25% 63.34%      0.06s  0.76%  database/sql.(*DB).conn
+     0.02s  0.25% 63.59%      2.10s 26.55%  database/sql.(*DB).query
+     0.02s  0.25% 63.84%      2.02s 25.54%  database/sql.withLock
+     0.02s  0.25% 64.10%      0.24s  3.03%  ghi.generated/journal/httpapi.Router.guard.func13.2
+     0.02s  0.25% 64.35%      1.26s 15.93%  internal/poll.(*FD).Write
+     0.02s  0.25% 64.60%      0.51s  6.45%  modernc.org/sqlite/lib._sqlite3PagerSharedLock
+     0.02s  0.25% 64.85%      0.76s  9.61%  modernc.org/sqlite/lib._sqlite3Parser
+     0.02s  0.25% 65.11%      0.78s  9.86%  modernc.org/sqlite/lib._sqlite3RunParser
+     0.02s  0.25% 65.36%      0.04s  0.51%  modernc.org/sqlite/lib._sqlite3SelectDelete
+     0.02s  0.25% 65.61%      0.19s  2.40%  modernc.org/sqlite/lib._sqlite3VdbeHalt
+     0.02s  0.25% 65.87%      0.12s  1.52%  modernc.org/sqlite/lib._sqlite3WalEndReadTransaction
+     0.02s  0.25% 66.12%      0.11s  1.39%  modernc.org/sqlite/lib._sqlite3WhereBegin
+     0.02s  0.25% 66.37%      0.26s  3.29%  modernc.org/sqlite/lib._winHandleLockTimeout
+     0.02s  0.25% 66.62%      0.04s  0.51%  modernc.org/sqlite/lib.mutexEnter
+     0.02s  0.25% 66.88%      0.08s  1.01%  net/http.(*response).WriteHeader
+     0.02s  0.25% 67.13%      0.07s  0.88%  runtime.(*_panic).nextDefer
+     0.02s  0.25% 67.38%      0.07s  0.88%  runtime.execute
+     0.02s  0.25% 67.64%      0.05s  0.63%  runtime.makeslice
+     0.02s  0.25% 67.89%      0.33s  4.17%  runtime.mallocgcSmallScanNoHeader
+     0.02s  0.25% 68.14%      0.06s  0.76%  runtime.mapaccess1_faststr
+     0.02s  0.25% 68.39%      1.19s 15.04%  runtime.schedule
+     0.01s  0.13% 68.52%      0.11s  1.39%  context.(*cancelCtx).cancel
+     0.01s  0.13% 68.65%      0.08s  1.01%  context.(*timerCtx).cancel
+     0.01s  0.13% 68.77%      0.09s  1.14%  context.WithCancel.func1
+     0.01s  0.13% 68.90%      2.11s 26.68%  database/sql.(*DB).QueryContext
+     0.01s  0.13% 69.03%      0.07s  0.88%  database/sql.(*DB).putConn
+     0.01s  0.13% 69.15%      2.02s 25.54%  database/sql.(*DB).queryDC
+     0.01s  0.13% 69.28%      1.89s 23.89%  database/sql.(*DB).queryDC.func1
+     0.01s  0.13% 69.41%      0.06s  0.76%  database/sql.(*Rows).awaitDone
+     0.01s  0.13% 69.53%      3.27s 41.34%  ghi.generated/journal/httpapi.Router.guard.func13
+     0.01s  0.13% 69.66%      2.98s 37.67%  ghi.generated/journal/storage.(*ghiData_Repository).GhiM_Get
+     0.01s  0.13% 69.79%      3.38s 42.73%  github.com/go-chi/chi/v5.(*Mux).routeHTTP
+     0.01s  0.13% 69.91%      0.06s  0.76%  github.com/go-chi/chi/v5.(*node).findRoute
+     0.01s  0.13% 70.04%      0.67s  8.47%  internal/poll.(*FD).Read
+     0.01s  0.13% 70.16%      1.87s 23.64%  internal/poll.(*FD).execIO
+     0.01s  0.13% 70.29%      0.04s  0.51%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr
+     0.01s  0.13% 70.42%      0.04s  0.51%  internal/runtime/maps.rand
+     0.01s  0.13% 70.54%      0.18s  2.28%  modernc.org/libc.XGetFileSize
+     0.01s  0.13% 70.67%      0.24s  3.03%  modernc.org/libc.XLockFileEx
+     0.01s  0.13% 70.80%      1.86s 23.51%  modernc.org/sqlite.(*conn).QueryContext
+     0.01s  0.13% 70.92%      1.01s 12.77%  modernc.org/sqlite.(*stmt).query
+     0.01s  0.13% 71.05%      0.57s  7.21%  modernc.org/sqlite/lib._btreeBeginTrans
+     0.01s  0.13% 71.18%      0.13s  1.64%  modernc.org/sqlite/lib._btreeEndTransaction
+     0.01s  0.13% 71.30%      0.04s  0.51%  modernc.org/sqlite/lib._getPageNormal
+     0.01s  0.13% 71.43%      0.19s  2.40%  modernc.org/sqlite/lib._pagerPagecount
+     0.01s  0.13% 71.55%      0.06s  0.76%  modernc.org/sqlite/lib._selectExpander
+     0.01s  0.13% 71.68%      0.79s  9.99%  modernc.org/sqlite/lib._sqlite3Prepare
+     0.01s  0.13% 71.81%      0.12s  1.52%  modernc.org/sqlite/lib._sqlite3ResolveSelectNames
+     0.01s  0.13% 71.93%      0.04s  0.51%  modernc.org/sqlite/lib._sqlite3VdbeMemSetText
+     0.01s  0.13% 72.06%      0.68s  8.60%  net.(*conn).Read
+     0.01s  0.13% 72.19%      1.27s 16.06%  net.(*conn).Write
+     0.01s  0.13% 72.31%      0.09s  1.14%  net/http.(*chunkWriter).writeHeader
+     0.01s  0.13% 72.44%      0.39s  4.93%  net/http.(*conn).readRequest
+     0.01s  0.13% 72.57%      5.48s 69.28%  net/http.(*conn).serve
+     0.01s  0.13% 72.69%      0.59s  7.46%  net/http.(*connReader).backgroundRead
+     0.01s  0.13% 72.82%      1.40s 17.70%  net/http.(*response).finishRequest
+     0.01s  0.13% 72.95%      0.28s  3.54%  net/http.readRequest
+     0.01s  0.13% 73.07%      3.43s 43.36%  net/http.serverHandler.ServeHTTP
+     0.01s  0.13% 73.20%      0.06s  0.76%  net/textproto.canonicalMIMEHeaderKey
+     0.01s  0.13% 73.32%      0.05s  0.63%  runtime.casgstatus
+     0.01s  0.13% 73.45%      0.04s  0.51%  runtime.closechan
+     0.01s  0.13% 73.58%      1.02s 12.90%  runtime.findRunnable
+     0.01s  0.13% 73.70%      0.08s  1.01%  runtime.gcBgMarkWorker
+     0.01s  0.13% 73.83%      0.39s  4.93%  runtime.mallocgc
+     0.01s  0.13% 73.96%      0.06s  0.76%  runtime.mapassign_faststr
+     0.01s  0.13% 74.08%      1.20s 15.17%  runtime.mcall
+     0.01s  0.13% 74.21%      0.28s  3.54%  runtime.newobject
+     0.01s  0.13% 74.34%      0.13s  1.64%  runtime.ready
+     0.01s  0.13% 74.46%      0.09s  1.14%  runtime.runqgrab
+     0.01s  0.13% 74.59%      0.10s  1.26%  runtime.runqsteal
+     0.01s  0.13% 74.72%      0.04s  0.51%  runtime.stopm
+     0.01s  0.13% 74.84%      0.17s  2.15%  runtime.tracebackPCs
+     0.01s  0.13% 74.97%      2.24s 28.32%  syscall.SyscallN
+     0.01s  0.13% 75.09%      2.23s 28.19%  syscall.syscalln
+         0     0% 75.09%      1.36s 17.19%  bufio.(*Writer).Flush
+         0     0% 75.09%      0.12s  1.52%  context.(*cancelCtx).propagateCancel
+         0     0% 75.09%      0.08s  1.01%  context.WithCancel
+         0     0% 75.09%      0.15s  1.90%  context.WithDeadline (inline)
+         0     0% 75.09%      0.08s  1.01%  context.WithDeadlineCause.func3
+         0     0% 75.09%      0.15s  1.90%  context.WithTimeout
+         0     0% 75.09%      0.07s  0.88%  context.withCancel (inline)
+         0     0% 75.09%      2.10s 26.55%  database/sql.(*DB).QueryContext.func1
+         0     0% 75.09%      2.10s 26.55%  database/sql.(*DB).retry
+         0     0% 75.09%      0.24s  3.03%  database/sql.(*Rows).Close
+         0     0% 75.09%      0.29s  3.67%  database/sql.(*Rows).Next
+         0     0% 75.09%      0.05s  0.63%  database/sql.(*Rows).Next.func1
+         0     0% 75.09%      0.26s  3.29%  database/sql.(*Rows).close
+         0     0% 75.09%      0.06s  0.76%  database/sql.(*Rows).close.func1
+         0     0% 75.09%      0.08s  1.01%  database/sql.(*Rows).initContextClose
+         0     0% 75.09%      0.05s  0.63%  database/sql.(*Rows).nextLocked
+         0     0% 75.09%      0.07s  0.88%  database/sql.(*driverConn).releaseConn
+         0     0% 75.09%      1.86s 23.51%  database/sql.ctxDriverQuery
+         0     0% 75.09%      0.10s  1.26%  encoding/json.(*Encoder).Encode
+         0     0% 75.09%      0.05s  0.63%  encoding/json.(*encodeState).marshal
+         0     0% 75.09%      0.04s  0.51%  encoding/json.(*encodeState).reflectValue
+         0     0% 75.09%      0.04s  0.51%  encoding/json.mapEncoder.encode
+         0     0% 75.09%      0.23s  2.91%  ghi.generated/ghi/runtime.CaptureStack
+         0     0% 75.09%      0.23s  2.91%  ghi.generated/ghi/runtime.Raise
+         0     0% 75.09%      3.03s 38.31%  ghi.generated/ghi/runtime.Try
+         0     0% 75.09%      0.26s  3.29%  ghi.generated/ghi/runtime.Try.func1
+         0     0% 75.09%      2.98s 37.67%  ghi.generated/journal/application.(*ghiData_Service).GhiM_Get
+         0     0% 75.09%      2.98s 37.67%  ghi.generated/journal/application.GhiBody_Service_Get (inline)
+         0     0% 75.09%         3s 37.93%  ghi.generated/journal/httpapi.Router.func6
+         0     0% 75.09%      3.02s 38.18%  ghi.generated/journal/httpapi.Router.guard.func13.1
+         0     0% 75.09%      0.22s  2.78%  ghi.generated/journal/httpapi.send
+         0     0% 75.09%      2.97s 37.55%  ghi.generated/journal/storage.GhiBody_Repository_Get
+         0     0% 75.09%      3.42s 43.24%  github.com/go-chi/chi/v5.(*Mux).ServeHTTP
+         0     0% 75.09%      0.06s  0.76%  github.com/go-chi/chi/v5.(*node).FindRoute
+         0     0% 75.09%      0.50s  6.32%  golang.org/x/sys/windows.(*LazyProc).Call
+         0     0% 75.09%      0.49s  6.19%  golang.org/x/sys/windows.(*Proc).Call
+         0     0% 75.09%      0.30s  3.79%  internal/poll.(*FD).Read.func2
+         0     0% 75.09%      0.10s  1.26%  internal/poll.(*FD).SetReadDeadline (inline)
+         0     0% 75.09%      1.19s 15.04%  internal/poll.(*FD).Write.func2
+         0     0% 75.09%      0.27s  3.41%  internal/poll.(*FD).cancelIO
+         0     0% 75.09%      0.04s  0.51%  internal/poll.(*FD).pin
+         0     0% 75.09%      0.09s  1.14%  internal/poll.runtime_pollSetDeadline
+         0     0% 75.09%      0.10s  1.26%  internal/poll.setDeadlineImpl
+         0     0% 75.09%      0.05s  0.63%  internal/runtime/maps.(*Map).growToSmall
+         0     0% 75.09%      0.05s  0.63%  internal/runtime/maps.NewEmptyMap (inline)
+         0     0% 75.09%      0.05s  0.63%  internal/runtime/maps.newGroups (inline)
+         0     0% 75.09%      0.05s  0.63%  internal/runtime/maps.newarray
+         0     0% 75.09%      0.10s  1.26%  modernc.org/libc.XUnlockFileEx
+         0     0% 75.09%      0.06s  0.76%  modernc.org/sqlite.(*conn).finalize
+         0     0% 75.09%      0.81s 10.24%  modernc.org/sqlite.(*conn).prepareV2
+         0     0% 75.09%      1.85s 23.39%  modernc.org/sqlite.(*conn).query
+         0     0% 75.09%      0.87s 11.00%  modernc.org/sqlite.(*conn).step
+         0     0% 75.09%      0.06s  0.76%  modernc.org/sqlite.(*rows).Close
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite.interruptOnDone
+         0     0% 75.09%      0.84s 10.62%  modernc.org/sqlite.newStmt
+         0     0% 75.09%      0.06s  0.76%  modernc.org/sqlite/lib.Xsqlite3_finalize
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite/lib.Xsqlite3_mutex_enter (inline)
+         0     0% 75.09%      0.81s 10.24%  modernc.org/sqlite/lib.Xsqlite3_prepare_v2 (inline)
+         0     0% 75.09%      0.87s 11.00%  modernc.org/sqlite/lib.Xsqlite3_step
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite/lib._btreeGetPage
+         0     0% 75.09%      0.55s  6.95%  modernc.org/sqlite/lib._lockBtree
+         0     0% 75.09%      0.29s  3.67%  modernc.org/sqlite/lib._pagerBeginReadTransaction
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._pagerUnlockAndRollback
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._pagerUnlockIfUnused (inline)
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._pager_unlock
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._releasePageOne (inline)
+         0     0% 75.09%      0.11s  1.39%  modernc.org/sqlite/lib._resolveSelectStep
+         0     0% 75.09%      0.57s  7.21%  modernc.org/sqlite/lib._sqlite3BtreeBeginTrans
+         0     0% 75.09%      0.13s  1.64%  modernc.org/sqlite/lib._sqlite3BtreeCommitPhaseTwo
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite/lib._sqlite3DbStrNDup
+         0     0% 75.09%      0.07s  0.88%  modernc.org/sqlite/lib._sqlite3GenerateColumnNames
+         0     0% 75.09%      0.81s 10.24%  modernc.org/sqlite/lib._sqlite3LockAndPrepare
+         0     0% 75.09%      0.18s  2.28%  modernc.org/sqlite/lib._sqlite3OsFileSize (inline)
+         0     0% 75.09%      0.36s  4.55%  modernc.org/sqlite/lib._sqlite3OsShmLock (inline)
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite/lib._sqlite3PagerGet (inline)
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._sqlite3PagerUnrefPageOne
+         0     0% 75.09%      0.09s  1.14%  modernc.org/sqlite/lib._sqlite3ResolveExprListNames
+         0     0% 75.09%      0.06s  0.76%  modernc.org/sqlite/lib._sqlite3SelectExpand
+         0     0% 75.09%      0.20s  2.53%  modernc.org/sqlite/lib._sqlite3SelectPrep
+         0     0% 75.09%      0.04s  0.51%  modernc.org/sqlite/lib._sqlite3VdbeSetColName
+         0     0% 75.09%      0.28s  3.54%  modernc.org/sqlite/lib._sqlite3WalBeginReadTransaction (inline)
+         0     0% 75.09%      0.10s  1.26%  modernc.org/sqlite/lib._sqlite3WalkExprNN
+         0     0% 75.09%      0.18s  2.28%  modernc.org/sqlite/lib._sqlite3WalkSelect
+         0     0% 75.09%      0.12s  1.52%  modernc.org/sqlite/lib._unlockBtreeIfUnused
+         0     0% 75.09%      0.14s  1.77%  modernc.org/sqlite/lib._vdbeCommit
+         0     0% 75.09%      0.28s  3.54%  modernc.org/sqlite/lib._walBeginReadTransaction
+         0     0% 75.09%      0.26s  3.29%  modernc.org/sqlite/lib._walLockShared
+         0     0% 75.09%      0.28s  3.54%  modernc.org/sqlite/lib._walTryBeginRead
+         0     0% 75.09%      0.10s  1.26%  modernc.org/sqlite/lib._walUnlockShared
+         0     0% 75.09%      0.18s  2.28%  modernc.org/sqlite/lib._winFileSize
+         0     0% 75.09%      0.10s  1.26%  modernc.org/sqlite/lib._winHandleUnlock
+         0     0% 75.09%      0.36s  4.55%  modernc.org/sqlite/lib._winShmLock
+         0     0% 75.09%      0.10s  1.26%  modernc.org/sqlite/lib._winUnlockFile
+         0     0% 75.09%      0.10s  1.26%  net.(*conn).SetReadDeadline
+         0     0% 75.09%      0.67s  8.47%  net.(*netFD).Read
+         0     0% 75.09%      0.10s  1.26%  net.(*netFD).SetReadDeadline (inline)
+         0     0% 75.09%      1.26s 15.93%  net.(*netFD).Write
+         0     0% 75.09%      0.04s  0.51%  net/http.(*Request).SetPathValue (inline)
+         0     0% 75.09%      0.04s  0.51%  net/http.(*Request).WithContext (partial-inline)
+         0     0% 75.09%      0.09s  1.14%  net/http.(*chunkWriter).Write
+         0     0% 75.09%      0.11s  1.39%  net/http.(*connReader).Read
+         0     0% 75.09%      0.04s  0.51%  net/http.(*connReader).startBackgroundRead
+         0     0% 75.09%      3.38s 42.73%  net/http.HandlerFunc.ServeHTTP
+         0     0% 75.09%      0.04s  0.51%  net/http.Header.Clone (inline)
+         0     0% 75.09%      1.27s 16.06%  net/http.checkConnErrorWriter.Write
+         0     0% 75.09%      0.18s  2.28%  net/textproto.(*Reader).ReadMIMEHeader (inline)
+         0     0% 75.09%      0.18s  2.28%  net/textproto.readMIMEHeader
+         0     0% 75.09%      0.04s  0.51%  runtime.(*Pinner).Pin
+         0     0% 75.09%      0.04s  0.51%  runtime.(*_panic).nextFrame
+         0     0% 75.09%      0.04s  0.51%  runtime.(*_panic).nextFrame.func1
+         0     0% 75.09%      0.04s  0.51%  runtime.(*inlineUnwinder).resolveInternal (inline)
+         0     0% 75.09%      0.04s  0.51%  runtime.(*timer).maybeAdd
+         0     0% 75.09%      0.06s  0.76%  runtime.(*timer).modify
+         0     0% 75.09%      0.17s  2.15%  runtime.(*unwinder).next
+         0     0% 75.09%      0.18s  2.28%  runtime.Callers (inline)
+         0     0% 75.09%      0.18s  2.28%  runtime.callers
+         0     0% 75.09%      0.18s  2.28%  runtime.callers.func1
+         0     0% 75.09%      0.06s  0.76%  runtime.closechan.goready.func1
+         0     0% 75.09%      0.10s  1.26%  runtime.funcspdelta (inline)
+         0     0% 75.09%      0.08s  1.01%  runtime.gcBgMarkWorker.func2
+         0     0% 75.09%      0.08s  1.01%  runtime.gcDrain
+         0     0% 75.09%      0.06s  0.76%  runtime.gcDrainMarkWorkerDedicated (inline)
+         0     0% 75.09%      0.06s  0.76%  runtime.gcstopm
+         0     0% 75.09%      0.26s  3.29%  runtime.goexit0
+         0     0% 75.09%      0.31s  3.92%  runtime.gopanic
+         0     0% 75.09%      0.09s  1.14%  runtime.gopreempt_m (inline)
+         0     0% 75.09%      0.05s  0.63%  runtime.goready (inline)
+         0     0% 75.09%      0.09s  1.14%  runtime.goschedImpl
+         0     0% 75.09%      0.12s  1.52%  runtime.heapSetTypeNoHeader (inline)
+         0     0% 75.09%      0.52s  6.57%  runtime.lock (inline)
+         0     0% 75.09%      0.52s  6.57%  runtime.lockWithRank (inline)
+         0     0% 75.09%      0.05s  0.63%  runtime.makemap_small
+         0     0% 75.09%      0.04s  0.51%  runtime.mapIterStart
+         0     0% 75.09%      0.04s  0.51%  runtime.mapassign
+         0     0% 75.09%      0.04s  0.51%  runtime.markroot
+         0     0% 75.09%      0.09s  1.14%  runtime.morestack
+         0     0% 75.09%      0.04s  0.51%  runtime.newInlineUnwinder
+         0     0% 75.09%      0.05s  0.63%  runtime.newarray
+         0     0% 75.09%      0.22s  2.78%  runtime.newproc.func1
+         0     0% 75.09%      0.11s  1.39%  runtime.newstack
+         0     0% 75.09%      0.36s  4.55%  runtime.notewakeup
+         0     0% 75.09%      0.08s  1.01%  runtime.osyield (inline)
+         0     0% 75.09%      0.93s 11.76%  runtime.park_m
+         0     0% 75.09%      0.04s  0.51%  runtime.pcdatavalue1
+         0     0% 75.09%      0.10s  1.26%  runtime.procyield (inline)
+         0     0% 75.09%      0.08s  1.01%  runtime.resetspinning
+         0     0% 75.09%      0.13s  1.64%  runtime.runSafePointFn
+         0     0% 75.09%      0.04s  0.51%  runtime.setPinned
+         0     0% 75.09%      0.37s  4.68%  runtime.startm
+         0     0% 75.09%      0.81s 10.24%  runtime.systemstack
+         0     0% 75.09%      0.04s  0.51%  runtime.tryDeferToSpanScan
+         0     0% 75.09%      0.08s  1.01%  runtime.unlock (inline)
+         0     0% 75.09%      0.08s  1.01%  runtime.unlockWithRank (inline)
+         0     0% 75.09%      0.39s  4.93%  runtime.wakep
+         0     0% 75.09%      0.12s  1.52%  sync.(*Mutex).Lock (inline)
+         0     0% 75.09%      0.05s  0.63%  sync.(*Mutex).Unlock (partial-inline)
+         0     0% 75.09%      0.26s  3.29%  syscall.CancelIoEx
+         0     0% 75.09%      0.30s  3.79%  syscall.WSARecv
+         0     0% 75.09%      1.19s 15.04%  syscall.WSASend
+         0     0% 75.09%      0.04s  0.51%  time.(*Timer).Stop (inline)
+         0     0% 75.09%      0.04s  0.51%  time.stopTimer

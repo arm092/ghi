@@ -154,13 +154,13 @@ func TestWatchTestsLifecycle(t *testing.T) {
 	}
 	write("main.ghi", "namespace main\nfunc main() {}\n")
 	write("app/value.ghi", "namespace app\nfunc Value() int {return 1}\n")
-	source := "namespace tests.unit\nimport app\nimport testing \"go:testing\"\nfunc TestValue(t *testing.T) {if app.Value() != 1 {t.Fatal(\"wrong value\")}}\nfunc TestExcluded(t *testing.T) {t.Fatal(\"filter ignored\")}\n"
+	source := "namespace tests.unit\nimport app\nimport testing \"go:testing\"\nfunc TestValue(t *testing.T) {if app.Value() != 1 {t.Fatal(\"wrong value\")}}\nfunc TestExcluded(t *testing.T) {t.Fatal(\"filter ignored\")}\nfunc BenchmarkValue(b *testing.B) {for i:=0;i<b.N;i++ {app.Value()}}\n"
 	write("tests/unit/value.ghi", source)
 	ctx, cancel := context.WithCancel(context.Background())
 	var log watchLog
 	done := make(chan error, 1)
 	go func() {
-		done <- watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: "^TestValue$", Cover: true, CoverProfile: filepath.Join(dir, "coverage.out"), Timeout: 10 * time.Second, Log: &log, Interval: 50 * time.Millisecond, Debounce: 50 * time.Millisecond})
+		done <- watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: "^TestValue$", Race: os.Getenv("GHI_RACE_TEST") == "1", Bench: "^BenchmarkValue$", BenchTime: "1x", BenchMem: true, Count: 2, Cover: true, CoverProfile: filepath.Join(dir, "coverage.out"), Timeout: 10 * time.Second, Log: &log, Interval: 50 * time.Millisecond, Debounce: 50 * time.Millisecond})
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -183,6 +183,8 @@ func TestWatchTestsLifecycle(t *testing.T) {
 	}
 	wait("[test-watch] passed", 1)
 	wait("app/value.ghi: 100.0%", 1)
+	wait("BenchmarkValue-", 2)
+	wait("allocs/op", 2)
 	write("tests/unit/value.ghi", strings.Replace(source, "!= 1", "!= 2", 1))
 	wait("[test-watch] failed", 1)
 	write("app/value.ghi", "namespace app\nfunc Value() int {return 2}\n")
@@ -199,7 +201,7 @@ func TestWatchTestsRejectsInvalidOptions(t *testing.T) {
 	if err := os.WriteFile(file, []byte("namespace main"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, options := range []watch.TestOptions{{Dir: dir, Filter: "["}, {Dir: dir, Timeout: -1}, {Dir: file}, {Dir: dir, CoverProfile: file}} {
+	for _, options := range []watch.TestOptions{{Dir: dir, Filter: "["}, {Dir: dir, Timeout: -1}, {Dir: file}, {Dir: dir, CoverProfile: file}, {Dir: dir, Bench: "["}, {Dir: dir, Bench: ".", BenchTime: "0x"}, {Dir: dir, Bench: ".", BenchTime: "-1s"}, {Dir: dir, BenchMem: true}, {Dir: dir, Count: -1}} {
 		if err := watch.Tests(context.Background(), options); err == nil {
 			t.Fatal("invalid options accepted")
 		}

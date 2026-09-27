@@ -20,11 +20,20 @@ func runTests(args []string) int {
 	verbose := flags.Bool("v", false, "show passing tests")
 	cover := flags.Bool("cover", false, "report Ghi source statement coverage")
 	profile := flags.String("coverprofile", "", "write Ghi coverage profile (implies --cover)")
+	race := flags.Bool("race", false, "enable Go data race detection (requires supported Go race toolchain)")
+	bench := flags.String("bench", "", "benchmark name regular expression")
+	benchTime := flags.String("benchtime", "", "benchmark duration or iteration count, e.g. 1s or 100x")
+	benchMem := flags.Bool("benchmem", false, "report benchmark allocations")
+	count := flags.Int("count", 1, "repeat tests and benchmarks")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 	if flags.NArg() > 1 {
 		fmt.Fprintln(os.Stderr, "expected one project directory")
+		return 2
+	}
+	if *count <= 0 {
+		fmt.Fprintln(os.Stderr, "count must be positive")
 		return 2
 	}
 	if *timeout <= 0 {
@@ -38,13 +47,13 @@ func runTests(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if *watching {
-		if err := watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Log: os.Stdout}); err != nil {
+		if err := watch.Tests(ctx, watch.TestOptions{Dir: dir, Filter: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Race: *race, Bench: *bench, BenchTime: *benchTime, BenchMem: *benchMem, Count: *count, Log: os.Stdout}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		return 0
 	}
-	if err := compiler.Test(ctx, compiler.TestOptions{Dir: dir, Run: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Log: os.Stdout}); err != nil {
+	if err := compiler.Test(ctx, compiler.TestOptions{Dir: dir, Run: *filter, Timeout: *timeout, Verbose: *verbose, Cover: *cover, CoverProfile: *profile, Race: *race, Bench: *bench, BenchTime: *benchTime, BenchMem: *benchMem, Count: *count, Log: os.Stdout}); err != nil {
 		fmt.Fprintln(os.Stderr, compiler.FormatDiagnostic(err, dir, nil))
 		return 1
 	}

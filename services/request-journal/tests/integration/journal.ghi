@@ -128,3 +128,22 @@ func TestForeignKeysAfterCancellation(t *testing.T) {
 		t.Fatal("replacement connection lost foreign key enforcement")
 	}
 }
+
+// Measures the HTTP handler, service and SQLite read path, excluding setup.
+func BenchmarkRequestRead(b *testing.B) {
+	repository := new Repository(filepath.Join(b.TempDir(), "benchmark.db"), migrations())
+	defer repository.Close()
+	service := new Service(repository)
+	service.Create(context.Background(), "Benchmark request")
+	handler := httpapi.Router(service)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("GET", "/requests/1", nil))
+		if response.Code != 200 {
+			b.Fatal("request read failed")
+		}
+	}
+	b.StopTimer()
+}

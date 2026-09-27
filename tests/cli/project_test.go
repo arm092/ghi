@@ -58,6 +58,19 @@ func TestProjectCLI(t *testing.T) {
 		if out, err := invoke(project, "fmt", "--check"); err != nil {
 			t.Fatalf("template formatting: %v %s", err, out)
 		}
+		benchDir := benchmarkProject(t, "namespace tests\nimport testing \"go:testing\"\nvar sink int\nfunc BenchmarkCLI(b *testing.B) {for i:=0;i<b.N;i++ {sink++}}\n")
+		benchArgs := []string{"test", "--run", "^$", "--bench", "^BenchmarkCLI$", "--benchtime", "2x", "--benchmem", "--count", "2", "--cover"}
+		if os.Getenv("GHI_RACE_TEST") == "1" {
+			benchArgs = append(benchArgs, "--race")
+		}
+		if out, err := invoke(benchDir, benchArgs...); err != nil || strings.Count(out, "BenchmarkCLI-") != 2 || !strings.Contains(out, "allocs/op") {
+			t.Fatalf("benchmark CLI: %v %s", err, out)
+		}
+		for _, args := range [][]string{{"test", "--count", "0"}, {"test", "--bench", "["}, {"test", "--benchtime", "0x", "--bench", "."}} {
+			if _, err := invoke(benchDir, args...); err == nil {
+				t.Fatalf("accepted invalid flags: %v", args)
+			}
+		}
 		existing := t.TempDir()
 		if err := os.WriteFile(filepath.Join(existing, ".gitignore"), []byte("custom\n"), 0644); err != nil {
 			t.Fatal(err)

@@ -164,6 +164,43 @@ ghi test --watch -run '^TestRepository' -v -timeout 30s .
 
 Test watching runs immediately, includes production sources and the project's root `tests/` directory, and reruns after changes. Runs are serialized; edits during a run schedule one subsequent run after saves settle. Failed tests and compiler errors keep the watcher running. A result from a run with observed source changes is marked as outdated instead of reported as a current pass. Installed dependencies retain their own test exclusions. The watched file extensions and output exclusions are the same as ordinary watch mode. Ctrl+C cancels the active test process tree and exits; invalid filters, timeouts and project paths fail at startup.
 
+### Race detection and native benchmarks (development source after v0.2.7)
+
+```sh
+ghi test --race .
+ghi test --race --coverprofile coverage.out .
+ghi test --watch --race .
+ghi test --run '^$' --bench . --benchtime 1s --benchmem --count 5 .
+```
+
+`--race` enables Go's runtime data race detector and fails the test run when a race is detected. It requires a supported Go race target, CGO enabled and a compatible C compiler; Ghi does not install a C compiler or silently disable race detection. See the [Go race detector requirements](https://go.dev/doc/articles/race_detector#Requirements). It detects executed races, not every possible concurrency defect. Linux amd64 with Go 1.26.3/GCC was verified, including race detection, safe concurrent execution with source coverage, cancellation and watch forwarding. Native Windows race execution has not been verified.
+
+Declare benchmarks under `tests/`, alongside test suites:
+
+```go
+namespace tests.performance
+
+import testing "go:testing"
+
+var result int
+
+func BenchmarkSum(b *testing.B) {
+    for i := 0; i < b.N; i++ {
+        result = i + 1
+    }
+}
+```
+
+Benchmark names start with `Benchmark` followed by a non-lowercase character. Functions accept exactly one `*testing.B` parameter and return nothing; aliases for the Go `testing` import are supported. Normal tests still run unless excluded with `--run '^$'`. `--bench` selects benchmarks by regular expression; `--benchtime` accepts a positive duration or iteration count such as `100x`; `--benchmem` reports `B/op` and `allocs/op`; `--count` repeats runs (default 1, no test-result caching). Benchmark-only suites are supported with `--bench`. Standard `testing.B` methods, including `ReportAllocs`, `ResetTimer`, sub-benchmarks and `Loop`, are available through Go interoperability. See [Go benchmark documentation](https://pkg.go.dev/testing#hdr-Benchmarks).
+
+These options also work with `--watch` and Ghi source coverage. Coverage includes executed benchmark statements in production code and is published only on success; failed or cancelled runs preserve the previous profile. Measure performance without `--race`, coverage or debug instrumentation because they add overhead.
+
+Request Journal includes a complete HTTP/service/SQLite benchmark:
+
+```sh
+ghi test --run '^$' --bench '^BenchmarkRequestRead$' --benchtime 1s --benchmem --count 5 services/request-journal
+```
+
 ### Source diagnostics (v0.2.6)
 
 The CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
@@ -407,6 +444,44 @@ An HTTP comparison of the same two implementations ran five alternating samples 
 Single-client 404 throughput is about 8% higher by median in this run; at 16 clients it is effectively unchanged. Samples overlap substantially, so these figures do not establish a universal or statistically significant HTTP speedup. The repeatable structural saving is one fewer intermediate exception and four fewer allocations per missing-row lookup. Successful reads also avoid the surrounding catch wrapper. The existing SQLite, localhost and closed-loop limitations still apply.
 
 The HTTP runner also accepts `--baseline-ghi /path/to/old-server` to compare two Ghi binaries, and `--scenarios get missing` to focus on successful and missing single-user lookups. Current-source hashes describe the new server; binary hashes identify both executables. The old server must implement the same measured routes and accept the DDD environment variables.
+
+### Request Journal: HTTP, SQLite and allocations
+
+The development source after v0.2.7 was compared with an independent Go implementation of the measured read routes on Windows amd64, Core i9-13900HX, Go 1.26.3, September 28, 2026. Both used Chi v5.3.2, modernc SQLite v1.59.0, identical SQL/1000-row database snapshots, WAL, foreign keys/busy timeout, one database connection and matching HTTP/context timeouts. Every response was checked against expected JSON and identical bytes. Ghi uses typed exceptions and the published validation package; Go returns ordinary errors and uses equivalent direct validation. These are application comparisons, not isolated compiler overhead.
+
+Five samples per case, 10000 requests per sample, 300 warm-up requests, alternating Ghi/Go order, GOMAXPROCS=8 and fresh server processes. The table shows medians with **16 concurrent clients**; the raw data also includes one client. p95/p99 are medians of each sample's latency percentiles. No race, coverage or debug instrumentation was enabled.
+
+| Route | Ghi req/s | Go req/s | Ghi p95 / p99, ms | Go p95 / p99, ms |
+| --- | ---: | ---: | ---: | ---: |
+| List 20 | 13,613 | 13,867 | 3.172 / 4.804 | 3.132 / 4.739 |
+| Get one | 30,844 | 30,123 | 1.356 / 2.095 | 1.392 / 2.198 |
+| History | 17,658 | 17,266 | 2.010 / 2.841 | 2.078 / 2.845 |
+| Missing (404) | 30,751 | 33,394 | 1.389 / 2.091 | 1.288 / 1.948 |
+| Invalid ID (422) | 126,414 | 138,228 | 0.402 / 0.701 | 0.369 / 0.661 |
+
+| Route | Ghi bytes/request | Go bytes/request | Ghi allocations/request | Go allocations/request |
+| --- | ---: | ---: | ---: | ---: |
+| List 20 | 16,025 | 15,974 | 286.9 | 285.8 |
+| Get one | 6,078 | 6,093 | 82.0 | 83.0 |
+| History | 7,508 | 7,526 | 120.5 | 121.5 |
+| Missing (404) | 6,554 | 6,238 | 82.5 | 80.6 |
+| Invalid ID (422) | 5,475 | 4,630 | 53.4 | 46.5 |
+
+Allocation values use server `runtime.MemStats` deltas and include HTTP work plus amortized statistics-request overhead. Median peak working set across all samples was 22.61 MiB for Ghi and 21.55 MiB for Go; it includes startup and warm-up. The statistics/pprof server is injected only into a temporary benchmark copy, never the shipped service.
+
+Successful routes were within about 2.4% of Go throughput at 16 clients in this run; 404 and invalid-ID responses were about 8% slower. One-client results and earlier runs varied. This closed-loop localhost workload does not establish universal parity, production tail latency or maximum capacity. Writes and migration startup are tested separately and are not timed in this comparison. [Final samples and fingerprints](tests/performance/results/request-journal-final-windows-amd64-go1.26.3.json), [initial samples](tests/performance/results/request-journal-windows-amd64-go1.26.3.json).
+
+The initial missing-record allocation profile attributed about 10% of allocated bytes to stack materialization: `QueryRow.Scan` produced a `GoError`, then the repository converted it to `NotFound`, capturing a second trace. The repository now uses `QueryContext`, `Next` and `Err` to distinguish absence from actual database failure before constructing the single `NotFound`. Actual query/iteration/scan errors still propagate. The Go reference uses the same query API.
+
+A separate controlled Ghi before/after comparison used the saved original binary, 30000 requests per sample and five alternating repeats. On 404, median allocation bytes fell from 7002 to 6375 with one client and 7169 to 6541 with 16 (about 9%); approximately five allocations/request were removed. Median throughput increased 5.5% and 1.6% respectively. Successful reads/history saved about one allocation; their timing changes were mixed. These are measured service improvements, not a general exception-runtime speedup. [Before/after samples](tests/performance/results/request-journal-query-before-after.json), [initial allocation profile](tests/performance/results/request-journal-initial-ghi-allocs.txt), [final allocation profile](tests/performance/results/request-journal-final-ghi-allocs.txt), [final CPU profile](tests/performance/results/request-journal-final-ghi-cpu.txt).
+
+Reproduce from the repository root with Go, Git and Python 3 installed:
+
+```sh
+python benchmarks/request-journal/run.py --requests 10000 --runs 5 --profile --output .work/journal-results.json
+```
+
+The runner builds both implementations, installs locked Ghi packages, checks Go dependency versions, verifies responses and records binary/source fingerprints. It retains temporary binaries/databases/profiles under `.work/journal-bench-*` for inspection. `--baseline-ghi PATH` compares with a saved instrumented Ghi server; `--scenarios get history missing` restricts the workload. Native benchmark commands shown above provide smaller in-process measurements of Request Journal.
 
 ## Files, namespaces and imports
 

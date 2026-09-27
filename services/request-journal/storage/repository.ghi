@@ -69,15 +69,14 @@ class Repository {
 	}
 
 	public func Get(ctx context.Context, id int64) domain.Request {
-		var item domain.Request
-		try {
-			this.db.QueryRowContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id).Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
-		} catch err GoError {
-			if errors.Is(err.cause, sql.ErrNoRows) {
-				throw new domain.NotFound()
-			}
-			throw err
+		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id)
+		defer rows.Close()
+		if !rows.Next() {
+			rows.Err()
+			throw new domain.NotFound()
 		}
+		var item domain.Request
+		rows.Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
 
 		return item
 	}

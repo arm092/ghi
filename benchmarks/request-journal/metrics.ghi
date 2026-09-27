@@ -1,0 +1,31 @@
+namespace main
+
+import json "go:encoding/json"
+import http "go:net/http"
+import _ "go:net/http/pprof"
+import os "go:os"
+import runtime "go:runtime"
+
+// Injected only into the runner's temporary copy, never into the shipped service.
+func startBenchmarkMetrics() {
+	address := os.Getenv("JOURNAL_METRICS_ADDR")
+	if address == "" {
+		return
+	}
+	http.HandleFunc("/bench/memory", func(w http.ResponseWriter, r *http.Request) {
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+		json.NewEncoder(w).Encode(map[string]uint64{
+			"allocations": stats.Mallocs,
+			"bytes": stats.TotalAlloc,
+			"heap": stats.HeapAlloc,
+		})
+	})
+	go func() {
+		try {
+			http.ListenAndServe(address, http.DefaultServeMux)
+		} catch err GoError {
+			panic(err.message)
+		}
+	}()
+}

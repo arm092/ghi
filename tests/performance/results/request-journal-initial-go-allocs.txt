@@ -1,0 +1,101 @@
+File: Go.exe
+Build ID: D:\new_lang\.work\journal-bench-720agnz4\Go.exe2026-09-28 01:04:30.3890563 +0400 +04
+Type: alloc_space
+Time: 2026-09-28 01:06:55 +04
+Showing nodes accounting for 563.61MB, 96.29% of 585.34MB total
+Dropped 68 nodes (cum <= 2.93MB)
+      flat  flat%   sum%        cum   cum%
+   63.52MB 10.85% 10.85%    63.52MB 10.85%  net/http.(*Request).WithContext (partial-inline)
+   52.51MB  8.97% 19.82%    63.51MB 10.85%  context.(*cancelCtx).propagateCancel
+   44.01MB  7.52% 27.34%    44.01MB  7.52%  net/textproto.readMIMEHeader
+   41.01MB  7.01% 34.35%    41.01MB  7.01%  net/http.Header.Clone (inline)
+   36.51MB  6.24% 40.58%    36.51MB  6.24%  net/http.(*Request).SetPathValue (inline)
+   35.01MB  5.98% 46.57%    35.01MB  5.98%  net/textproto.MIMEHeader.Set (inline)
+   29.51MB  5.04% 51.61%    90.52MB 15.46%  net/http.readRequest
+   27.50MB  4.70% 56.31%       34MB  5.81%  modernc.org/sqlite.newRows
+   27.01MB  4.61% 60.92%   128.03MB 21.87%  net/http.(*conn).readRequest
+   26.51MB  4.53% 65.45%   361.06MB 61.68%  main.router.guard.func7
+      22MB  3.76% 69.21%       22MB  3.76%  modernc.org/sqlite.interruptOnDone
+      17MB  2.90% 72.11%       17MB  2.90%  context.(*cancelCtx).Done
+      15MB  2.56% 74.67%    42.01MB  7.18%  context.withCancel (inline)
+   14.50MB  2.48% 77.15%    60.51MB 10.34%  context.WithDeadlineCause
+      13MB  2.22% 79.37%       13MB  2.22%  net/url.parse
+      10MB  1.71% 81.08%   130.01MB 22.21%  database/sql.(*DB).queryDC
+      10MB  1.71% 82.79%    16.50MB  2.82%  database/sql.(*DB).conn
+    9.50MB  1.62% 84.41%     9.50MB  1.62%  time.newTimer
+       8MB  1.37% 85.78%   165.02MB 28.19%  main.(*repository).Get
+       8MB  1.37% 87.15%    44.51MB  7.60%  database/sql.(*Rows).initContextClose
+    6.50MB  1.11% 88.26%     6.50MB  1.11%  modernc.org/libc.GoString
+       6MB  1.03% 89.28%     7.50MB  1.28%  net.(*conn).Read
+       6MB  1.03% 90.31%        6MB  1.03%  context.WithValue
+       6MB  1.03% 91.33%        6MB  1.03%  modernc.org/libc.XUnlockFileEx
+       5MB  0.85% 92.19%        5MB  0.85%  main.notFound (inline)
+       4MB  0.68% 92.87%        4MB  0.68%  database/sql.driverArgsConnLocked
+       4MB  0.68% 93.55%        5MB  0.85%  encoding/json.mapEncoder.encode
+       4MB  0.68% 94.24%        4MB  0.68%  net/textproto.(*Reader).ReadLine (inline)
+    3.50MB   0.6% 94.84%     3.50MB   0.6%  modernc.org/sqlite.newStmt
+       3MB  0.51% 95.35%        3MB  0.51%  modernc.org/libc.XLockFileEx
+    2.50MB  0.43% 95.77%    44.51MB  7.60%  context.WithCancel
+    1.50MB  0.26% 96.03%   148.01MB 25.29%  database/sql.(*DB).query
+    1.50MB  0.26% 96.29%    68.01MB 11.62%  modernc.org/sqlite.(*stmt).query
+         0     0% 96.29%    60.51MB 10.34%  context.WithDeadline (inline)
+         0     0% 96.29%    60.51MB 10.34%  context.WithTimeout
+         0     0% 96.29%   148.01MB 25.29%  database/sql.(*DB).QueryContext
+         0     0% 96.29%   148.01MB 25.29%  database/sql.(*DB).QueryContext.func1
+         0     0% 96.29%   148.01MB 25.29%  database/sql.(*DB).QueryRowContext (inline)
+         0     0% 96.29%    75.51MB 12.90%  database/sql.(*DB).queryDC.func1
+         0     0% 96.29%   148.01MB 25.29%  database/sql.(*DB).retry
+         0     0% 96.29%        4MB  0.68%  database/sql.(*Row).Scan
+         0     0% 96.29%        4MB  0.68%  database/sql.(*Rows).Next
+         0     0% 96.29%    71.51MB 12.22%  database/sql.ctxDriverQuery
+         0     0% 96.29%    78.01MB 13.33%  database/sql.withLock
+         0     0% 96.29%        5MB  0.85%  encoding/json.(*Encoder).Encode
+         0     0% 96.29%        5MB  0.85%  encoding/json.(*encodeState).marshal
+         0     0% 96.29%        5MB  0.85%  encoding/json.(*encodeState).reflectValue
+         0     0% 96.29%   439.08MB 75.01%  github.com/go-chi/chi/v5.(*Mux).ServeHTTP
+         0     0% 96.29%   397.57MB 67.92%  github.com/go-chi/chi/v5.(*Mux).routeHTTP
+         0     0% 96.29%   165.02MB 28.19%  main.(*service).Get (inline)
+         0     0% 96.29%   165.02MB 28.19%  main.router.func3
+         0     0% 96.29%    81.02MB 13.84%  main.send
+         0     0% 96.29%    71.51MB 12.22%  modernc.org/sqlite.(*conn).QueryContext
+         0     0% 96.29%     5.50MB  0.94%  modernc.org/sqlite.(*conn).columnName
+         0     0% 96.29%    71.51MB 12.22%  modernc.org/sqlite.(*conn).query
+         0     0% 96.29%    10.50MB  1.79%  modernc.org/sqlite.(*conn).step
+         0     0% 96.29%    10.50MB  1.79%  modernc.org/sqlite/lib.Xsqlite3_step
+         0     0% 96.29%     4.50MB  0.77%  modernc.org/sqlite/lib._btreeBeginTrans
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._btreeEndTransaction
+         0     0% 96.29%     4.50MB  0.77%  modernc.org/sqlite/lib._lockBtree
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._pagerBeginReadTransaction
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._pagerUnlockAndRollback
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._pagerUnlockIfUnused (inline)
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._pager_unlock
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._releasePageOne (inline)
+         0     0% 96.29%     4.50MB  0.77%  modernc.org/sqlite/lib._sqlite3BtreeBeginTrans
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._sqlite3BtreeCommitPhaseTwo
+         0     0% 96.29%        9MB  1.54%  modernc.org/sqlite/lib._sqlite3OsShmLock (inline)
+         0     0% 96.29%     4.50MB  0.77%  modernc.org/sqlite/lib._sqlite3PagerSharedLock
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._sqlite3PagerUnrefPageOne
+         0     0% 96.29%    10.50MB  1.79%  modernc.org/sqlite/lib._sqlite3Step
+         0     0% 96.29%    10.50MB  1.79%  modernc.org/sqlite/lib._sqlite3VdbeExec
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._sqlite3VdbeHalt
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._sqlite3WalBeginReadTransaction (inline)
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._sqlite3WalEndReadTransaction
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._unlockBtreeIfUnused
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._vdbeCommit
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._walBeginReadTransaction
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._walLockShared
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._walTryBeginRead
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._walUnlockShared
+         0     0% 96.29%        3MB  0.51%  modernc.org/sqlite/lib._winHandleLockTimeout
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._winHandleUnlock
+         0     0% 96.29%        9MB  1.54%  modernc.org/sqlite/lib._winShmLock
+         0     0% 96.29%        6MB  1.03%  modernc.org/sqlite/lib._winUnlockFile
+         0     0% 96.29%   573.84MB 98.03%  net/http.(*conn).serve
+         0     0% 96.29%     7.50MB  1.28%  net/http.(*connReader).backgroundRead
+         0     0% 96.29%    41.01MB  7.01%  net/http.(*response).WriteHeader
+         0     0% 96.29%   399.29MB 68.21%  net/http.HandlerFunc.ServeHTTP
+         0     0% 96.29%    35.01MB  5.98%  net/http.Header.Set (inline)
+         0     0% 96.29%   440.80MB 75.31%  net/http.serverHandler.ServeHTTP
+         0     0% 96.29%    44.01MB  7.52%  net/textproto.(*Reader).ReadMIMEHeader (inline)
+         0     0% 96.29%       13MB  2.22%  net/url.ParseRequestURI
+         0     0% 96.29%     9.50MB  1.62%  time.AfterFunc

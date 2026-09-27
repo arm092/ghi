@@ -1,0 +1,122 @@
+File: Ghi.exe
+Build ID: D:\new_lang\.work\journal-bench-720agnz4\Ghi.exe2026-09-28 01:04:29.4111555 +0400 +04
+Type: alloc_space
+Time: 2026-09-28 01:06:49 +04
+Showing nodes accounting for 679.64MB, 96.98% of 700.83MB total
+Dropped 58 nodes (cum <= 3.50MB)
+      flat  flat%   sum%        cum   cum%
+   70.51MB 10.06% 10.06%    70.51MB 10.06%  ghi.generated/ghi/runtime.materializeStack (inline)
+   56.02MB  7.99% 18.05%    56.02MB  7.99%  net/http.(*Request).WithContext (partial-inline)
+   53.51MB  7.64% 25.69%    53.51MB  7.64%  net/textproto.readMIMEHeader
+   47.51MB  6.78% 32.47%    47.51MB  6.78%  net/http.Header.Clone (inline)
+   46.01MB  6.56% 39.03%    58.51MB  8.35%  context.(*cancelCtx).propagateCancel
+   36.01MB  5.14% 44.17%    36.01MB  5.14%  net/http.(*Request).SetPathValue (inline)
+   35.50MB  5.07% 49.24%       39MB  5.57%  modernc.org/sqlite.newRows
+   34.01MB  4.85% 54.09%   121.03MB 17.27%  ghi.generated/journal/httpapi.Router.guard.func13.2
+   31.01MB  4.42% 58.52%    31.01MB  4.42%  net/textproto.MIMEHeader.Set (inline)
+   29.51MB  4.21% 62.73%   103.52MB 14.77%  net/http.readRequest
+   25.50MB  3.64% 66.37%   141.04MB 20.12%  net/http.(*conn).readRequest
+      24MB  3.42% 69.79%       24MB  3.42%  context.(*cancelCtx).Done
+   20.50MB  2.93% 72.72%    20.50MB  2.93%  modernc.org/sqlite.interruptOnDone
+      16MB  2.28% 75.00%   127.51MB 18.19%  database/sql.(*DB).queryDC
+   15.50MB  2.21% 77.21%    15.50MB  2.21%  net/url.parse
+      13MB  1.86% 79.07%    61.51MB  8.78%  context.WithDeadlineCause
+   12.50MB  1.78% 80.85%    22.50MB  3.21%  database/sql.(*DB).conn
+   12.50MB  1.78% 82.63%       33MB  4.71%  context.withCancel (inline)
+      12MB  1.71% 84.35%       17MB  2.43%  net.(*conn).Read
+   10.50MB  1.50% 85.84%    10.50MB  1.50%  time.newTimer
+    8.50MB  1.21% 87.06%   375.56MB 53.59%  ghi.generated/journal/storage.GhiBody_Repository_Get
+       7MB     1% 88.06%        7MB     1%  ghi.generated/ghi/runtime.GhiNew_GoError (inline)
+       7MB     1% 89.06%     8.50MB  1.21%  encoding/json.mapEncoder.encode
+    6.50MB  0.93% 89.98%     6.50MB  0.93%  database/sql.(*Rows).nextLocked
+    6.50MB  0.93% 90.91%     6.50MB  0.93%  modernc.org/libc.XUnlockFileEx
+       6MB  0.86% 91.77%        6MB  0.86%  modernc.org/libc.XLockFileEx
+    5.50MB  0.78% 92.55%     5.50MB  0.78%  database/sql.driverArgsConnLocked
+    4.50MB  0.64% 93.19%     4.50MB  0.64%  net/textproto.(*Reader).ReadLine (inline)
+    4.01MB  0.57% 93.77%     4.01MB  0.57%  bufio.NewWriterSize (inline)
+       4MB  0.57% 94.34%        4MB  0.57%  database/sql.(*Rows).close
+       4MB  0.57% 94.91%        4MB  0.57%  internal/syscall/windows.errnoErr (inline)
+    3.50MB   0.5% 95.41%    31.50MB  4.50%  database/sql.(*Rows).initContextClose
+       3MB  0.43% 95.83%       36MB  5.14%  context.WithCancel
+    2.50MB  0.36% 96.19%   152.51MB 21.76%  database/sql.(*DB).query
+    2.50MB  0.36% 96.55%    73.01MB 10.42%  ghi.generated/ghi/runtime.Raise
+       1MB  0.14% 96.69%        4MB  0.57%  database/sql.(*Rows).awaitDone
+       1MB  0.14% 96.83%   367.06MB 52.38%  ghi.generated/journal/storage.GhiBody_Repository_Get.func1
+       1MB  0.14% 96.98%    73.01MB 10.42%  modernc.org/sqlite.(*stmt).query
+         0     0% 96.98%    61.51MB  8.78%  context.WithDeadline (inline)
+         0     0% 96.98%    61.51MB  8.78%  context.WithTimeout
+         0     0% 96.98%   152.51MB 21.76%  database/sql.(*DB).QueryContext
+         0     0% 96.98%   152.51MB 21.76%  database/sql.(*DB).QueryContext.func1
+         0     0% 96.98%   152.51MB 21.76%  database/sql.(*DB).QueryRowContext (inline)
+         0     0% 96.98%    80.01MB 11.42%  database/sql.(*DB).queryDC.func1
+         0     0% 96.98%   152.51MB 21.76%  database/sql.(*DB).retry
+         0     0% 96.98%        9MB  1.28%  database/sql.(*Row).Scan
+         0     0% 96.98%        8MB  1.14%  database/sql.(*Rows).Next
+         0     0% 96.98%     6.50MB  0.93%  database/sql.(*Rows).Next.func1
+         0     0% 96.98%    74.51MB 10.63%  database/sql.ctxDriverQuery
+         0     0% 96.98%    86.51MB 12.34%  database/sql.withLock
+         0     0% 96.98%     8.50MB  1.21%  encoding/json.(*Encoder).Encode
+         0     0% 96.98%     8.50MB  1.21%  encoding/json.(*encodeState).marshal
+         0     0% 96.98%     8.50MB  1.21%  encoding/json.(*encodeState).reflectValue
+         0     0% 96.98%    70.51MB 10.06%  ghi.generated/ghi/runtime.CaptureStack
+         0     0% 96.98%   204.55MB 29.19%  ghi.generated/ghi/runtime.Check
+         0     0% 96.98%   197.55MB 28.19%  ghi.generated/ghi/runtime.Throw (inline)
+         0     0% 96.98%   405.11MB 57.80%  ghi.generated/ghi/runtime.Try
+         0     0% 96.98%   161.54MB 23.05%  ghi.generated/ghi/runtime.Try.func1
+         0     0% 96.98%   375.56MB 53.59%  ghi.generated/journal/application.(*ghiData_Service).GhiM_Get
+         0     0% 96.98%   375.56MB 53.59%  ghi.generated/journal/application.GhiBody_Service_Get (inline)
+         0     0% 96.98%   375.56MB 53.59%  ghi.generated/journal/httpapi.Router.func6
+         0     0% 96.98%   465.58MB 66.43%  ghi.generated/journal/httpapi.Router.guard.func13
+         0     0% 96.98%   404.07MB 57.66%  ghi.generated/journal/httpapi.Router.guard.func13.1
+         0     0% 96.98%    87.02MB 12.42%  ghi.generated/journal/httpapi.send
+         0     0% 96.98%   375.56MB 53.59%  ghi.generated/journal/storage.(*ghiData_Repository).GhiM_Get
+         0     0% 96.98%   161.54MB 23.05%  ghi.generated/journal/storage.GhiBody_Repository_Get.func2
+         0     0% 96.98%   533.10MB 76.07%  github.com/go-chi/chi/v5.(*Mux).ServeHTTP
+         0     0% 96.98%   501.59MB 71.57%  github.com/go-chi/chi/v5.(*Mux).routeHTTP
+         0     0% 96.98%        5MB  0.71%  internal/poll.(*FD).Read
+         0     0% 96.98%     4.50MB  0.64%  internal/poll.(*FD).execIO
+         0     0% 96.98%        4MB  0.57%  internal/syscall/windows.WSAGetOverlappedResult
+         0     0% 96.98%    74.51MB 10.63%  modernc.org/sqlite.(*conn).QueryContext
+         0     0% 96.98%    74.51MB 10.63%  modernc.org/sqlite.(*conn).query
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite.(*conn).step
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite/lib.Xsqlite3_step
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._btreeBeginTrans
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._btreeEndTransaction
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._lockBtree
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._pagerBeginReadTransaction
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._pagerUnlockAndRollback
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._pagerUnlockIfUnused (inline)
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._pager_unlock
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._releasePageOne (inline)
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._sqlite3BtreeBeginTrans
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._sqlite3BtreeCommitPhaseTwo
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite/lib._sqlite3OsShmLock (inline)
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._sqlite3PagerSharedLock
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._sqlite3PagerUnrefPageOne
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite/lib._sqlite3Step
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite/lib._sqlite3VdbeExec
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._sqlite3VdbeHalt
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._sqlite3WalBeginReadTransaction (inline)
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._sqlite3WalEndReadTransaction
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._unlockBtreeIfUnused
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._vdbeCommit
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._walBeginReadTransaction
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._walLockShared
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._walTryBeginRead
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._walUnlockShared
+         0     0% 96.98%        6MB  0.86%  modernc.org/sqlite/lib._winHandleLockTimeout
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._winHandleUnlock
+         0     0% 96.98%    12.50MB  1.78%  modernc.org/sqlite/lib._winShmLock
+         0     0% 96.98%     6.50MB  0.93%  modernc.org/sqlite/lib._winUnlockFile
+         0     0% 96.98%        5MB  0.71%  net.(*netFD).Read
+         0     0% 96.98%   676.79MB 96.57%  net/http.(*conn).serve
+         0     0% 96.98%       17MB  2.43%  net/http.(*connReader).backgroundRead
+         0     0% 96.98%    47.51MB  6.78%  net/http.(*response).WriteHeader
+         0     0% 96.98%   502.75MB 71.74%  net/http.HandlerFunc.ServeHTTP
+         0     0% 96.98%    31.01MB  4.42%  net/http.Header.Set (inline)
+         0     0% 96.98%     4.01MB  0.57%  net/http.newBufioWriterSize
+         0     0% 96.98%   534.26MB 76.23%  net/http.serverHandler.ServeHTTP
+         0     0% 96.98%    53.51MB  7.64%  net/textproto.(*Reader).ReadMIMEHeader (inline)
+         0     0% 96.98%    15.50MB  2.21%  net/url.ParseRequestURI
+         0     0% 96.98%   161.54MB 23.05%  runtime.gopanic
+         0     0% 96.98%    10.50MB  1.50%  time.AfterFunc
