@@ -14,11 +14,14 @@ import (
 	"unicode/utf8"
 )
 
-var version = "0.2.8"
+var version = "0.2.9"
 
 func main() { os.Exit(run(os.Args[1:])) }
 
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "analyze" {
+		return runAnalyze(args[1:])
+	}
 	if len(args) > 0 && args[0] == "watch" {
 		return runWatch(args[1:])
 	}
@@ -52,7 +55,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [--watch] [--race] [--bench pattern] [--benchtime 1s] [--benchmem] [--count 1] [--cover] [--coverprofile coverage.out] [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi analyze --json source.ghi\n  ghi analyze --json --stdin [--filename source.ghi]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [--watch] [--race] [--bench pattern] [--benchtime 1s] [--benchmem] [--count 1] [--cover] [--coverprofile coverage.out] [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V" {
