@@ -102,7 +102,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The v0.2.8 release test suite and `go vet ./...` passed locally on Windows amd64. Linux amd64 and Linux ARM64 archives passed installation, managed Go setup, project creation/execution and source coverage checks in Alpine containers. ARM64 execution used Docker emulation, not native ARM hardware. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
+The v0.2.8 release test suite and `go vet ./...` passed locally on Windows amd64. Linux amd64 and Linux ARM64 archives passed installation, managed Go setup, project creation/execution, source coverage and native benchmark checks in Alpine containers. Race detection combined with benchmarks and coverage passed in Linux amd64 with CGO/GCC. The downloaded Windows amd64 release passed archive installation, project creation/execution, native benchmarks and the fresh-consumer service workload. ARM64 execution used Docker emulation, not native ARM hardware. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -927,7 +927,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.7 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.8 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
@@ -996,7 +996,7 @@ Run the deployment check from the service directory:
 python tests/docker_smoke.py
 ```
 
-Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.7 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
+Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.8 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
 
 ### Compiler fixes in v0.2.5
 
