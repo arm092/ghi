@@ -89,4 +89,45 @@ func TestDiagnosticContextUsesOverlayAndByteColumns(t *testing.T) {
 	if outside != err.Error() {
 		t.Fatal("rendered source outside project")
 	}
+	for _, tc := range []struct{ message, hint string }{
+		{"non-boolean condition in if statement", "Use a bool condition"},
+		{"ternary nested expressions require parentheses", "Parenthesize the nested expression"},
+		{"ternary requires a condition and two values", "both values are required"},
+		{"ternary result type cannot be inferred; every arm must produce one typed value", "two untyped nil values"},
+		{"undefined: missing", ""},
+	} {
+		err := fmt.Errorf("%s:2:2: %s", path, tc.message)
+		pretty := compiler.FormatDiagnostic(err, dir, map[string][]byte{path: []byte("namespace main\n" + line + "\n")})
+		if !strings.HasPrefix(pretty, err.Error()+"\n") {
+			t.Fatalf("changed diagnostic first line: %s", pretty)
+		}
+		if tc.hint == "" && strings.Contains(pretty, "hint:") || tc.hint != "" && !strings.Contains(pretty, tc.hint) {
+			t.Fatalf("unexpected hint: %s", pretty)
+		}
+	}
+}
+
+func TestTernaryDiagnosticSourceColumns(t *testing.T) {
+	for _, tc := range []struct{ line, needle string }{
+		{`    label := 1 ? "yes" : "no"; println(label)`, "1"},
+		{`    label := true ? 1 : "no"; println(label)`, `"no"`},
+		{`    label := true ? "Ղ" : "no"; println(missing)`, "missing"},
+		{`    label := true ? "yes" : (2 ? "nested" : "no"); println(label)`, "2"},
+	} {
+		t.Run(tc.needle+tc.line, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "main.ghi")
+			if err := os.WriteFile(path, []byte("namespace main\nfunc main() {\n"+tc.line+"\n}\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			err := compiler.Check(context.Background(), compiler.Options{Dir: dir})
+			want := fmt.Sprintf("main.ghi:3:%d:", strings.Index(tc.line, tc.needle)+1)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("expected %s, got %v", want, err)
+			}
+			if pretty := compiler.FormatDiagnostic(err, dir, nil); !strings.Contains(pretty, "^") {
+				t.Fatalf("missing source pointer: %s", pretty)
+			}
+		})
+	}
 }

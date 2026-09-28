@@ -229,10 +229,9 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte, cove
 			}
 		}
 	}
-	var mapping *coverageSourceMap
-	if len(coverage) > 0 && coverage[0] {
-		mapping = &coverageSourceMap{}
-	}
+	// Source origins serve diagnostics as well as optional coverage. Storage
+	// is allocated lazily when a width-changing rewrite actually occurs.
+	mapping := &coverageSourceMap{}
 	source, err = normalizeTernaries(filename, source, mapping)
 	if err != nil {
 		return nil, nil, err

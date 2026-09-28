@@ -23,8 +23,20 @@ func (p *program) sourceError(err error) error {
 	replacements := map[string]string{}
 	var typed types.Error
 	diagnosticFile := ""
+	message := err.Error()
 	if errors.As(err, &typed) {
-		diagnosticFile = p.Fset.Position(typed.Pos).Filename
+		position := p.Fset.Position(typed.Pos)
+		diagnosticFile = position.Filename
+		for _, ns := range p.Ordered {
+			for _, file := range ns.Files {
+				if file.Path == diagnosticFile {
+					original := file.Unit.CoverageSource.position(position)
+					if original.IsValid() {
+						message = strings.Replace(message, position.String()+":", original.String()+":", 1)
+					}
+				}
+			}
+		}
 	}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
@@ -81,7 +93,7 @@ func (p *program) sourceError(err error) error {
 	for _, k := range keys {
 		pairs = append(pairs, k, replacements[k])
 	}
-	message := strings.NewReplacer(pairs...).Replace(err.Error())
+	message = strings.NewReplacer(pairs...).Replace(message)
 	message = strings.ReplaceAll(message, generatedModule+"/", "")
 	return sourceDiagnostic{message, err}
 }

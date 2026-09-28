@@ -205,6 +205,8 @@ ghi test --run '^$' --bench '^BenchmarkRequestRead$' --benchtime 1s --benchmem -
 
 The CLI adds the original source line and a caret to located errors from `check`, `build`, `run`, `test` and watch commands. Tabs are expanded for display, byte-based source columns are translated across Unicode text, and argument/type mismatch errors include an expected/received explanation when available. Diagnostics retain the original `file:line[:column]: message` header and multiline `have`/`want` details. Errors without an available project source location retain their original text. Editor checks through `check --stdin --filename` keep the existing plain output and never display stale on-disk source.
 
+The development compiler (0.2.11-dev) also restores original columns for type errors within and after lowered expressions, including nested ternaries. CLI hints explain non-boolean conditions, incomplete ternaries, missing nesting parentheses and uninferred branch result types. For example, `1 ? "yes" : "no"` points at `1` and suggests using an explicit boolean condition. These diagnostic improvements are not included in the published 0.2.10 release.
+
 ### Source coverage (v0.2.7)
 
 Build the current CLI source to use:
@@ -912,7 +914,7 @@ Success exits with code 0. Syntax failures exit with code 1 and return a JSON di
 
 ### Linting and safe fixes
 
-[Ghi Quality](https://github.com/arm092/ghi-quality) is an independently versioned CLI for linting, safe fixes and canonical formatting. Download its executable from the [quality tool releases](https://github.com/arm092/ghi-quality/releases), and put Ghi v0.2.10+ on `PATH` or set `GHI_QUALITY_GHI` to the compiler's absolute path.
+[Ghi Quality](https://github.com/arm092/ghi-quality) is an independently versioned CLI for linting, safe fixes and canonical formatting. Download its executable from the [quality tool releases](https://github.com/arm092/ghi-quality/releases), and put Ghi v0.2.9+ on `PATH` or set `GHI_QUALITY_GHI` to the compiler's absolute path.
 
 ```sh
 ghi-quality lint .

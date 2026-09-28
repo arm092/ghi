@@ -65,7 +65,24 @@ func FormatDiagnostic(err error, root string, overlay map[string][]byte) string 
 	if types := diagnosticMismatch.FindStringSubmatch(message); types != nil {
 		result += fmt.Sprintf("\n%s = expected: %s; received: %s", gutter, types[2], types[1])
 	}
+	if hint := diagnosticHint(message); hint != "" {
+		result += fmt.Sprintf("\n%s = hint: %s", gutter, hint)
+	}
 	return result
+}
+
+func diagnosticHint(message string) string {
+	switch {
+	case strings.HasSuffix(message, ": non-boolean condition in if statement"):
+		return "Use a bool condition, such as count > 0 or value != nil; numbers and strings are not implicitly converted to bool."
+	case strings.HasSuffix(message, ": ternary nested expressions require parentheses"):
+		return "Parenthesize the nested expression: first ? a : (second ? b : c)."
+	case strings.HasSuffix(message, ": ternary requires a condition and two values"):
+		return "Use condition ? trueValue : falseValue; both values are required."
+	case strings.HasSuffix(message, ": ternary result type cannot be inferred; every arm must produce one typed value"):
+		return "Give each branch one value with a compatible type; two untyped nil values cannot establish a result type."
+	}
+	return ""
 }
 
 func expandDiagnosticLine(line string) string {
