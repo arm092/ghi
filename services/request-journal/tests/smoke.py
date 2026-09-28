@@ -1,5 +1,6 @@
 """Fresh consumer install, Ghi tests and real HTTP/restart checks (Python 3)."""
 import argparse
+import mixed
 import concurrent.futures
 from contextlib import closing
 import json
@@ -170,8 +171,10 @@ def main():
                 results = list(pool.map(lambda n: request("POST", "/requests", {"title": "Concurrent " + str(n)}, 201), range(12)))
             assert len({record["id"] for record in results}) == 12
             assert len(request("GET", "/requests?limit=2&offset=1")) == 2
+            survivors = mixed.exercise(request, base, root / "journal.db")
             stop()
             start()
+            mixed.verify_persisted(request, survivors)
             assert request("GET", identity)["status"] == "resolved"
             assert request("GET", identity + "/history") == history
             request("DELETE", identity, expected=204)

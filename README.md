@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.7](https://github.com/arm092/ghi/releases/tag/v0.2.7), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.6](https://github.com/arm092/ghi-goland/releases/tag/v0.1.6).
+**Current release:** [Ghi v0.2.8](https://github.com/arm092/ghi/releases/tag/v0.2.8), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.6](https://github.com/arm092/ghi-goland/releases/tag/v0.1.6).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -37,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.7).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.8).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.7/ghi_v0.2.7_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.8/ghi_v0.2.8_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -75,7 +75,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.7 on macOS, use the portable archive or Homebrew. A native v0.2.7 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.7/ghi_v0.2.7_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.8 on macOS, use the portable archive or Homebrew. A native v0.2.8 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.8/ghi_v0.2.8_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -102,7 +102,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The v0.2.7 release test suite and `go vet ./...` passed locally on Windows amd64. Linux amd64 and Linux ARM64 archives passed installation, managed Go setup, project creation/execution and source coverage checks in Alpine containers. ARM64 execution used Docker emulation, not native ARM hardware. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
+The v0.2.8 release test suite and `go vet ./...` passed locally on Windows amd64. Linux amd64 and Linux ARM64 archives passed installation, managed Go setup, project creation/execution and source coverage checks in Alpine containers. ARM64 execution used Docker emulation, not native ARM hardware. The native v0.2.1 macOS package was built on a Mac. Installation, `ghi -v`, `mojave -v`, `ghi setup`, `ghi init` and `ghi run .` were verified on Apple silicon; the generated project printed `Hello from Ghi!`. Native Intel macOS execution and Homebrew installation remain unverified. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -164,7 +164,7 @@ ghi test --watch -run '^TestRepository' -v -timeout 30s .
 
 Test watching runs immediately, includes production sources and the project's root `tests/` directory, and reruns after changes. Runs are serialized; edits during a run schedule one subsequent run after saves settle. Failed tests and compiler errors keep the watcher running. A result from a run with observed source changes is marked as outdated instead of reported as a current pass. Installed dependencies retain their own test exclusions. The watched file extensions and output exclusions are the same as ordinary watch mode. Ctrl+C cancels the active test process tree and exits; invalid filters, timeouts and project paths fail at startup.
 
-### Race detection and native benchmarks (development source after v0.2.7)
+### Race detection and native benchmarks (v0.2.8)
 
 ```sh
 ghi test --race .
@@ -447,7 +447,7 @@ The HTTP runner also accepts `--baseline-ghi /path/to/old-server` to compare two
 
 ### Request Journal: HTTP, SQLite and allocations
 
-The development source after v0.2.7 was compared with an independent Go implementation of the measured read routes on Windows amd64, Core i9-13900HX, Go 1.26.3, September 28, 2026. Both used Chi v5.3.2, modernc SQLite v1.59.0, identical SQL/1000-row database snapshots, WAL, foreign keys/busy timeout, one database connection and matching HTTP/context timeouts. Every response was checked against expected JSON and identical bytes. Ghi uses typed exceptions and the published validation package; Go returns ordinary errors and uses equivalent direct validation. These are application comparisons, not isolated compiler overhead.
+The v0.2.8 source was compared with an independent Go implementation of the measured read routes on Windows amd64, Core i9-13900HX, Go 1.26.3, September 28, 2026. Both used Chi v5.3.2, modernc SQLite v1.59.0, identical SQL/1000-row database snapshots, WAL, foreign keys/busy timeout, one database connection and matching HTTP/context timeouts. Every response was checked against expected JSON and identical bytes. Ghi uses typed exceptions and the published validation package; Go returns ordinary errors and uses equivalent direct validation. These are application comparisons, not isolated compiler overhead.
 
 Five samples per case, 10000 requests per sample, 300 warm-up requests, alternating Ghi/Go order, GOMAXPROCS=8 and fresh server processes. The table shows medians with **16 concurrent clients**; the raw data also includes one client. p95/p99 are medians of each sample's latency percentiles. No race, coverage or debug instrumentation was enabled.
 
@@ -969,7 +969,7 @@ Settings use `arm092/config`: defaults apply only when a variable is absent, exp
 
 Startup applies pending migrations, and a migration failure prevents the listener from opening. Run from the project directory, or set absolute database/migration paths. For deployment, use `ghi build -o bin/journal .` (`bin/journal.exe` on Windows), then copy the executable and `migrations/`. Go and Ghi are not needed to run the binary. Database files should live on persistent storage. Shutdown handles interrupt/SIGTERM with the configured HTTP grace period (five seconds by default).
 
-`ghi test .` checks atomic rollback on history failure, connection replacement after cancellation, cascading deletion and sanitized storage errors. The Python 3 smoke runner copies the project into a fresh temporary directory, installs locked dependencies, runs Ghi tests, builds and starts the executable, exercises real HTTP requests including concurrent writes, restarts against the same database, and checks failed migration rollback:
+`ghi test .` checks atomic rollback on history failure, connection replacement after cancellation, cascading deletion and sanitized storage errors. The Python 3 smoke runner copies the project into a fresh temporary directory, installs locked dependencies, runs Ghi tests, builds and starts the executable, exercises real HTTP requests including 16 concurrent clients performing 480 CRUD lifecycles (4,488 checked responses), shared-record status/history consistency, 320 cascading deletions, SQLite write-lock recovery, and disconnected writes leaving no persisted records. It checks database integrity, verifies all 162 surviving records and their histories after restart, and checks failed migration rollback:
 
 ```sh
 python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/mojave
@@ -977,13 +977,13 @@ python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/moj
 
 ### Request Journal in Docker
 
-Build from the service directory using the published Ghi v0.2.7 Linux archive, bundled Mojave v0.1.0 and the committed package lock:
+Build from the service directory using the published Ghi v0.2.8 Linux archive, bundled Mojave v0.1.0 and the committed package lock:
 
 ```sh
 cd services/request-journal
-docker build --platform linux/amd64 -t ghi-request-journal:0.2.7 .
+docker build --platform linux/amd64 -t ghi-request-journal:0.2.8 .
 docker volume create ghi-journal-data
-docker run -d --name ghi-journal --read-only --tmpfs /tmp:rw,noexec,nosuid --mount type=volume,source=ghi-journal-data,target=/data -p 127.0.0.1:8080:8080 ghi-request-journal:0.2.7
+docker run -d --name ghi-journal --read-only --tmpfs /tmp:rw,noexec,nosuid --mount type=volume,source=ghi-journal-data,target=/data -p 127.0.0.1:8080:8080 ghi-request-journal:0.2.8
 ```
 
 The build verifies the release archive checksum, installs Go in the build stage, installs locked packages, runs Ghi tests and compiles the service. The final image runs as UID 10001 and contains the executable and SQL migrations without Go, Ghi or Mojave. Inside the container, the service binds to `0.0.0.0:8080`, stores SQLite data at `/data/journal.db`, and loads SQL from `/app/migrations`. The host port is bound to localhost. `/health` is the container health check.
