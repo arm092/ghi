@@ -10,8 +10,15 @@ import (
 // formatStructure works on the original token stream: extension normalization
 // intentionally never enters the printer, so literals and Ghi syntax survive.
 func formatStructure(source []byte, all []formatToken) string {
+	grammar, _, ternaries, _ := ternaryTokens("format.ghi", source)
+	operators := map[int]bool{}
+	for q, colon := range ternaries {
+		operators[grammar[q].start] = true
+		operators[grammar[colon].start] = true
+	}
 	ts := make([]formatToken, 0, len(all))
 	for _, t := range all {
+		t.ternary = operators[t.start]
 		if !t.implicit {
 			if len(ts) > 0 {
 				breaks := strings.Count(string(source[ts[len(ts)-1].end:t.start]), "\n")
@@ -293,7 +300,7 @@ func formatStructure(source []byte, all []formatToken) string {
 				clause = i + 1
 			}
 		case token.COLON:
-			if top != nil && top.cases && !top.activeCase {
+			if !t.ternary && top != nil && top.cases && !top.activeCase {
 				top.activeCase = true
 				depth++
 				newline(1)

@@ -63,6 +63,9 @@ func lexSource(filename string, source []byte) ([]lexeme, error) {
 	var s scanner.Scanner
 	var first error
 	s.Init(file, source, func(pos token.Position, msg string) {
+		if pos.Offset < len(source) && source[pos.Offset] == '?' {
+			return
+		}
 		if first == nil {
 			first = fmt.Errorf("%s: %s", pos, msg)
 		}
@@ -229,6 +232,10 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte, cove
 	var mapping *coverageSourceMap
 	if len(coverage) > 0 && coverage[0] {
 		mapping = &coverageSourceMap{}
+	}
+	source, err = normalizeTernaries(filename, source, mapping)
+	if err != nil {
+		return nil, nil, err
 	}
 	source, err = normalizeMatches(filename, source, mapping)
 	if err != nil {

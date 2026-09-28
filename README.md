@@ -850,6 +850,27 @@ Go dependencies use the Go module cache. Mojave's manifest and lock describe dep
 
 Remove dependencies with `mojave remove arm092/migrations` or `mojave remove go:github.com/go-chi/chi/v5`. Edit libraries in their own repositories, not inside `.ghi/packages`.
 
+## Conditional expressions
+
+The development compiler supports `condition ? trueValue : falseValue`:
+
+```ghi
+status := active ? "active" : "inactive"
+price := premium ? 100 : 150
+return user != nil ? user.name : "Guest"
+```
+
+The condition must be `bool`. It is evaluated once, and only the selected branch is evaluated. Both branches are checked at compile time and must produce one value with compatible types; the compiler infers a common result type. Two untyped `nil` branches cannot establish a result type. There is no implicit string/number truthiness and no abbreviated `value ?: fallback` form.
+
+The operator binds less tightly than arithmetic, comparisons and boolean operators. It can appear in assignments, return values, arguments, default arguments, collections and control conditions. Parenthesize nested ternary expressions:
+
+```ghi
+label := admin ? "Admin" : (active ? "User" : "Disabled")
+var selected ?User = active ? new User("Arman") : nil
+```
+
+Nullable type syntax remains `?User`; the formatter prints spaces around ternary `?` and `:` while keeping nullable type prefixes adjacent. Lowering uses a typed immediately invoked function with `if`, preserving branch laziness and exception propagation. Source coverage counts original statements, not the generated control statements. This feature is not included in the current v0.2.9 release.
+
 ## Testing and formatting
 
 Application tests belong in a separate project-root `tests/` directory. Production builds exclude that directory, and production namespaces cannot import test namespaces. Tests use Go's `testing` package through native imports; see the [DDD tests](examples/ddd-api/tests) for unit and integration examples.

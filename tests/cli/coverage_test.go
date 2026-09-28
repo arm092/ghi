@@ -48,6 +48,7 @@ func Arrow() int {
  return used()
 }
 func Matched(n int) int { result := match n { 1 => 11, default => 12, }; return result } // after-match
+func Ternary(flag bool) int { result := flag ? 1 : 2; return result } // after-ternary
 func Labelled() int {
  goto first
 first:
@@ -74,7 +75,7 @@ loop:
 import app
 import testing "go:testing"
 func TestAlpha(t *testing.T) {
- if app.Value(true)!=10 || new app.Child().Read()!=7 || app.Recover()!=4 || app.Arrow()!=7 || app.Matched(1)!=11 || app.Labelled()!=7 || app.LabelledLoop()!=2 {t.Fatal("wrong value")}
+ if app.Value(true)!=10 || new app.Child().Read()!=7 || app.Recover()!=4 || app.Arrow()!=7 || app.Matched(1)!=11 || app.Labelled()!=7 || app.LabelledLoop()!=2 || app.Ternary(true)!=1 || app.Ternary(false)!=2 {t.Fatal("wrong value")}
 }
 `,
 		"tests/beta/check.ghi": `namespace tests.beta
@@ -132,7 +133,7 @@ func TestFailure(t *testing.T) {t.Fatal("expected failure")}
 		t.Fatal("bad marker")
 	}
 	all := run("^Test(Alpha|Beta)$")
-	for _, marker := range []string{"arrow-used", "arrow-unused", "after-match"} {
+	for _, marker := range []string{"arrow-used", "arrow-unused", "after-match", "after-ternary"} {
 		for i, line := range strings.Split(source, "\n") {
 			if strings.Contains(line, "// "+marker) {
 				prefix := fmt.Sprintf("app/value.ghi:%d.", i+1)

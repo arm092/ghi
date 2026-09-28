@@ -190,6 +190,15 @@ func (f *nullableFlow) expression(expr ast.Expr, proof nullProof) {
 		f.expression(e.Key, proof)
 		f.expression(e.Value, proof)
 	case *ast.FuncLit:
+		if f.program.isTernaryFunction(e) {
+			// A compiler-generated immediately invoked expression shares the
+			// enclosing flow scope; it is not an escaping user closure.
+			results := f.results
+			f.results = e.Type.Results
+			f.block(e.Body, proof.clone())
+			f.results = results
+			break
+		}
 		if f.program.narrowFunction(e.Type, e.Body, f.info) {
 			f.changed = true
 		}
@@ -398,6 +407,9 @@ func (p *program) narrowFunction(typ *ast.FuncType, body *ast.BlockStmt, info *t
 	ast.Inspect(body, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.FuncLit:
+			if p.isTernaryFunction(n) {
+				return true
+			}
 			ast.Inspect(n.Body, func(child ast.Node) bool {
 				if id, ok := child.(*ast.Ident); ok {
 					f.unstable[info.ObjectOf(id)] = true

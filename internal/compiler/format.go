@@ -19,6 +19,7 @@ type formatToken struct {
 	implicit    bool
 	breakBefore bool
 	blankBefore bool
+	ternary     bool
 }
 
 // FormatSource prints canonical Ghi layout while preserving literal and comment
@@ -101,6 +102,9 @@ func scanFormatTokens(filename string, source []byte) ([]formatToken, error) {
 }
 
 func formatSpace(previous, current formatToken) bool {
+	if previous.ternary || current.ternary {
+		return true
+	}
 	if previous.kind == token.ASSIGN && current.kind == token.GTR && previous.end == current.start {
 		return false
 	}

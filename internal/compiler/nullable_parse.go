@@ -14,6 +14,14 @@ func normalizeNullable(filename string, source []byte) ([]byte, error) {
 	if !bytes.ContainsRune(source, '?') {
 		return source, nil
 	}
+	ts, _, pairs, err := ternaryTokens(filename, source)
+	if err != nil {
+		return nil, err
+	}
+	ternaryOffsets := map[int]bool{}
+	for q := range pairs {
+		ternaryOffsets[ts[q].start] = true
+	}
 	fset := token.NewFileSet()
 	file := fset.AddFile(filename, -1, len(source))
 	var scan scanner.Scanner
@@ -41,6 +49,9 @@ func normalizeNullable(filename string, source []byte) ([]byte, error) {
 			break
 		}
 		if kind == token.ILLEGAL && literal == "?" {
+			if ternaryOffsets[start] {
+				continue
+			}
 			output[start] = '*'
 			pending = start
 		}

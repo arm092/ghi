@@ -7,6 +7,22 @@ import (
 	"go/types"
 )
 
+func (p *program) isTernaryFunction(fn *ast.FuncLit) bool {
+	if p.TernaryFunctions[fn] {
+		return true
+	}
+	if fn.Type.Results != nil && len(fn.Type.Results.List) == 1 {
+		if id, ok := fn.Type.Results.List[0].Type.(*ast.Ident); ok && id.Name == ternaryResultMarker {
+			if p.TernaryFunctions == nil {
+				p.TernaryFunctions = map[*ast.FuncLit]bool{}
+			}
+			p.TernaryFunctions[fn] = true
+			return true
+		}
+	}
+	return false
+}
+
 // Infer only after all arms have single, known result types. Native error
 // bridging and nested matches may require earlier lowering iterations first.
 func (p *program) lowerMatchResults(info *types.Info) bool {
@@ -22,7 +38,7 @@ func (p *program) lowerMatchResults(info *types.Info) bool {
 					return true
 				}
 				marker, ok := fn.Type.Results.List[0].Type.(*ast.Ident)
-				if !ok || marker.Name != matchResultMarker {
+				if !ok || (marker.Name != matchResultMarker && marker.Name != ternaryResultMarker) {
 					return true
 				}
 				var result types.Type
@@ -104,8 +120,12 @@ func (p *program) unresolvedMatch() error {
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
 			ast.Inspect(file.Tree, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && id.Name == matchResultMarker && failure == nil {
-					failure = fmt.Errorf("%s: match result type cannot be inferred; every arm must produce one typed value", p.Fset.Position(id.Pos()))
+				if id, ok := n.(*ast.Ident); ok && (id.Name == matchResultMarker || id.Name == ternaryResultMarker) && failure == nil {
+					kind := "match"
+					if id.Name == ternaryResultMarker {
+						kind = "ternary"
+					}
+					failure = fmt.Errorf("%s: %s result type cannot be inferred; every arm must produce one typed value", p.Fset.Position(id.Pos()), kind)
 				}
 				return failure == nil
 			})

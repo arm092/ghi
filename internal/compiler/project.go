@@ -45,6 +45,7 @@ type program struct {
 	Wrapped             map[*ast.CallExpr]bool
 	Helpers             map[int]bool
 	CheckedDereferences map[*ast.StarExpr]bool
+	TernaryFunctions    map[*ast.FuncLit]bool
 	LoweredReceives     map[*ast.UnaryExpr]bool
 	ReceiveID           int
 	TestNamespaces      map[string]bool
