@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.11](https://github.com/arm092/ghi/releases/tag/v0.2.11), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.7](https://github.com/arm092/ghi-goland/releases/tag/v0.1.7).
+**Current release:** [Ghi v0.2.11](https://github.com/arm092/ghi/releases/tag/v0.2.11), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.8](https://github.com/arm092/ghi-goland/releases/tag/v0.1.8).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -933,7 +933,9 @@ Optional `quality.json` controls rule severity and exclusions. Warnings are repo
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Find published versions in [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi) under **Settings → Plugins → Marketplace**. New updates require JetBrains review before appearing there.
 
-The [v0.1.7 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.7) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.8 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.8) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+
+Version v0.1.8 corrects error highlights and console links after Unicode text by converting compiler byte columns to editor positions. It also explains the parentheses requirement for nested ternaries in unsaved buffers. It does not automatically choose a nesting order, since that could change the expression's meaning.
 
 Version v0.1.7 adds **Tools → Ghi → Test with Race Detection** and **Run Benchmarks** for Ghi v0.2.8+. Under **Languages & Frameworks → Ghi**, configure the benchmark name regex, duration or iteration count (for example `1s` or `100x`), positive repetition count and allocation reporting. Invalid settings are rejected before launch; both actions use stoppable IDE consoles. Race detection requires a supported Go/CGO/C compiler setup. The release passed 74 tests on platform 251, six focused benchmark/coverage tests on 262, and Plugin Verifier on both. Native IDE window/mouse interaction was not verified.
 
