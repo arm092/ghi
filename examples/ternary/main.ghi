@@ -1,0 +1,38 @@
+namespace main
+
+import fmt "go:fmt"
+
+class User {
+	public name string
+
+	constructor(name string) {
+		this.name = name
+	}
+}
+
+func displayName(user ?User) string {
+	return user != nil ? user.name : "Guest"
+}
+
+func fallbackName() string {
+	fmt.Println("Fallback evaluated")
+
+	return "Anonymous"
+}
+
+func main() {
+	active := true
+	admin := false
+	status := active ? "active" : "inactive"
+	price := admin ? 100 : 150
+	label := admin ? "Admin" : (active ? "User" : "Disabled")
+	var user ?User = active ? new User("Arman") : nil
+
+	fmt.Println("Status:", status)
+	fmt.Println("Price:", price)
+	fmt.Println("Role:", label)
+	fmt.Println("Name:", displayName(user))
+	fmt.Println("Missing user:", displayName(nil))
+	// The unused fallback must not print "Fallback evaluated".
+	fmt.Println("Selected:", active ? "Ready" : fallbackName())
+}

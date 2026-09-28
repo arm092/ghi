@@ -871,6 +871,14 @@ var selected ?User = active ? new User("Arman") : nil
 
 Nullable type syntax remains `?User`; the formatter prints spaces around ternary `?` and `:` while keeping nullable type prefixes adjacent. Lowering uses a typed immediately invoked function with `if`, preserving branch laziness and exception propagation. Source coverage counts original statements, not the generated control statements. This feature is not included in the current v0.2.9 release.
 
+Run the [ternary example](examples/ternary/main.ghi) with the development compiler:
+
+```sh
+ghi run examples/ternary
+```
+
+It demonstrates status and price selection, parenthesized nesting, nullable objects, conditional return values and lazy fallback calls. The output ends with `Selected: Ready`; `Fallback evaluated` is never printed because the fallback branch is not selected.
+
 ## Testing and formatting
 
 Application tests belong in a separate project-root `tests/` directory. Production builds exclude that directory, and production namespaces cannot import test namespaces. Tests use Go's `testing` package through native imports; see the [DDD tests](examples/ddd-api/tests) for unit and integration examples.
@@ -952,6 +960,7 @@ Native Go assistance uses the configured SDK and locally installed dependencies.
 | Project | Demonstrates |
 | --- | --- |
 | [Enums](examples/enums) | Plain enum types, string/int/bool constants, imports and match. |
+| [Ternary](examples/ternary) | Conditional values, nullable objects, nested expressions and lazy branches (development compiler). |
 | [Hello](examples/hello) | Minimal executable |
 | [Objects](examples/objects) | Classes, interfaces and inheritance |
 | [Inheritance](examples/inheritance) | Generic repositories and specialization |
