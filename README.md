@@ -881,6 +881,23 @@ Each token has `kind`, `text`, `start`, `end`, `line`, `column`, `implicit` and 
 
 Success exits with code 0. Syntax failures exit with code 1 and return a JSON diagnostic (`kind: "syntax"`, `message`) with empty token/capability arrays. Diagnostic messages may include parser locations; lowered parser positions must not be used as source edit ranges. File read/output failures exit 1 with a stderr message; usage errors exit 2. Flags precede the filename. The stdin filename is a label and defaults to `stdin.ghi`; it does not need to exist on disk.
 
+### Linting and safe fixes
+
+[Ghi Quality](https://github.com/arm092/ghi-quality) is an independently versioned CLI for linting, safe fixes and canonical formatting. Download its executable from the [quality tool releases](https://github.com/arm092/ghi-quality/releases), and put Ghi v0.2.9+ on `PATH` or set `GHI_QUALITY_GHI` to the compiler's absolute path.
+
+```sh
+ghi-quality lint .
+ghi-quality fix --dry-run .
+ghi-quality format .
+ghi-quality format --check .
+ghi-quality run --dry-run .
+ghi-quality run .
+```
+
+`run` combines analysis, safe fixes and formatting, then reports remaining findings. `--dry-run` previews the diff without writing. Initial rules cover conservative unused-name checks, directly unreachable statements, empty catch blocks, identical conditions/branches and naming. The initial lint fix replaces a provably unreferenced simple top-level function parameter name with `_`, retaining its argument slot; ambiguous declarations and other findings remain report-only. Formatting delegates to `ghi fmt`.
+
+Optional `quality.json` controls rule severity and exclusions. Warnings are reported without failing CI; configured errors return a nonzero exit status. Use `lint --json` for machine-readable results. Changes are staged before writing, checked against current file contents and applied atomically per file; a later file failure does not roll back earlier successful files. The tool uses syntax evidence, not resolved types or general control-flow analysis. See its README for exact rule limitations and exit codes.
+
 ## GoLand support
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Find published versions in [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi) under **Settings → Plugins → Marketplace**. New updates require JetBrains review before appearing there.
