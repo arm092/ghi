@@ -20,6 +20,10 @@ func TestSourceDiagnostics(t *testing.T) {
 		{"parent", "namespace main\nclass Child extends Missing {}\nfunc main() {}\n", "unknown parent class Missing", 2},
 		{"constructor-arguments", "namespace main\nclass Box { constructor(value int) {} }\nfunc main() {\n _ = new Box()\n}\n", "not enough arguments in call to Box", 4},
 		{"method-arguments", "namespace main\nclass Box { public func take(n int) {} }\nfunc main() {\n b := new Box()\n b.take(\"bad\")\n}\n", "argument to b.take", 5},
+		{"ternary-condition", "namespace main\nfunc main() {\n _ = 1 ? 2 : 3\n}\n", "ternary condition must be bool", 3},
+		{"ternary-branches", "namespace main\nfunc main() {\n _ = true ? 1 : \"no\"\n}\n", "in ternary branch", 3},
+		{"nullable-argument", "namespace main\nclass User {}\nfunc take(user User) {}\nfunc main() {\n var user ?User = nil\n take(user)\n}\n", "(variable of type ?User) as User value in argument to take", 6},
+		{"native-pointer", "namespace main\nfunc take(value int) {}\nfunc main() {\n value := new(int)\n take(value)\n}\n", "(variable of type *int) as int value", 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -35,7 +39,7 @@ func TestSourceDiagnostics(t *testing.T) {
 			if !strings.Contains(text, fmt.Sprintf("main.ghi:%d:", tc.line)) || !strings.Contains(text, tc.message) {
 				t.Fatalf("wrong diagnostic: %s", text)
 			}
-			for _, hidden := range []string{"GhiM_", "GhiBody_", "GhiNew_", "ghiData_", "ghi_arg_", "ghi.generated"} {
+			for _, hidden := range []string{"GhiM_", "GhiBody_", "GhiNew_", "ghiData_", "ghi_arg_", "ghi.generated", "pointer to interface"} {
 				if strings.Contains(text, hidden) {
 					t.Fatalf("generated detail: %s", text)
 				}
@@ -65,6 +69,14 @@ func TestImportedConstructorDiagnosticAlias(t *testing.T) {
 	pretty := compiler.FormatDiagnostic(err, dir, nil)
 	if !strings.HasPrefix(pretty, err.Error()) || !strings.Contains(pretty, "3 | func main(){new Alias[int]()}") || !strings.Contains(pretty, "^") {
 		t.Fatalf("missing source context: %s", pretty)
+	}
+	source := "namespace main\nimport app.box.Box as Alias\nfunc take(value Alias[int]) {}\nfunc main(){var value ?Alias[int] = nil; take(value)}\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.ghi"), []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err = compiler.Check(context.Background(), compiler.Options{Dir: dir})
+	if err == nil || !strings.Contains(err.Error(), "?Alias[int]") || strings.Contains(err.Error(), "pointer to interface") || strings.Contains(err.Error(), "ghi_type_import_") {
+		t.Fatalf("nullable alias diagnostic: %v", err)
 	}
 }
 

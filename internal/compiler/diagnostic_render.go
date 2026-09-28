@@ -73,7 +73,7 @@ func FormatDiagnostic(err error, root string, overlay map[string][]byte) string 
 
 func diagnosticHint(message string) string {
 	switch {
-	case strings.HasSuffix(message, ": non-boolean condition in if statement"):
+	case strings.HasSuffix(message, ": non-boolean condition in if statement"), strings.HasSuffix(message, ": ternary condition must be bool"):
 		return "Use a bool condition, such as count > 0 or value != nil; numbers and strings are not implicitly converted to bool."
 	case strings.HasSuffix(message, ": ternary nested expressions require parentheses"):
 		return "Parenthesize the nested expression: first ? a : (second ? b : c)."
@@ -81,6 +81,14 @@ func diagnosticHint(message string) string {
 		return "Use condition ? trueValue : falseValue; both values are required."
 	case strings.HasSuffix(message, ": ternary result type cannot be inferred; every arm must produce one typed value"):
 		return "Give each branch one value with a compatible type; two untyped nil values cannot establish a result type."
+	case strings.HasSuffix(message, "in ternary branch"):
+		return "Both ternary branches must produce compatible types; convert a value explicitly or use matching result types."
+	case strings.Contains(message, "nullable ") && strings.HasSuffix(message, "requires a stable nil check"):
+		return "Check value != nil before accessing it, and do not modify the checked value before use."
+	case strings.Contains(message, "cannot use ") && strings.Contains(message, "variable of type ?"):
+		return "Check the value against nil before passing it, or declare the receiving type nullable if nil is supported."
+	case strings.Contains(message, "not enough arguments in call to "), strings.Contains(message, "too many arguments in call to "):
+		return "Match the call arguments to the declared parameters; only trailing parameters with defaults may be omitted."
 	}
 	return ""
 }

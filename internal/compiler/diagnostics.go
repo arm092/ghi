@@ -2,7 +2,10 @@ package compiler
 
 import (
 	"errors"
+	"go/ast"
+	"go/token"
 	"go/types"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,8 +27,16 @@ func (p *program) sourceError(err error) error {
 	var typed types.Error
 	diagnosticFile := ""
 	message := err.Error()
+	var position token.Position
 	if errors.As(err, &typed) {
-		position := p.Fset.Position(typed.Pos)
+		position = p.Fset.Position(typed.Pos)
+		message = p.ternaryDiagnostic(typed, message)
+	} else if location := diagnosticLocation.FindStringSubmatch(message); location != nil {
+		position.Filename = location[1]
+		position.Line, _ = strconv.Atoi(location[2])
+		position.Column, _ = strconv.Atoi(location[3])
+	}
+	if position.IsValid() {
 		diagnosticFile = position.Filename
 		for _, ns := range p.Ordered {
 			for _, file := range ns.Files {
@@ -48,6 +59,11 @@ func (p *program) sourceError(err error) error {
 			for _, selected := range file.Unit.TypeImports {
 				if diagnosticFile != "" && file.Path != diagnosticFile {
 					continue
+				}
+				// go/types prints the imported package name, which may differ
+				// from the synthetic import identifier used by the lowering.
+				if imported := p.Namespaces[selected.Namespace]; imported != nil {
+					replacements[imported.GoName+"."+selected.Name] = selected.Alias
 				}
 				for _, spec := range file.Tree.Imports {
 					path, _ := strconv.Unquote(spec.Path.Value)
@@ -95,5 +111,83 @@ func (p *program) sourceError(err error) error {
 	}
 	message = strings.NewReplacer(pairs...).Replace(message)
 	message = strings.ReplaceAll(message, generatedModule+"/", "")
+	// A pointer to a Ghi class represents ?Class. Keep native Go pointer types
+	// intact and translate only classes visible in the diagnostic namespace.
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			if file.Path != diagnosticFile {
+				continue
+			}
+			names := []string{}
+			for _, peer := range ns.Files {
+				for _, class := range peer.Unit.Classes {
+					if !class.Interface {
+						names = append(names, class.Name)
+					}
+				}
+			}
+			for _, selected := range file.Unit.TypeImports {
+				if imported := p.Namespaces[selected.Namespace]; imported != nil {
+					for _, peer := range imported.Files {
+						for _, class := range peer.Unit.Classes {
+							if class.Name == selected.Name && !class.Interface {
+								names = append(names, selected.Alias)
+							}
+						}
+					}
+				}
+			}
+			for _, name := range names {
+				pattern := regexp.MustCompile(`\*` + regexp.QuoteMeta(name) + `\b`)
+				message = pattern.ReplaceAllString(message, "?"+name)
+			}
+		}
+	}
+	message = regexp.MustCompile(`: \?[^\n:]+ does not implement [^\n]+ \(type \?[^\n:]+ is pointer to interface, not interface\)$`).ReplaceAllString(message, "")
 	return sourceDiagnostic{message, err}
+}
+
+func (p *program) ternaryDiagnostic(typed types.Error, message string) string {
+	var selected *ast.FuncLit
+	for fn := range p.TernaryFunctions {
+		if typed.Pos < fn.Pos() || typed.Pos >= fn.End() {
+			continue
+		}
+		if selected == nil || fn.End()-fn.Pos() < selected.End()-selected.Pos() {
+			selected = fn
+		}
+	}
+	if selected == nil {
+		return message
+	}
+	insideUserFunction := false
+	ast.Inspect(selected.Body, func(node ast.Node) bool {
+		if fn, ok := node.(*ast.FuncLit); ok && typed.Pos >= fn.Pos() && typed.Pos < fn.End() && !p.TernaryFunctions[fn] {
+			insideUserFunction = true
+			return false
+		}
+		return true
+	})
+	if insideUserFunction {
+		return message
+	}
+	for _, statement := range selected.Body.List {
+		if condition, ok := statement.(*ast.IfStmt); ok && typed.Pos >= condition.Cond.Pos() && typed.Pos < condition.Cond.End() && strings.Contains(message, "non-boolean condition in if statement") {
+			return strings.Replace(message, "non-boolean condition in if statement", "ternary condition must be bool", 1)
+		}
+	}
+	ast.Inspect(selected.Body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		if ret, ok := node.(*ast.ReturnStmt); ok {
+			for _, value := range ret.Results {
+				if typed.Pos >= value.Pos() && typed.Pos < value.End() {
+					message = strings.Replace(message, "in return statement", "in ternary branch", 1)
+				}
+			}
+		}
+		return true
+	})
+	return message
 }

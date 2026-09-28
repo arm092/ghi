@@ -41,6 +41,7 @@ func (p *program) lowerMatchResults(info *types.Info) bool {
 				if !ok || (marker.Name != matchResultMarker && marker.Name != ternaryResultMarker) {
 					return true
 				}
+				p.isTernaryFunction(fn)
 				var result types.Type
 				complete := true
 				hasNil := false
