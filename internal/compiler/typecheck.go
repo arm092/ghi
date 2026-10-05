@@ -241,14 +241,14 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			if err := p.unresolvedMatch(); err != nil {
 				return err
 			}
-			if checker.first != nil {
-				return checker.first
-			}
 			if err := p.validateConstraintVisibility(info); err != nil {
 				return err
 			}
 			if err := p.validateInterfaceVisibility(info); err != nil {
 				return err
+			}
+			if checker.first != nil {
+				return checker.first
 			}
 			if err := p.validateEnumValues(info); err != nil {
 				return err

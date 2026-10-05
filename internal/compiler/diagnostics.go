@@ -95,6 +95,7 @@ func (p *program) sourceError(err error) error {
 				for _, method := range c.Methods {
 					replacements[bodyName(method)] = c.Name + "." + method.Name
 					replacements["GhiM_"+method.Name] = method.Name
+					replacements["GhiPublic_"+method.Name] = "public " + method.Name
 				}
 			}
 		}

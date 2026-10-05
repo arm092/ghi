@@ -61,3 +61,58 @@ func nominal[T Secret](s T)T{return s}
 func main(){c:=new Child();var b Base=c;rs:=[]Alias{c};println(use(c),b.read(),rs[0].read());println(many(pair()));_=pass(new Secret());_=nominal(new Secret())}
 `, "8 8 8\n16\n")
 }
+
+func TestDynamicInterfacesRequirePublicMethods(t *testing.T) {
+	runMatchSource(t, `namespace main
+interface Reader[T any]{func read()T}
+type Combined interface { Reader[int] }
+class Secret {private func read()int{return 42}}
+class Protected {protected func read()int{return 43}}
+class Promoted extends Protected {public override func read()int{return 9}}
+class Public {public func read()int{return 7}}
+class Child extends Public {public override func read()int{return 8}}
+class Generic[T any] {private value T;constructor(value T){this.value=value};public func read()T{return this.value}}
+func check[T any](value any)bool{_,ok:=value.(T);return ok}
+func kind(value any)string{
+ switch reader:=value.(type) {
+  case Reader[int]: _=reader.read();return "reader"
+  case Secret: return "secret"
+  default: return "other"
+ }
+}
+func main(){
+ var hidden any=new Secret();var protected any=new Protected();var public any=new Child()
+ _,a:=hidden.(Reader[int]);_,b:=protected.(Combined);reader,c:=public.(Reader[int])
+ println(a,b,c);if reader!=nil{println(reader.read())}
+ println(check[Reader[int]](hidden),check[Combined](protected),check[Combined](public))
+ println(kind(hidden),kind(protected),kind(public))
+ var promoted any=new Promoted();p,f:=promoted.(Reader[int]);println(f);if p!=nil{println(p.read())}
+ original,d:=hidden.(Secret);println(d);if original!=nil{_=original}
+ var generic any=new Generic[string]("generic");r,e:=generic.(Reader[string]);println(e);if r!=nil{println(r.read())}
+}
+`, "false false true\n8\nfalse false true\nsecret other reader\ntrue\n9\ntrue\ntrue\ngeneric\n")
+}
+
+func TestDynamicHiddenInterfaceSingleAssertionFails(t *testing.T) {
+	runMatchSource(t, `namespace main
+interface Reader {func read()int}
+class Secret {private func read()int{return 42}}
+func main(){
+ defer func(){println("assertion failed",recover()!=nil)}()
+ var value any=new Secret()
+ _=value.(Reader)
+ println("unreachable")
+}
+`, "assertion failed true\n")
+}
+
+func TestDynamicInterfaceMarkersRemainInternal(t *testing.T) {
+	dir := t.TempDir()
+	source := "namespace main\nclass Public {public func read()int{return 7}}\nfunc main(){new Public().GhiPublic_read()}\n"
+	if err := os.WriteFile(filepath.Join(dir, "main.ghi"), []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.Check(context.Background(), compiler.Options{Dir: dir}); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("generated marker is accessible: %v", err)
+	}
+}

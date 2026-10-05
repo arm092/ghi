@@ -24,6 +24,9 @@ func (p *program) emitClass(c *classDecl) error {
 	}
 	for _, m := range c.allMethods() {
 		fmt.Fprintf(&out, "GhiM_%s(%s)%s\n", m.Name, p.parameters(m, c.File, c.Namespace, c), p.results(m, c.File, c.Namespace, c))
+		if c.Interface || m.Visibility == "public" {
+			fmt.Fprintf(&out, "GhiPublic_%s()\n", m.Name)
+		}
 	}
 	out.WriteString("}\n")
 	if len(c.InterfaceNames) > 0 {
@@ -49,6 +52,9 @@ func (p *program) emitClass(c *classDecl) error {
 			fmt.Fprintf(&out, "func (this *%s) %s() *%s { return &this.F_%s_%s }\n", receiver, fieldRef(f), typ, f.Owner.key(), f.Name)
 		}
 		for _, m := range c.allMethods() {
+			if m.Visibility == "public" {
+				fmt.Fprintf(&out, "func (this *%s) GhiPublic_%s() {}\n", receiver, m.Name)
+			}
 			ret := ""
 			if m.Node.Type.Results != nil {
 				ret = "return "

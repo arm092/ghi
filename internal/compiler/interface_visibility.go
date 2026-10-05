@@ -147,9 +147,11 @@ func (p *program) validateInterfaceVisibility(info *types.Info) error {
 				if value := info.Types[n.Fun]; value.IsType() && len(n.Args) == 1 {
 					check(n.Args[0], info.TypeOf(n.Args[0]), value.Type)
 				} else if id, ok := n.Fun.(*ast.Ident); ok && info.Uses[id] == types.Universe.Lookup("append") && len(n.Args) > 1 && !n.Ellipsis.IsValid() {
-					if slice, ok := info.TypeOf(n.Args[0]).Underlying().(*types.Slice); ok {
-						for _, argument := range n.Args[1:] {
-							check(argument, info.TypeOf(argument), slice.Elem())
+					if typ := info.TypeOf(n.Args[0]); typ != nil {
+						if slice, ok := typ.Underlying().(*types.Slice); ok {
+							for _, argument := range n.Args[1:] {
+								check(argument, info.TypeOf(argument), slice.Elem())
+							}
 						}
 					}
 				} else if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok {

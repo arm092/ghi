@@ -673,7 +673,29 @@ Multiple bounds can be combined with `type Entity interface { Identifiable; Labe
 
 Individual methods cannot introduce additional type parameters. Generic fields and locals need initialization because `T` may represent a nonnullable object.
 
-Statically known class-to-interface conversions require public methods in declarations, assignments, arguments, returns and collections. This also applies to embedded and generic interfaces. Values erased to native `any` retain the generated Go method set: a runtime interface assertion can currently expose a nonpublic implementation. Keep class values statically typed when relying on Ghi visibility; runtime assertions from `any` do not enforce that boundary yet.
+Class-to-interface conversions require public methods in declarations, assignments, arguments, returns and collections. This also applies to embedded and generic interfaces.
+
+**Development change after v0.3.0:** runtime interface assertions and type switches enforce the same public-method requirement, including values stored in native `any`. Private and protected methods cannot satisfy a structural interface. A descendant that overrides a protected method as public can satisfy it. Nominal assertions to a class still work; normal visibility checks apply when accessing its members. The published v0.3.0 binaries retain the earlier `any` visibility limitation until the next release.
+
+```ghi
+interface Reader {
+	func read() int
+}
+
+class Secret {
+	private func read() int {
+		return 42
+	}
+}
+
+func inspect() {
+	var value any = new Secret()
+	reader, ok := value.(Reader)
+	println(ok, reader == nil) // false true
+}
+```
+
+A failed comma-ok assertion produces `nil, false` for a Ghi interface. A single-result assertion fails with a Go runtime panic; it does not become a catchable `GoError`. A type switch skips an interface case that requires a hidden method and can still select a nominal class case or `default`.
 
 ## Nullable values
 
