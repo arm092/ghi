@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.11](https://github.com/arm092/ghi/releases/tag/v0.2.11), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.8](https://github.com/arm092/ghi-goland/releases/tag/v0.1.8).
+**Current release:** [Ghi v0.2.12](https://github.com/arm092/ghi/releases/tag/v0.2.12), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.8](https://github.com/arm092/ghi-goland/releases/tag/v0.1.8).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -37,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.11).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.12).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.11/ghi_v0.2.11_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.12/ghi_v0.2.12_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -75,7 +75,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.11 on macOS, use the portable archive or Homebrew. A native v0.2.11 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.11/ghi_v0.2.11_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.2.12 on macOS, use the portable archive or Homebrew. A native v0.2.12 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.12/ghi_v0.2.12_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -102,7 +102,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The v0.2.11 compiler test suite and `go vet ./...` passed locally on Windows amd64. Release binaries created and ran a new project and the ternary example on Windows amd64 and Linux amd64; syntax analysis also passed in an emulated Linux ARM64 container without Go. Ghi Quality v0.1.1 and GoLand platforms 251/262 were checked for ternary compatibility. Native macOS and Homebrew checks remain deferred. The native v0.2.1 macOS installer was previously verified on Apple silicon. GitHub Actions is disabled for this repository.
+The v0.2.12 compiler test suite and `go vet ./...` passed locally on Windows amd64. Release binaries created and ran a new project and the ternary example on Windows amd64 and Linux amd64; syntax analysis also passed in an emulated Linux ARM64 container without Go. Ghi Quality v0.1.1 and GoLand platforms 251/262 were checked for ternary compatibility. Native macOS and Homebrew checks remain deferred. The native v0.2.1 macOS installer was previously verified on Apple silicon. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -800,7 +800,7 @@ func main() {
 }
 ```
 
-This unified rule requires the development compiler. The published 0.2.11 release still has the function-value limitation: parameters and class fields retain raw errors, and reassigning a native alias retains its old native-error classification.
+This unified rule is available in Ghi 0.2.12. It applies consistently to direct calls, function variables, parameters and class fields.
 
 ## Control flow and match
 
@@ -835,7 +835,7 @@ func describe(direction Direction) string {
 }
 ```
 
-This exhaustive enum form requires the development compiler; it is not included in the published 0.2.11 release.
+This exhaustive enum form is available in Ghi 0.2.12.
 
 ## Concurrency
 
@@ -947,7 +947,7 @@ Each token has `kind`, `text`, `start`, `end`, `line`, `column`, `implicit` and 
 
 Success exits with code 0. Syntax failures exit with code 1 and return a JSON diagnostic (`kind: "syntax"`, `message`) with empty token/capability arrays. Diagnostic messages may include parser locations; lowered parser positions must not be used as source edit ranges. File read/output failures exit 1 with a stderr message; usage errors exit 2. Flags precede the filename. The stdin filename is a label and defaults to `stdin.ghi`; it does not need to exist on disk.
 
-### Expression types for tools (development)
+### Expression types for tools
 
 ```sh
 ghi analyze --json --types --project ./project ./project/main.ghi
@@ -960,7 +960,7 @@ Successful schema-version-1 responses add the `expressionTypes` capability and o
 
 The index is conservative: only surviving checked expressions with verified source ranges are included. Rewritten class members, enum cases, complete match/ternary expressions and inner calls wrapped by native error handling may be omitted. Later uses of their result variables can still have types. Declaration identifiers, first-line expressions after the namespace header and files with user `//line` directives are omitted. Missing entries must not be guessed. Semantic failures return a `semantic` diagnostic, empty tokens/capabilities and no expression types. The default syntax-only mode remains independent of Go and project dependencies.
 
-This API requires the development compiler and is not included in the published 0.2.11 release.
+This API is available in Ghi 0.2.12.
 
 ### Linting and safe fixes
 
