@@ -1013,7 +1013,8 @@ The plugin provides:
 - Generic inheritance and embedded interface constraint assistance.
 - Enum declaration/case highlighting, completion and navigation.
 - Improved expression inference for chained calls and generic fields/methods.
-- Canonical Reformat Code and compiler diagnostics, including unsaved editor buffers with a compatible development compiler.
+- Compiler-checked type hover for full calls, ternary/match expressions, fields and bound method signatures with Ghi v0.2.13; GoLand 2025.1 and 2025.3 integration was verified with the released compiler.
+- Canonical Reformat Code and compiler diagnostics, including unsaved editor buffers with a compatible compiler.
 - Build, Run and Debug actions.
 - Original-source breakpoints, stepping, stacks and variables through GoLand's bundled Delve.
 
