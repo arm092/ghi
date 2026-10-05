@@ -307,6 +307,61 @@ func TestExpressionAnalysisClassBodyAndConservativeOrigins(t *testing.T) {
 	}
 }
 
+func TestExpressionAnalysisClassFieldReadsRetainExactSpans(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "main.ghi")
+	source := []byte("\ufeffnamespace main\r\n// Ղ repeated field reads\r\nclass Node { constructor() {} }\r\nclass Box[T any] {\r\n public value T\r\n private secret int\r\n constructor(value T) { this.value = value }\r\n}\r\nfunc main() {\r\n number := new Box[int](7)\r\n maybe := new Box[?Node](nil)\r\n outer := new Box[Box[int]](number)\r\n _ = number.value\r\n _ = number.value\r\n _ = maybe.value\r\n _ = outer.value.value\r\n number.value = 8\r\n}\r\n")
+	if err := os.WriteFile(file, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := compiler.AnalyzeExpressionTypes(context.Background(), root, file, source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("analysis: %+v", result)
+	}
+	want := map[[2]int]string{}
+	for text, typ := range map[string]string{"_ = number.value": "int", "_ = maybe.value": "?Node", "_ = outer.value.value": "int"} {
+		prefix := []byte("_ = ")
+		for rest, base := source, 0; ; {
+			index := bytes.Index(rest, []byte(text))
+			if index < 0 {
+				break
+			}
+			start := base + index + len(prefix)
+			want[[2]int{start, base + index + len(text)}] = typ
+			base += index + len(text)
+			rest = source[base:]
+		}
+	}
+	writeStart := bytes.Index(source, []byte("number.value ="))
+	for _, item := range result.ExpressionTypes {
+		span := [2]int{item.Start, item.End}
+		if typ, ok := want[span]; ok {
+			if item.Type != typ {
+				t.Fatalf("%s type: %s, want %s", source[item.Start:item.End], item.Type, typ)
+			}
+			delete(want, span)
+		}
+		if item.Start == writeStart && item.End == writeStart+len("number.value") {
+			t.Fatalf("field write claimed read hover: %+v", item)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing exact class field read spans: %v; got %+v", want, result.ExpressionTypes)
+	}
+	broken := bytes.Replace(source, []byte("_ = maybe.value"), []byte("_ = number.secret"), 1)
+	failed := compiler.AnalyzeExpressionTypes(context.Background(), root, file, broken)
+	if len(failed.Diagnostics) == 0 || len(failed.Capabilities) != 0 || len(failed.ExpressionTypes) != 0 || len(failed.Tokens) != 0 {
+		t.Fatalf("private field error exposed partial types: %+v", failed)
+	}
+	privateStart := bytes.Index(broken, []byte("number.secret"))
+	line := bytes.Count(broken[:privateStart], []byte("\n")) + 1
+	column := privateStart - bytes.LastIndexByte(broken[:privateStart], '\n')
+	wantDiagnostic := fmt.Sprintf("%s:%d:%d: field secret is private", file, line, column)
+	if failed.Diagnostics[0].Message != wantDiagnostic {
+		t.Fatalf("private field diagnostic lost original position: got %q; want %q", failed.Diagnostics[0].Message, wantDiagnostic)
+	}
+}
+
 func TestExpressionAnalysisCLIContract(t *testing.T) {
 	root := t.TempDir()
 	binary := filepath.Join(t.TempDir(), "ghi")

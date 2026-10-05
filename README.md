@@ -962,6 +962,8 @@ The index is conservative: only surviving checked expressions with verified sour
 
 This API is available in Ghi 0.2.12.
 
+The development compiler also reports exact field-read expressions such as `box.value`, including generic and nullable fields and nested reads. Their original UTF-8 ranges are matched to final checked getter types. Field writes and address expressions do not acquire field-read entries; failed access checks return diagnostics without partial types. This additional coverage is not in the 0.2.12 release.
+
 ### Linting and safe fixes
 
 [Ghi Quality](https://github.com/arm092/ghi-quality) is an independently versioned CLI for linting, safe fixes and canonical formatting. Download its executable from the [quality tool releases](https://github.com/arm092/ghi-quality/releases), and put Ghi v0.2.9+ on `PATH` or set `GHI_QUALITY_GHI` to the compiler's absolute path.
@@ -1045,9 +1047,9 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 [Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
 
-The Ghi 0.2.11 compiler was checked with Ghi Quality v0.1.1 (`run --dry-run`, `run`, and `format --check`) on an isolated service copy. No fixes were needed. The remaining `empty_catch` warning in `discardBody` is intentional: rejected request bodies are bounded, and drain failures are ignored before returning the original HTTP error. A fresh-consumer run passed integration tests, 4,488 verified HTTP responses, 320 cascading deletes, and persistence of all 162 remaining records and their histories after restart.
+The Ghi 0.2.12 compiler was checked with Ghi Quality v0.1.1 (`run --dry-run`, `run`, and `format --check`) on an isolated service copy. No fixes were needed. The remaining `empty_catch` warning in `discardBody` is intentional: rejected request bodies are bounded, and drain failures are ignored before returning the original HTTP error. A fresh-consumer run passed integration tests, 4,488 verified HTTP responses, 320 cascading deletes, and persistence of all 162 remaining records and their histories after restart.
 
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.8 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.12 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal

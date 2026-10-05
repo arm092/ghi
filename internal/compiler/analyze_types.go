@@ -135,7 +135,16 @@ func AnalyzeExpressionTypes(ctx context.Context, project, filename string, sourc
 		if bridgedFunctions[expr] {
 			continue
 		}
-		value, ok := p.AnalysisInfo.Types[expr]
+		checked := expr
+		// Field reads are replaced by getter calls. Their original candidate
+		// supplies the verified source span; only the final checked getter
+		// supplies a type, including instantiated generic/nullable fields.
+		if selector, ok := expr.(*ast.SelectorExpr); ok {
+			if getter := p.AnalysisFieldReads[selector]; getter != nil {
+				checked = getter
+			}
+		}
+		value, ok := p.AnalysisInfo.Types[checked]
 		if !ok || value.Type == nil || value.IsType() || value.IsVoid() {
 			continue
 		}

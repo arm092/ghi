@@ -276,6 +276,12 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								}
 								changed = true
 								getter := &ast.CallExpr{Fun: &ast.SelectorExpr{X: n.X, Sel: ast.NewIdent(fieldGet(field))}}
+								if p.AnalyzeTypes {
+									if p.AnalysisFieldReads == nil {
+										p.AnalysisFieldReads = map[*ast.SelectorExpr]*ast.CallExpr{}
+									}
+									p.AnalysisFieldReads[n] = getter
+								}
 								p.Wrapped[getter] = true
 								return getter
 							}
