@@ -6,28 +6,26 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"strings"
 )
 
-// nativeErrorSignature identifies native calls whose trailing error is bridged.
-func nativeErrorSignature(call *ast.CallExpr, info *types.Info, values map[types.Object]bool) *types.Signature {
+// trailingErrorSignature applies the same error bridge to every user call.
+// Synthetic calls are marked Wrapped at creation so data getters and raw
+// declaration forwarding retain their results without relying on name prefixes.
+func (p *program) trailingErrorSignature(call *ast.CallExpr, info *types.Info) *types.Signature {
 	if info == nil {
 		return nil
 	}
 	base, _ := genericBase(unparen(call.Fun))
-	var object types.Object
+	if fn, ok := base.(*ast.FuncLit); ok && (p.MatchFunctions[fn] || p.isTernaryFunction(fn)) {
+		// A synthesized expression selects error data; it is not a user call.
+		return nil
+	}
 	var identifier *ast.Ident
 	switch fun := base.(type) {
 	case *ast.Ident:
 		identifier = fun
-		object = info.Uses[fun]
 	case *ast.SelectorExpr:
 		identifier = fun.Sel
-		object = info.Uses[fun.Sel]
-	}
-	fn, isFunction := object.(*types.Func)
-	if !values[object] && !(isFunction && fn.Pkg() != nil && !strings.HasPrefix(fn.Pkg().Path(), generatedModule)) {
-		return nil
 	}
 	signature, ok := functionSignature(info.TypeOf(call.Fun))
 	if identifier != nil {
@@ -94,7 +92,9 @@ func (p *program) captureScheduledCall(call *ast.CallExpr, signature *types.Sign
 	}
 	if bridgeErrors {
 		helper, _ := parser.ParseExpr(p.runtimeSymbol(p.ensureErrorHelper(signature.Results().Len()-1), file, ns))
-		execution = &ast.CallExpr{Fun: helper, Args: []ast.Expr{invoke}}
+		bridge := &ast.CallExpr{Fun: helper, Args: []ast.Expr{invoke}}
+		p.Wrapped[bridge] = true
+		execution = bridge
 	}
 	callbackType := &ast.FuncType{Params: params}
 	callback := &ast.FuncLit{Type: callbackType, Body: &ast.BlockStmt{List: []ast.Stmt{&ast.ExprStmt{X: execution}}}}

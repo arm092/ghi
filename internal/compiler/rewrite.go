@@ -47,11 +47,10 @@ func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int, t
 
 func (p *program) rewrite(info *types.Info) (bool, error) {
 	changed := false
-	nativeValues := p.nativeFunctionValues(info)
 	var failure error
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
-			if file.Cached != nil {
+			if file.Unit.Native || file.Cached != nil {
 				continue
 			}
 			owners := map[*ast.FuncDecl]*classDecl{}
@@ -85,7 +84,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 						}
 						if !p.Wrapped[call] {
 							_, asynchronous := n.(*ast.GoStmt)
-							signature := nativeErrorSignature(call, info, nativeValues)
+							signature := p.trailingErrorSignature(call, info)
 							bridgeErrors := signature != nil
 							builtin := false
 							if asynchronous {
@@ -137,6 +136,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 											// Taking the field address evaluates the receiver once and
 											// lets Go perform the compound operation directly.
 											address := &ast.CallExpr{Fun: &ast.SelectorExpr{X: selector.X, Sel: ast.NewIdent(fieldRef(field))}}
+											p.Wrapped[address] = true
 											star := &ast.StarExpr{Star: selector.Pos(), X: address}
 											// A generated field accessor always returns the address of
 											// initialized storage, including storage of a type parameter.
@@ -170,12 +170,16 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							return &ast.CallExpr{Fun: ast.NewIdent("panic"), Args: []ast.Expr{&ast.CallExpr{Fun: fun, Args: n.Args}}}
 						}
 						if !p.Wrapped[n] {
-							if signature := nativeErrorSignature(n, info, nativeValues); signature != nil {
+							if signature := p.trailingErrorSignature(n, info); signature != nil {
 								p.Wrapped[n] = true
 								name := p.ensureErrorHelper(signature.Results().Len() - 1)
 								fun, _ := parser.ParseExpr(p.runtimeSymbol(name, file, ns))
 								changed = true
-								return &ast.CallExpr{Fun: fun, Args: []ast.Expr{n}}
+								bridge := &ast.CallExpr{Fun: fun, Args: []ast.Expr{n}}
+								// Only the original final error is operational; any
+								// remaining error-valued result is ordinary data.
+								p.Wrapped[bridge] = true
+								return bridge
 							}
 						}
 						if fn := p.functionNamed(baseText, file, ns); fn != nil && fillDefaults(n, fn, 0) {
@@ -271,7 +275,9 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 									return node
 								}
 								changed = true
-								return &ast.CallExpr{Fun: &ast.SelectorExpr{X: n.X, Sel: ast.NewIdent(fieldGet(field))}}
+								getter := &ast.CallExpr{Fun: &ast.SelectorExpr{X: n.X, Sel: ast.NewIdent(fieldGet(field))}}
+								p.Wrapped[getter] = true
+								return getter
 							}
 						}
 						if _, method := p.expressionMethod(n.X, n.Sel.Name, info); method != nil {

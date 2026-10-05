@@ -784,7 +784,23 @@ func main() {
 
 `GoError` preserves the native error as `cause` and defaults to code `0`. Go runtime faults are not ordinary catchable Ghi exceptions. Handle exceptions inside the goroutine that can throw them; an outer goroutine's catch cannot intercept them.
 
-Known function-value limitation: direct native calls and their local aliases use this bridge, but a callback passed through a Ghi function parameter or stored in a class field currently retains its raw Go `(value, error)` signature. Handle both results explicitly there; a call used only as a statement can silently discard the error. Reassigning a native local alias to a Ghi function also retains the alias's native-error policy. Regression tests reproduce these differences; the callback error policy is not yet unified.
+The development compiler applies the trailing-error rule to every Ghi call site, including calls to Ghi functions, callbacks passed through parameters, function fields, closures and reassigned aliases. A non-nil last result of type `error` raises `GoError`; a nil error is removed and the other results are returned. A function returning only `error` therefore produces no result on success. Function declarations and callback signatures still describe their raw Go-compatible results; native `.go` call sites are not transformed. Accessing an error-valued field such as `err.cause` returns the error as data and does not throw.
+
+```ghi
+func value() (int, error) {
+	return 42, nil
+}
+
+func invoke(callback func() (int, error)) int {
+	return callback()
+}
+
+func main() {
+	println(invoke(value)) // 42; the nil error is removed at callback().
+}
+```
+
+This unified rule requires the development compiler. The published 0.2.11 release still has the function-value limitation: parameters and class fields retain raw errors, and reassigning a native alias retains its old native-error classification.
 
 ## Control flow and match
 

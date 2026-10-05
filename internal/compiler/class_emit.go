@@ -76,6 +76,14 @@ func (p *program) emitClass(c *classDecl) error {
 	if err != nil {
 		return fmt.Errorf("generate class %s: %w", c.Name, err)
 	}
+	// Generated forwarding calls implement raw method/constructor signatures;
+	// only the user's call site applies the trailing-error bridge.
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			p.Wrapped[call] = true
+		}
+		return true
+	})
 	// Synthetic declarations belong to the source class, never a nonexistent
 	// .generated file. Real method bodies retain their own original positions.
 	generatedFile := p.Fset.File(parsed.Pos())

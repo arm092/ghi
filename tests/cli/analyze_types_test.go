@@ -238,7 +238,7 @@ func TestExpressionAnalysisNullableClassDoesNotRenameUnicodePointerPrefix(t *tes
 func TestExpressionAnalysisNativeBridgeAndExplicitTuple(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "main.ghi")
-	source := []byte("namespace main\nimport \"go:strconv\"\nfunc pair() (int, string) { return 1, \"value\" }\nfunc pointer(value *int) *int { return value }\nfunc main() {\n n := strconv.Atoi(\"42\")\n _ = n\n a,b := pair()\n _ = a; _ = b\n p := pointer(&n)\n _ = p\n}\n")
+	source := []byte("namespace main\nimport \"go:strconv\"\nfunc pair() (int, string) { return 1, \"value\" }\nfunc wrapped() (int, error) { return 7, nil }\nfunc pointer(value *int) *int { return value }\nfunc main() {\n n := strconv.Atoi(\"42\")\n _ = n\n value := wrapped()\n _ = value\n a,b := pair()\n _ = a; _ = b\n p := pointer(&n)\n _ = p\n}\n")
 	if err := os.WriteFile(file, source, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -246,17 +246,20 @@ func TestExpressionAnalysisNativeBridgeAndExplicitTuple(t *testing.T) {
 	if len(result.Diagnostics) != 0 {
 		t.Fatalf("analysis: %+v", result)
 	}
-	foundN, foundPair, foundPointer := false, false, false
+	foundN, foundWrapped, foundPair, foundPointer := false, false, false, false
 	for _, item := range result.ExpressionTypes {
 		text := string(source[item.Start:item.End])
-		if text == "strconv.Atoi(\"42\")" && item.Type != "int" {
+		if (text == "strconv.Atoi(\"42\")" || text == "wrapped()") && item.Type != "int" {
 			t.Fatalf("raw bridged tuple: %+v", item)
 		}
-		if text == "strconv.Atoi" {
+		if text == "strconv.Atoi" || text == "wrapped" {
 			t.Fatalf("raw bridged function signature: %+v", item)
 		}
 		if text == "n" && item.Type == "int" {
 			foundN = true
+		}
+		if text == "value" && item.Type == "int" {
+			foundWrapped = true
 		}
 		if text == "pair()" && item.Type == "(int, string)" {
 			foundPair = true
@@ -265,7 +268,7 @@ func TestExpressionAnalysisNativeBridgeAndExplicitTuple(t *testing.T) {
 			foundPointer = true
 		}
 	}
-	if !foundN || !foundPair || !foundPointer {
+	if !foundN || !foundWrapped || !foundPair || !foundPointer {
 		t.Fatalf("lost Ghi tuple or native pointer: %+v", result.ExpressionTypes)
 	}
 }

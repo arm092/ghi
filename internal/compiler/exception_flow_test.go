@@ -85,9 +85,7 @@ func main(){
 	}
 }
 
-// Native origin currently survives aliases, while an explicitly typed callback
-// parameter or field retains the raw Go signature. Keep both boundaries visible
-// until function-value capture semantics are defined for mixed native/Ghi values.
+// Calls bridge trailing errors consistently through aliases, parameters and fields.
 func TestNativeErrorBridgeFunctionValueBoundaries(t *testing.T) {
 	for _, test := range []struct {
 		name, declarations, setup, call string
@@ -96,8 +94,8 @@ func TestNativeErrorBridgeFunctionValueBoundaries(t *testing.T) {
 		{"alias", "", "read := io.ReadFull; alias := read", "alias"},
 		{"parameter", `func invoke(read func(io.Reader, []byte) (int, error), text string) {
  buffer := make([]byte, 1)
- count, err := read(strings.NewReader(text), buffer)
- println(count, errors.Is(err, io.EOF), string(buffer))
+ try { count := read(strings.NewReader(text), buffer); println("success", count, string(buffer))
+ } catch err GoError { println("caught", errors.Is(err.cause, io.EOF)) }
 }`, "", ""},
 		{"field", `class Reader {
  public read func(io.Reader, []byte) (int, error)
@@ -114,23 +112,12 @@ func TestNativeErrorBridgeFunctionValueBoundaries(t *testing.T) {
 			if test.name == "parameter" {
 				body = `invoke(io.ReadFull, "x"); invoke(io.ReadFull, "")`
 			}
-			if test.name == "field" {
-				body = test.setup + `
- for _, text := range []string{"x", ""} {
-  buffer := make([]byte, 1)
-  count, err := reader.read(strings.NewReader(text), buffer)
-  println(count, errors.Is(err, io.EOF), string(buffer))
- }`
-			}
 			got := runProgram(t, map[string]string{"main.ghi": `namespace main
 import io "go:io"
 import strings "go:strings"
 import errors "go:errors"
 ` + test.declarations + "\nfunc main() {\n" + body + "\n}\n"})
 			want := "success 1 x\ncaught true\n"
-			if test.name == "parameter" || test.name == "field" {
-				want = "1 false x\n0 true \x00\n"
-			}
 			if got != want {
 				t.Fatalf("output %q", got)
 			}
@@ -178,12 +165,12 @@ func main() {
  } catch err GoError { println("ghi field caught") }
 }
 `})
-	if got != "native parameter raw\nghi parameter raw\nnative field raw\nghi field raw\n" {
+	if got != "native parameter caught true\nghi parameter caught true\nnative field caught\nghi field caught\n" {
 		t.Fatalf("output %q", got)
 	}
 }
 
-func TestNativeErrorBridgeRawCallbacksRejectSingleResult(t *testing.T) {
+func TestTrailingErrorCallbacksYieldSingleResult(t *testing.T) {
 	for name, declarations := range map[string]string{
 		"parameter": `func invoke(read func(io.Reader, []byte) (int, error)) int {
  return read(strings.NewReader("x"), make([]byte, 1))
@@ -200,23 +187,18 @@ func main() {
 }`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir := project(t, map[string]string{"main.ghi": `namespace main
+			got := runProgram(t, map[string]string{"main.ghi": `namespace main
 import io "go:io"
 import strings "go:strings"
 ` + declarations})
-			_, err := Build(context.Background(), Options{Dir: dir})
-			if err == nil {
-				t.Fatal("raw callback signature unexpectedly yielded one result")
+			if got != "1\n" {
+				t.Fatalf("output %q", got)
 			}
-			t.Log(err)
 		})
 	}
 }
 
-// Characterize a confirmed limitation: native provenance is monotonic for an
-// alias, so assigning a Ghi function later still bridges its explicit error.
-// This is current behavior, not the intended function-value contract.
-func TestNativeErrorBridgeReassignedAliasCurrentBehavior(t *testing.T) {
+func TestTrailingErrorBridgeReassignedAlias(t *testing.T) {
 	got := runProgram(t, map[string]string{"main.ghi": `namespace main
 import io "go:io"
 import strings "go:strings"
@@ -230,6 +212,131 @@ func main() {
 }
 `})
 	if got != "caught true\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestTrailingErrorBridgeGhiOperationsAndSyntheticAccess(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import errors "go:errors"
+func result[T any](value T, fail bool) (T, error) {
+ if fail { return value, io.EOF }
+ return value, nil
+}
+func errorData(fail bool) (error, error) {
+ if fail { return io.EOF, io.ErrUnexpectedEOF }
+ return io.EOF, nil
+}
+func finish(fail bool) error { if fail { return io.EOF }; return nil }
+func protected() (int, error) {
+ try { return 5, io.EOF } finally { println("finally") }
+}
+func later() func() error { return func() error { return io.EOF } }
+class Operation {
+ public cause error
+ constructor() { this.cause = io.EOF }
+ public func value(fail bool) (int, error) {
+  if fail { return 0, this.cause }
+  return 8, nil
+ }
+}
+class Inherited extends Operation { constructor() { parent() } }
+func main() {
+ println(result(7, false), result("x", false))
+ selected := match true { true => io.EOF, default => nil, }
+ conditional := true ? io.EOF : nil
+ println("error data", errors.Is(selected, io.EOF), errors.Is(conditional, io.EOF))
+ println("tuple data", errors.Is(errorData(false), io.EOF))
+ try { errorData(true) } catch err GoError { println("tuple error", errors.Is(err.cause, io.ErrUnexpectedEOF)) }
+ finish(false)
+ try { result(0, true) } catch err GoError { println("generic", errors.Is(err.cause, io.EOF)) }
+ try { finish(true) } catch err GoError { println("error only", errors.Is(err.cause, io.EOF)) }
+ try { protected() } catch err GoError { println("protected", errors.Is(err.cause, io.EOF)) }
+ op := new Inherited()
+ println(op.value(false), errors.Is(op.cause, io.EOF))
+ try { op.value(true) } catch err GoError { println("method", errors.Is(err.cause, io.EOF)) }
+ bound := op.value
+ try { bound(true) } catch err GoError { println("bound", errors.Is(err.cause, io.EOF)) }
+ try { later()() } catch err GoError { println("returned callback", errors.Is(err.cause, io.EOF)) }
+ callbacks := []func() error{func() error { return io.EOF }}
+ try { callbacks[0]() } catch err GoError { println("indexed callback", errors.Is(err.cause, io.EOF)) }
+ try { (func() error { return io.EOF })() } catch err GoError { println("literal callback", errors.Is(err.cause, io.EOF)) }
+}
+`})
+	want := "7 x\nerror data true true\ntuple data true\ntuple error true\ngeneric true\nerror only true\nfinally\nprotected true\n8 true\nmethod true\nbound true\nreturned callback true\nindexed callback true\nliteral callback true\n"
+	if got != want {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestTrailingErrorBridgeGhiDeferredCapture(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import errors "go:errors"
+var trace string
+func cleanup(value int = 7) error { println("default", value); return nil }
+func fail() error { println("deferred fail"); return io.EOF }
+func errorData() (error, error) { println("deferred error data"); return io.EOF, nil }
+func argument() int { trace += "arg "; return 2 }
+func variadic(values ...int) error { println("variadic", values[0]); return nil }
+class Operation {
+ public value int
+ constructor(value int) { this.value = value }
+ public func cleanup(value int) error { println("method", this.value, value); return nil }
+}
+func deferred() {
+ op := new Operation(3)
+ defer fail()
+ defer errorData()
+ defer cleanup()
+ values := []int{1}
+ defer variadic(values...)
+ defer op.cleanup(argument())
+ op = new Operation(9)
+ values[0] = 4
+ trace += "body"
+ println(trace)
+}
+func main() {
+ try { deferred() } catch err GoError { println("caught", errors.Is(err.cause, io.EOF)) }
+}
+`})
+	want := "arg body\nmethod 3 2\nvariadic 4\ndefault 7\ndeferred error data\ndeferred fail\ncaught true\n"
+	if got != want {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestTrailingErrorBridgeNativeRawBodies(t *testing.T) {
+	got := runProgram(t, map[string]string{
+		"go.mod":     "module example.test/bridge\n\ngo 1.26.0\n\nrequire example.test/raw v0.0.0\nreplace example.test/raw => ./raw\n",
+		"raw/go.mod": "module example.test/raw\n\ngo 1.26.0\n",
+		"raw/reader.go": `package raw
+import "io"
+import "strings"
+type Reader struct{}
+func (Reader) Failure() error { return io.EOF }
+func (Reader) ReferenceFailure() error { return io.EOF }
+func RawResults() (int, error) {
+ // Native Go source keeps the original result tuple internally.
+ count, err := io.ReadFull(strings.NewReader("x"), make([]byte, 1))
+ return count, err
+}
+`,
+		"main.ghi": `namespace main
+import raw "go:example.test/raw"
+import io "go:io"
+import errors "go:errors"
+func main() {
+ println(raw.RawResults())
+ reader := raw.Reader{}
+ try { reader.Failure() } catch err GoError { println("native method", errors.Is(err.cause, io.EOF)) }
+ try { reader.ReferenceFailure() } catch err GoError { println("native reference method", errors.Is(err.cause, io.EOF)) }
+}
+`,
+	})
+	if got != "1\nnative method true\nnative reference method true\n" {
 		t.Fatalf("output %q", got)
 	}
 }
