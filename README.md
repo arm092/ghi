@@ -34,6 +34,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 - [Testing and formatting](#testing-and-formatting)
 - [GoLand support](#goland-support)
 - [Examples and current boundaries](#examples-and-current-boundaries)
+- [Compatibility and the 1.0 release gate](#compatibility-and-the-10-release-gate)
 
 ## Installation
 
@@ -1205,6 +1206,75 @@ Generic numeric fields support compound assignment and increment/decrement, incl
 Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These diagnostics and generic fixes are included in v0.2.5.
 
 Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles cover Windows, macOS and Linux; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
+
+## Compatibility and the 1.0 release gate
+
+**Proposed contract for 1.0; not a stability promise for current 0.x releases.**
+Ghi 1.0 will be released when the gates below have evidence, rather than on a
+fixed date. Until then, pin compiler and package versions for reproducible builds.
+
+| Public surface | Intended commitment from 1.0 |
+| --- | --- |
+| Documented valid Ghi source | Subsequent 1.x releases continue to compile it with the same documented semantics. Incompatible changes require 2.0. Rejecting malformed or unsafe source accepted by mistake remains a correctness fix. |
+| Classes, interfaces and generics | Preserve construction with `new Type(...)` and `Type(...)`, inheritance, method dispatch, visibility and type constraints. Public structural requirements apply to static and dynamic interface conversions. |
+| Values and control flow | Preserve nullable notation `?Type`, documented enum behavior, closures, ternaries, match, goroutines and channels. Additional syntax must preserve existing valid programs. |
+| Exceptions and Go interoperability | Preserve documented exception type, code (default `0`), message and trace access, catch behavior and trailing-Go-error conversion. Ordinary Go panics remain Go panics. Trace formatting and runtime frame counts are not stable APIs. |
+| CLI | Preserve documented command names, options, successful command behavior and exit-code meanings. Human-readable messages may change; scripts should use exit codes and documented machine-readable modes. |
+| `ghi analyze --json` | Preserve schema-version-1 field meanings and UTF-8 byte ranges. Additive optional fields and capabilities are allowed; consumers must ignore unknown fields, check the schema/capabilities and verify the source hash. Incompatible protocol changes require a new schema version. Coverage may expand; absent expression types remain unknown. |
+| Dependencies | Mojave and native packages have independent versions and their own contracts. A compiler release states supported manifest/lock schemas and toolchain requirements. It must reject unsupported schemas, rather than silently reinterpret them. Commit and retain the consumer's manifest and lock. |
+
+Generated Go names, runtime helper symbols, temporary directories, object layout
+and generated package paths are implementation details. There is no cross-version
+generated-code ABI: rebuild the entire Ghi project with the selected compiler.
+Built applications run directly without Ghi or Go, subject to their OS, CPU and
+native dependency requirements. Dependency API changes and new Go library APIs
+are outside the source compatibility guarantee. A new Go language branch needs
+an explicitly compatible compiler; it must not be selected silently.
+
+### Required evidence before 1.0
+
+- Compiler tests, vet, bounded malformed-input fuzzing and regression cases for
+  visibility, inheritance/generics, nullable values, enums, closures and Go errors.
+- A fresh consumer service using published, locked Mojave packages: tests, real
+  HTTP requests, concurrent writes, persistence after restart and migration failure.
+- Checksummed release archives and installation without an existing Go toolchain
+  or Ghi cache; version commands, project initialization, dependency installation,
+  compilation and standalone application execution. Reinstallation and corrupt
+  bundle rejection must also pass.
+- Native Windows wizard install/reinstall/uninstall and PATH preservation; native
+  macOS portable/package installation and Homebrew checks. Cross-builds and mocked
+  Apple tools do not satisfy native execution gates. Record the exact supported
+  OS/CPU matrix and disclose architectures without native evidence.
+- Compatibility verification from the GoLand plugin owner against the selected
+  compiler and supported IDE builds. A plugin release number does not imply
+  compiler or package-manager version equality.
+- Release notes with exact commits, versions, artifact hashes, known limitations
+  and workload-specific performance results. No claim of universal Go parity.
+
+Repeatable portable checks are in `tests/installers/portable.ps1` and
+`tests/installers/portable.sh`. Use a freshly extracted, checksummed bundle and a
+disposable environment. The Windows script isolates process PATH and caches and
+does not alter the account's PATH; this is not a clean Windows VM or a wizard
+test. The Unix script uses a fresh Linux environment with Go absent from PATH;
+it does not emulate macOS cache locations. Native macOS/Homebrew
+verification remains deferred and the 1.0 gate remains open.
+
+```powershell
+pwsh -NoProfile -File tests/installers/portable.ps1 -Bundle C:\release\ghi -WorkDir C:\temp\ghi-clean -Version 0.3.0 -MojaveVersion 0.1.0
+```
+
+```sh
+sh tests/installers/portable.sh /release/ghi 0.3.0 0.1.0
+```
+
+On 2026-10-06, the published **Ghi v0.3.0 / Mojave v0.1.0** Windows amd64
+portable bundle passed these checks with system Go absent from process PATH and
+fresh toolchain/build/module caches. The Linux amd64 bundle passed in a new
+Debian bookworm container with no preinstalled Go; both provisioned Go 1.26.8.
+The published Windows wizard also passed install, reinstall, example execution,
+uninstall and byte-for-byte user PATH restoration on the development machine,
+using its existing compatible Go setup. These checks do not establish clean
+Windows VM, Windows ARM64, native macOS or Linux ARM64 execution evidence.
 
 ### Building the tools from source
 
