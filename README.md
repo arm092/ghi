@@ -143,9 +143,13 @@ Use `-o hello.exe` on Windows. Run the compiled executable directly: `./hello` o
 ## Development watch mode
 
 ```sh
+ghi run --watch .
+ghi run --watch --debug . -- application-argument
 ghi watch .
 ghi watch --debug . -- application-argument
 ```
+
+`ghi run --watch` is an alias for `ghi watch`. Both commands use the same rebuild and restart behavior. The `--watch` flag is available for `run` and `test`, and is rejected by `build`. Run watch mode does not accept `-o` because each build uses a temporary executable.
 
 `watch` polls project contents and debounces saves, builds a fresh executable, then replaces the running development process only after compilation succeeds. A failed build prints diagnostics and leaves the previous service running. Saves during compilation schedule another build; an obsolete build is not started. A program that exits waits for the next source change instead of restarting in a loop. Arguments after `--` are forwarded, and the child runs in the project directory with inherited environment and terminal streams.
 
@@ -584,7 +588,7 @@ func main() {
 
 Case definitions are immutable: `Status.Pending = "other"` and `Direction.North = Direction.South` are errors. A local variable initialized from a case remains assignable: `status := Status.Pending; status = "custom"` is valid. A backed enum name is an alias for its backing type, so a `Status` parameter also accepts arbitrary strings; it does not validate membership.
 
-Enums are declared at namespace scope and must contain at least one case. Case names and values must be unique. Assigned values without a backing type, missing values in a backed enum, and mismatched literal types are rejected. Enum cases work with the existing `match` syntax, which continues to require a final `default` arm.
+Enums are declared at namespace scope and must contain at least one case. Case names and values must be unique. Assigned values without a backing type, missing values in a backed enum, and mismatched literal types are rejected. Enum cases work with `match`; the development compiler also supports exhaustive plain-enum matches without a final `default` arm (see [control flow and match](#control-flow-and-match)).
 
 ## Classes and inheritance
 
@@ -780,6 +784,8 @@ func main() {
 
 `GoError` preserves the native error as `cause` and defaults to code `0`. Go runtime faults are not ordinary catchable Ghi exceptions. Handle exceptions inside the goroutine that can throw them; an outer goroutine's catch cannot intercept them.
 
+Known function-value limitation: direct native calls and their local aliases use this bridge, but a callback passed through a Ghi function parameter or stored in a class field currently retains its raw Go `(value, error)` signature. Handle both results explicitly there; a call used only as a statement can silently discard the error. Reassigning a native local alias to a Ghi function also retains the alias's native-error policy. Regression tests reproduce these differences; the callback error policy is not yet unified.
+
 ## Control flow and match
 
 Use Go-style `if`, `for`, `range`, `switch`, `select`, `break`, `continue`, `return` and `defer`. Conditions do not require parentheses. Newline and semicolon rules follow Go, so opening braces normally stay on the declaration or condition line.
@@ -800,7 +806,20 @@ func main() {
 }
 ```
 
-The subject is evaluated once. Only the selected result expression is evaluated. Arms must produce compatible result types. A final `default` is required. Nested matches work; destructuring, guards, type patterns and block arms are not implemented.
+The subject is evaluated once. Only the selected result expression is evaluated. Arms must produce compatible result types. The development compiler permits omitting `default` for a plain enum when every declared case appears exactly once. Missing cases are reported by name; adding an enum case invalidates incomplete matches. Candidates in this form must be declared cases, not variables or arbitrary expressions. Backed enums and other subjects still require a final `default` because their underlying string/int/bool types admit values outside the declared cases. Nested matches work; destructuring, guards, type patterns and block arms are not implemented.
+
+```ghi
+enum Direction { North, South }
+
+func describe(direction Direction) string {
+	return match direction {
+		Direction.North => "north",
+		Direction.South => "south",
+	}
+}
+```
+
+This exhaustive enum form requires the development compiler; it is not included in the published 0.2.11 release.
 
 ## Concurrency
 
@@ -911,6 +930,21 @@ The response contains `schemaVersion: 1`, `filename`, `namespace`, `sha256`, `ca
 Each token has `kind`, `text`, `start`, `end`, `line`, `column`, `implicit` and `matching`. Offsets are zero-based UTF-8 bytes with an exclusive end; line and column are one-based, with columns also measured in bytes. Token text preserves original comments, raw strings and CRLF. Compiler token kinds include `IDENT`, `COMMENT`, `STRING`, numeric/literal kinds, lowercase Go keywords and literal punctuation/operators; Ghi-specific keywords such as `class` and `catch` are `IDENT`, and nullable `?` has kind `?`. Implicit semicolons have kind `;`, text `\n`, zero width and `implicit: true`. There is no EOF token. `matching` is the zero-based partner index for `()`, `[]` and `{}`, or `-1`; indices include comments and implicit semicolons.
 
 Success exits with code 0. Syntax failures exit with code 1 and return a JSON diagnostic (`kind: "syntax"`, `message`) with empty token/capability arrays. Diagnostic messages may include parser locations; lowered parser positions must not be used as source edit ranges. File read/output failures exit 1 with a stderr message; usage errors exit 2. Flags precede the filename. The stdin filename is a label and defaults to `stdin.ghi`; it does not need to exist on disk.
+
+### Expression types for tools (development)
+
+```sh
+ghi analyze --json --types --project ./project ./project/main.ghi
+ghi analyze --json --types --project ./project --stdin --filename /absolute/project/main.ghi
+```
+
+Supply `--types` and `--project` together. This mode checks the production project using its Go toolchain and resolved dependencies; toolchain setup and dependency loading may need network access. The target must be an existing production file. Stdin overlays that file in memory and requires an absolute filename. Sources, manifests, locks and the project `.ghi` cache are not edited.
+
+Successful schema-version-1 responses add the `expressionTypes` capability and optional entries such as `{"start": 123, "end": 132, "type": "?User"}`. Ranges use the original UTF-8 bytes, with an inclusive start and exclusive end. Types retain selected import aliases, nullable Ghi notation, explicit Ghi tuples and native Go pointers. Consumers must verify the source SHA-256 and capability, convert byte offsets to editor offsets and select the smallest containing range.
+
+The index is conservative: only surviving checked expressions with verified source ranges are included. Rewritten class members, enum cases, complete match/ternary expressions and inner calls wrapped by native error handling may be omitted. Later uses of their result variables can still have types. Declaration identifiers, first-line expressions after the namespace header and files with user `//line` directives are omitted. Missing entries must not be guessed. Semantic failures return a `semantic` diagnostic, empty tokens/capabilities and no expression types. The default syntax-only mode remains independent of Go and project dependencies.
+
+This API requires the development compiler and is not included in the published 0.2.11 release.
 
 ### Linting and safe fixes
 

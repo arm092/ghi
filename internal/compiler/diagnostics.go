@@ -23,6 +23,10 @@ func (p *program) sourceError(err error) error {
 	if err == nil {
 		return nil
 	}
+	var original sourceDiagnostic
+	if errors.As(err, &original) {
+		return err
+	}
 	replacements := map[string]string{}
 	var typed types.Error
 	diagnosticFile := ""

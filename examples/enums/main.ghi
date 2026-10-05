@@ -8,7 +8,7 @@ import domain.SwitchState
 func describe(direction Direction) string {
 	return match direction {
 		Direction.North => "north",
-		default => "south",
+		Direction.South => "south",
 	}
 }
 

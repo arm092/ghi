@@ -42,6 +42,12 @@ func (p *program) lowerMatchResults(info *types.Info) bool {
 					return true
 				}
 				p.isTernaryFunction(fn)
+				if marker.Name == matchResultMarker {
+					if p.MatchFunctions == nil {
+						p.MatchFunctions = map[*ast.FuncLit]bool{}
+					}
+					p.MatchFunctions[fn] = true
+				}
 				var result types.Type
 				complete := true
 				hasNil := false

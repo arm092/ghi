@@ -101,6 +101,50 @@ func TestMatchFormatting(t *testing.T) {
 	runMatchSource(t, string(formatted), "1 2\n")
 }
 
+func TestExhaustiveEnumMatch(t *testing.T) {
+	source := `namespace main
+enum Direction { North, South, West }
+var calls = 0
+func direction() Direction { calls++; return Direction.South }
+func describe(value Direction) string {
+ return match value { Direction.North, Direction.West => "other", Direction.South => "south", }
+}
+func main() { println(describe(direction()), calls); println(describe(Direction.West)) }
+`
+	runMatchSource(t, source, "south 1\nother\n")
+	formatted, err := compiler.FormatSource("main.ghi", []byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runMatchSource(t, string(formatted), "south 1\nother\n")
+}
+
+func TestExhaustiveEnumMatchRejections(t *testing.T) {
+	for _, tc := range []struct{ declaration, body, message string }{
+		{"enum Direction { North, South, West }", `match Direction.North { Direction.North => 1, Direction.South => 2, }`, "missing enum cases: Direction.West"},
+		{"enum Direction { North, South }", `match Direction.North { Direction.North => 1, Direction.North => 2, Direction.South => 3, }`, "duplicate enum case Direction.North"},
+		{"enum Direction { North, South }", `match Direction.North { direction => 1, Direction.South => 2, }`, "requires declared enum cases"},
+		{`enum Status string { Ready = "ready", Done = "done" }`, `match Status.Ready { Status.Ready => 1, Status.Done => 2, }`, "requires a final default arm"},
+		{"", `match true { true => 1, false => 2, }`, "requires a final default arm"},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			dir := t.TempDir()
+			source := "namespace main\n" + tc.declaration + "\nfunc main() {\n"
+			if strings.Contains(tc.body, "direction =>") {
+				source += "direction := Direction.North\n"
+			}
+			source += "println(" + tc.body + ")\n}\n"
+			if err := os.WriteFile(filepath.Join(dir, "main.ghi"), []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			err := compiler.Check(context.Background(), compiler.Options{Dir: dir})
+			if err == nil || !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("expected %s, got %v", tc.message, err)
+			}
+		})
+	}
+}
+
 func TestMatchDefaultArgumentFormatting(t *testing.T) {
 	source := "namespace main\nfunc value(n int = match true { true => 3, default => 4, }, suffix int = 2) int { return n + suffix }\nfunc main() { println(value()) }\n"
 	formatted, err := compiler.FormatSource("main.ghi", []byte(source))

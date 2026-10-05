@@ -233,6 +233,11 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			continue
 		}
 		if !changed {
+			if err := p.validateExhaustiveMatches(info); err != nil {
+				return err
+			}
+		}
+		if !changed {
 			if err := p.unresolvedMatch(); err != nil {
 				return err
 			}
@@ -247,6 +252,9 @@ func (p *program) lower(ctx context.Context, goPath, workspace string) error {
 			}
 			if err := p.validateNonNull(info); err != nil {
 				return err
+			}
+			if p.AnalyzeTypes {
+				p.AnalysisInfo = info
 			}
 			if !p.Debug {
 				p.specializeInheritedReceivers(info)

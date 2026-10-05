@@ -5,6 +5,7 @@ import (
 	"github.com/arm092/mojave/pkg/mojave"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -29,6 +30,8 @@ type namespace struct {
 }
 
 type program struct {
+	AnalysisInfo        *types.Info
+	AnalyzeTypes        bool
 	Semantic            *semanticCache
 	CacheEnvironment    string
 	Debug               bool
@@ -46,6 +49,7 @@ type program struct {
 	Helpers             map[int]bool
 	CheckedDereferences map[*ast.StarExpr]bool
 	TernaryFunctions    map[*ast.FuncLit]bool
+	MatchFunctions      map[*ast.FuncLit]bool
 	LoweredReceives     map[*ast.UnaryExpr]bool
 	ReceiveID           int
 	TestNamespaces      map[string]bool

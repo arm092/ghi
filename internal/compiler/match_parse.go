@@ -122,7 +122,9 @@ func normalizeMatches(filename string, source []byte, mappings ...*coverageSourc
 			i++
 		}
 		if !foundDefault {
-			return fail(start, "requires a final default arm")
+			// Semantic checking permits this only for an exhaustive plain enum.
+			// Keep a defensive terminal panic for Go's return-path checker.
+			edits[1].text = `}; panic("invalid exhaustive enum match value") })()`
 		}
 		sort.SliceStable(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
 		for _, m := range mappings {

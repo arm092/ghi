@@ -78,12 +78,65 @@ func main(){
  alias:=read
  try{_=alias("missing-no-file.ghi")}catch err GoError {fmt.Println("caught")}
 }
+
 `})
 	if got != "caught\n" {
 		t.Fatalf("output %q", got)
 	}
 }
 
+// Native origin currently survives aliases, while an explicitly typed callback
+// parameter or field retains the raw Go signature. Keep both boundaries visible
+// until function-value capture semantics are defined for mixed native/Ghi values.
+func TestNativeErrorBridgeFunctionValueBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name, declarations, setup, call string
+	}{
+		{"direct", "", "", "io.ReadFull"},
+		{"alias", "", "read := io.ReadFull; alias := read", "alias"},
+		{"parameter", `func invoke(read func(io.Reader, []byte) (int, error), text string) {
+ buffer := make([]byte, 1)
+ count, err := read(strings.NewReader(text), buffer)
+ println(count, errors.Is(err, io.EOF), string(buffer))
+}`, "", ""},
+		{"field", `class Reader {
+ public read func(io.Reader, []byte) (int, error)
+ constructor(read func(io.Reader, []byte) (int, error)) { this.read = read }
+}`, "reader := new Reader(io.ReadFull)", "reader.read"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := test.setup + `
+ for _, text := range []string{"x", ""} {
+  buffer := make([]byte, 1)
+  try { count := ` + test.call + `(strings.NewReader(text), buffer); println("success", count, string(buffer))
+  } catch err GoError { println("caught", errors.Is(err.cause, io.EOF)) }
+ }`
+			if test.name == "parameter" {
+				body = `invoke(io.ReadFull, "x"); invoke(io.ReadFull, "")`
+			}
+			if test.name == "field" {
+				body = test.setup + `
+ for _, text := range []string{"x", ""} {
+  buffer := make([]byte, 1)
+  count, err := reader.read(strings.NewReader(text), buffer)
+  println(count, errors.Is(err, io.EOF), string(buffer))
+ }`
+			}
+			got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import strings "go:strings"
+import errors "go:errors"
+` + test.declarations + "\nfunc main() {\n" + body + "\n}\n"})
+			want := "success 1 x\ncaught true\n"
+			if test.name == "parameter" || test.name == "field" {
+				want = "1 false x\n0 true \x00\n"
+			}
+			if got != want {
+				t.Fatalf("output %q", got)
+			}
+		})
+	}
+}
 func TestExceptionTypesAndReturnCoverage(t *testing.T) {
 	for name, body := range map[string]string{
 		"throw primitive":       `func main(){ throw 42 }`,
@@ -96,5 +149,87 @@ func TestExceptionTypesAndReturnCoverage(t *testing.T) {
 				t.Fatal("invalid exception/control-flow program accepted")
 			}
 		})
+	}
+}
+
+func TestNativeErrorBridgeMixedOrigins(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import strings "go:strings"
+import errors "go:errors"
+func explicit(reader io.Reader, buffer []byte) (int, error) { return 9, io.EOF }
+func invoke(read func(io.Reader, []byte) (int, error), name string) {
+ try { read(strings.NewReader(""), make([]byte, 1)); println(name, "raw")
+ } catch err GoError { println(name, "caught", errors.Is(err.cause, io.EOF)) }
+}
+
+class Reader {
+ public read func(io.Reader, []byte) (int, error)
+ constructor(read func(io.Reader, []byte) (int, error)) { this.read = read }
+}
+func main() {
+ invoke(io.ReadFull, "native parameter")
+ invoke(explicit, "ghi parameter")
+ native := new Reader(io.ReadFull)
+ ghi := new Reader(explicit)
+ try { native.read(strings.NewReader(""), make([]byte, 1)); println("native field raw")
+ } catch err GoError { println("native field caught") }
+ try { ghi.read(strings.NewReader(""), make([]byte, 1)); println("ghi field raw")
+ } catch err GoError { println("ghi field caught") }
+}
+`})
+	if got != "native parameter raw\nghi parameter raw\nnative field raw\nghi field raw\n" {
+		t.Fatalf("output %q", got)
+	}
+}
+
+func TestNativeErrorBridgeRawCallbacksRejectSingleResult(t *testing.T) {
+	for name, declarations := range map[string]string{
+		"parameter": `func invoke(read func(io.Reader, []byte) (int, error)) int {
+ return read(strings.NewReader("x"), make([]byte, 1))
+}
+func main() { println(invoke(io.ReadFull)) }`,
+		"field": `class Reader {
+ public read func(io.Reader, []byte) (int, error)
+ constructor(read func(io.Reader, []byte) (int, error)) { this.read = read }
+}
+func main() {
+ reader := new Reader(io.ReadFull)
+ count := reader.read(strings.NewReader("x"), make([]byte, 1))
+ println(count)
+}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := project(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import strings "go:strings"
+` + declarations})
+			_, err := Build(context.Background(), Options{Dir: dir})
+			if err == nil {
+				t.Fatal("raw callback signature unexpectedly yielded one result")
+			}
+			t.Log(err)
+		})
+	}
+}
+
+// Characterize a confirmed limitation: native provenance is monotonic for an
+// alias, so assigning a Ghi function later still bridges its explicit error.
+// This is current behavior, not the intended function-value contract.
+func TestNativeErrorBridgeReassignedAliasCurrentBehavior(t *testing.T) {
+	got := runProgram(t, map[string]string{"main.ghi": `namespace main
+import io "go:io"
+import strings "go:strings"
+import errors "go:errors"
+func explicit(reader io.Reader, buffer []byte) (int, error) { return 9, io.EOF }
+func main() {
+ read := io.ReadFull
+ read = explicit
+ try { read(strings.NewReader(""), make([]byte, 1)); println("raw")
+ } catch err GoError { println("caught", errors.Is(err.cause, io.EOF)) }
+}
+`})
+	if got != "caught true\n" {
+		t.Fatalf("output %q", got)
 	}
 }

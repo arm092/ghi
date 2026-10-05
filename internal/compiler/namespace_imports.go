@@ -35,7 +35,11 @@ func (p *program) bindNamespaceImports(file *sourceFile, current *namespace) err
 		target := p.Namespaces[path]
 		parent := p.Namespaces[item.Namespace]
 		isType := parent != nil && namespaceHasType(parent, item.Name)
-		fail := func(message string) error { return fmt.Errorf("%s:%d: %s", file.Path, item.Line, message) }
+		fail := func(message string) error {
+			// Import paths already use source names, not generated Go types.
+			err := fmt.Errorf("%s:%d: %s", file.Path, item.Line, message)
+			return sourceDiagnostic{err.Error(), err}
+		}
 		if target != nil && isType {
 			return fail("ambiguous import " + path + ": both a namespace and a type exist")
 		}

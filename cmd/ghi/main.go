@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-var version = "0.2.11"
+var version = "0.2.12-dev"
 
 func main() { os.Exit(run(os.Args[1:])) }
 
@@ -55,7 +55,7 @@ func run(args []string) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi analyze --json source.ghi\n  ghi analyze --json --stdin [--filename source.ghi]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [--watch] [--race] [--bench pattern] [--benchtime 1s] [--benchmem] [--count 1] [--cover] [--coverprofile coverage.out] [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
+		fmt.Println("Ghi – Go, Hierarchy, Interfaces\n\nUsage:\n  ghi init [directory]\n  ghi check [project-directory]\n  ghi check --stdin --filename /absolute/source.ghi [project-directory]\n  ghi analyze --json [--types --project DIR] source.ghi\n  ghi analyze --json [--types --project DIR] --stdin [--filename source.ghi]\n  ghi fmt [--check] [project-directory]\n  ghi fmt --stdin [--filename source.ghi]\n  ghi test [--watch] [--race] [--bench pattern] [--benchtime 1s] [--benchmem] [--count 1] [--cover] [--coverprofile coverage.out] [-run pattern] [-v] [-timeout 1m] [project-directory]\n  ghi build [--debug] [-o executable] [project-directory]\n  ghi run [--watch] [--debug] [project-directory] [-- program-arguments...]\n  ghi watch [--debug] [project-directory] [-- program-arguments...]\n  ghi setup [--managed]\n  ghi version | --version | -v | -V")
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" || args[0] == "-V" {
@@ -127,6 +127,10 @@ func run(args []string) int {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	output := flags.String("o", "", "output executable path")
 	debug := flags.Bool("debug", false, "disable optimization and inlining for debugging")
+	watchMode := false
+	if args[0] == "run" {
+		flags.BoolVar(&watchMode, "watch", false, "rebuild and restart after source changes")
+	}
 	var compilerArgs, programArgs []string
 	compilerArgs = args[1:]
 	for i, arg := range compilerArgs {
@@ -150,6 +154,19 @@ func run(args []string) int {
 	dir := "."
 	if flags.NArg() == 1 {
 		dir = flags.Arg(0)
+	}
+	if watchMode {
+		if *output != "" {
+			fmt.Fprintln(os.Stderr, "--watch does not accept -o")
+			return 2
+		}
+		watchArgs := []string{}
+		if *debug {
+			watchArgs = append(watchArgs, "--debug")
+		}
+		watchArgs = append(watchArgs, dir, "--")
+		watchArgs = append(watchArgs, programArgs...)
+		return runWatch(watchArgs)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

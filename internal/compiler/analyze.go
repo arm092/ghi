@@ -12,13 +12,21 @@ import (
 // SyntaxAnalysis is a versioned source tooling contract. It deliberately does
 // not expose the lowered Go AST as if it were the original Ghi syntax tree.
 type SyntaxAnalysis struct {
-	SchemaVersion int                `json:"schemaVersion"`
-	Filename      string             `json:"filename"`
-	Namespace     string             `json:"namespace"`
-	SHA256        string             `json:"sha256"`
-	Capabilities  []string           `json:"capabilities"`
-	Tokens        []SyntaxToken      `json:"tokens"`
-	Diagnostics   []SyntaxDiagnostic `json:"diagnostics"`
+	SchemaVersion   int                `json:"schemaVersion"`
+	Filename        string             `json:"filename"`
+	Namespace       string             `json:"namespace"`
+	SHA256          string             `json:"sha256"`
+	Capabilities    []string           `json:"capabilities"`
+	Tokens          []SyntaxToken      `json:"tokens"`
+	Diagnostics     []SyntaxDiagnostic `json:"diagnostics"`
+	ExpressionTypes []ExpressionType   `json:"expressionTypes,omitempty"`
+}
+
+// ExpressionType describes a verified value expression in the original source.
+type ExpressionType struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Type  string `json:"type"`
 }
 
 // Offsets are zero-based UTF-8 byte offsets; End is exclusive. Line and Column
