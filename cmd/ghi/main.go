@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-var version = "0.2.13-dev"
+var version = "0.2.13"
 
 func main() { os.Exit(run(os.Args[1:])) }
 

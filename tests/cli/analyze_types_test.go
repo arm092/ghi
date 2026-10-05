@@ -89,7 +89,7 @@ func TestExpressionAnalysisGhiTypesAndSurfaceRewrites(t *testing.T) {
 	if len(result.Diagnostics) != 0 || !hasTypeCapability(result) {
 		t.Fatalf("analysis: %+v", result)
 	}
-	foundAlias, foundAfterRewrite := false, false
+	foundAlias, foundAfterRewrite, foundTernary := false, false, false
 	for _, item := range result.ExpressionTypes {
 		text := string(source[item.Start:item.End])
 		if text == "identity(nil)" {
@@ -98,11 +98,11 @@ func TestExpressionAnalysisGhiTypesAndSurfaceRewrites(t *testing.T) {
 		if text == "chosen" {
 			foundAfterRewrite = item.Type == "int"
 		}
-		if strings.Contains(text, "condition ?") {
-			t.Fatalf("synthetic ternary claimed full source span: %+v", item)
+		if text == "condition ? 4 : 5" {
+			foundTernary = item.Type == "int"
 		}
 	}
-	if !foundAlias || !foundAfterRewrite {
+	if !foundAlias || !foundAfterRewrite || !foundTernary {
 		t.Fatalf("missing Ghi types: %+v", result.ExpressionTypes)
 	}
 	qualified := []byte("namespace main\nimport model\nfunc identity(value ?model.Box) ?model.Box { return value }\nfunc main() { value := identity(nil); _ = value }\n")
@@ -359,6 +359,120 @@ func TestExpressionAnalysisClassFieldReadsRetainExactSpans(t *testing.T) {
 	wantDiagnostic := fmt.Sprintf("%s:%d:%d: field secret is private", file, line, column)
 	if failed.Diagnostics[0].Message != wantDiagnostic {
 		t.Fatalf("private field diagnostic lost original position: got %q; want %q", failed.Diagnostics[0].Message, wantDiagnostic)
+	}
+}
+
+func TestExpressionAnalysisCompleteCallsAndSurfaceExpressions(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "main.ghi")
+	source := []byte("\ufeffnamespace main\r\nimport \"go:strconv\"\r\n// Ղ complete expression identities\r\nfunc identity(value int) int { return value }\r\nfunc pair() (int, string, error) { return 7, \"value\", nil }\r\nfunc nothing() {}\r\nfunc main() {\r\n condition := true\r\n _ = strconv.Atoi(\"42\")\r\n a,b := pair(); _ = a; _ = b\r\n _ = condition ? 4 : 5\r\n _ = condition ? 4 : 5\r\n _ = match 1 { 1 => 4, default => 5, }\r\n _ = match 1 { 1 => 4, default => 5, }\r\n _ = identity(condition ? 4 : 5)\r\n _ = identity(match 1 { 1 => 4, default => 5, })\r\n _ = condition ? (condition ? 4 : 5) : 6\r\n _ = match 1 { 1 => match 2 { 2 => 4, default => 5, }, default => 6, }\r\n nothing()\r\n}\r\n")
+	source = bytes.Replace(source, []byte("func nothing() {}\r\n"), []byte("func nothing() {}\r\nfunc onlyError() error { return nil }\r\n"), 1)
+	source = bytes.Replace(source, []byte(" nothing()\r\n"), []byte(" var cause error\r\n _ = condition ? cause : cause\r\n _ = match 1 { 1 => cause, default => cause, }\r\n onlyError()\r\n nothing()\r\n"), 1)
+	if err := os.WriteFile(file, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := compiler.AnalyzeExpressionTypes(context.Background(), root, file, source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("analysis: %+v", result)
+	}
+	wanted := map[string]string{
+		"strconv.Atoi(\"42\")": "int", "pair()": "(int, string)",
+		"condition ? 4 : 5": "int", "match 1 { 1 => 4, default => 5, }": "int",
+		"identity(condition ? 4 : 5)": "int", "identity(match 1 { 1 => 4, default => 5, })": "int",
+		"condition ? (condition ? 4 : 5) : 6":                               "int",
+		"match 1 { 1 => match 2 { 2 => 4, default => 5, }, default => 6, }": "int",
+		"match 2 { 2 => 4, default => 5, }":                                 "int",
+		"condition ? cause : cause":                                         "error", "match 1 { 1 => cause, default => cause, }": "error",
+	}
+	for text, typ := range wanted {
+		for rest, base := source, 0; ; {
+			index := bytes.Index(rest, []byte(text))
+			if index < 0 {
+				break
+			}
+			start, end := base+index, base+index+len(text)
+			// pair's declaration name is not a value call expression.
+			if text == "pair()" && bytes.HasPrefix(source[start:], []byte("pair() (")) {
+				base = end
+				rest = source[base:]
+				continue
+			}
+			found := false
+			for _, item := range result.ExpressionTypes {
+				if item.Start == start && item.End == end {
+					if item.Type != typ {
+						t.Fatalf("%q at %d type %s, want %s", text, start, item.Type, typ)
+					}
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("missing full span %q [%d,%d); got %+v", text, start, end, result.ExpressionTypes)
+			}
+			base = end
+			rest = source[base:]
+		}
+	}
+	for _, item := range result.ExpressionTypes {
+		if text := string(source[item.Start:item.End]); text == "nothing()" || text == "onlyError()" {
+			t.Fatalf("void call exposed value type: %+v", item)
+		}
+	}
+}
+
+func TestExpressionAnalysisClassMethodSignaturesAndCalls(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "model"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "model", "node.ghi"), []byte("namespace model\nclass Node { constructor() {} }\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "main.ghi")
+	source := []byte("namespace main\nimport model.Node as Alias\nclass Box[T any] {\n constructor() {}\n public func echo(value T) T { return value }\n public func nullable(value ?Alias = nil) ?Alias { return value }\n private func hidden(value int) int { return value }\n}\nfunc main() {\n box := new Box[?Alias]()\n _ = box.echo\n _ = box.echo(nil)\n _ = box.nullable\n _ = box.nullable()\n}\n")
+	source = bytes.Replace(source, []byte(" private func hidden"), []byte(" public func choose(condition bool) int { return condition ? (match 1 { 1 => 4, default => 5, }) : 6 }\n private func hidden"), 1)
+	source = bytes.Replace(source, []byte(" private func hidden"), []byte(" public func result(value ?Alias) (?Alias, error) { return value, nil }\n private func hidden"), 1)
+	source = bytes.Replace(source, []byte(" _ = box.nullable()\n"), []byte(" _ = box.nullable()\n _ = box.result\n _ = box.result(nil)\n"), 1)
+	source = bytes.Replace(source, []byte("namespace main\n"), []byte("\ufeffnamespace main\n// Ղ class fragments\n"), 1)
+	source = bytes.ReplaceAll(source, []byte("\n"), []byte("\r\n"))
+	if err := os.WriteFile(file, source, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := compiler.AnalyzeExpressionTypes(context.Background(), root, file, source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("analysis: %+v", result)
+	}
+	wanted := map[string]string{"new Box[?Alias]()": "Box[?Alias]", "box.echo": "func(value ?Alias) ?Alias", "box.echo(nil)": "?Alias", "box.nullable": "func(value ?Alias) ?Alias", "box.nullable()": "?Alias"}
+	wanted["condition ? (match 1 { 1 => 4, default => 5, }) : 6"] = "int"
+	wanted["match 1 { 1 => 4, default => 5, }"] = "int"
+	wanted["box.result"] = "func(value ?Alias) (?Alias, error)"
+	wanted["box.result(nil)"] = "?Alias"
+	for _, item := range result.ExpressionTypes {
+		text := string(source[item.Start:item.End])
+		if typ, ok := wanted[text]; ok {
+			if item.Type != typ {
+				t.Fatalf("%s: %s, want %s", text, item.Type, typ)
+			}
+			delete(wanted, text)
+		}
+	}
+	if len(wanted) != 0 {
+		t.Fatalf("missing signatures/full calls: %v; got %+v", wanted, result.ExpressionTypes)
+	}
+	callSelectorStart := bytes.Index(source, []byte("box.result(nil)"))
+	foundCallSelector := false
+	for _, item := range result.ExpressionTypes {
+		if item.Start == callSelectorStart && item.End == callSelectorStart+len("box.result") && item.Type == "func(value ?Alias) (?Alias, error)" {
+			foundCallSelector = true
+		}
+	}
+	if !foundCallSelector {
+		t.Fatalf("bridged class call lost authored method selector signature: %+v", result.ExpressionTypes)
+	}
+	broken := bytes.Replace(source, []byte("_ = box.echo\r\n"), []byte("_ = box.hidden\r\n"), 1)
+	failed := compiler.AnalyzeExpressionTypes(context.Background(), root, file, broken)
+	if len(failed.Diagnostics) == 0 || len(failed.Capabilities) != 0 || len(failed.ExpressionTypes) != 0 {
+		t.Fatalf("private method exposed partial signature: %+v", failed)
 	}
 }
 

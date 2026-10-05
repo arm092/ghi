@@ -32,6 +32,8 @@ type namespace struct {
 type program struct {
 	AnalysisInfo        *types.Info
 	AnalysisFieldReads  map[*ast.SelectorExpr]*ast.CallExpr
+	AnalysisCalls       map[*ast.CallExpr]*ast.CallExpr
+	AnalysisMethods     map[*ast.SelectorExpr][]string
 	AnalyzeTypes        bool
 	Semantic            *semanticCache
 	CacheEnvironment    string

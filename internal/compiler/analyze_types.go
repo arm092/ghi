@@ -127,15 +127,25 @@ func AnalyzeExpressionTypes(ctx context.Context, project, filename string, sourc
 		})
 	}
 	for expr, span := range candidates {
+		checked := expr
 		// A bridged native call survives inside a helper as a raw Go tuple.
 		// That inner node does not describe the original Ghi call result.
 		if call, ok := expr.(*ast.CallExpr); ok && p.Wrapped[call] {
-			continue
+			if bridge := p.AnalysisCalls[call]; bridge != nil {
+				checked = bridge
+			} else {
+				continue
+			}
 		}
 		if bridgedFunctions[expr] {
-			continue
+			selector, ok := expr.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+			if _, method := p.AnalysisMethods[selector]; !method {
+				continue
+			}
 		}
-		checked := expr
 		// Field reads are replaced by getter calls. Their original candidate
 		// supplies the verified source span; only the final checked getter
 		// supplies a type, including instantiated generic/nullable fields.
@@ -148,7 +158,16 @@ func AnalyzeExpressionTypes(ctx context.Context, project, filename string, sourc
 		if !ok || value.Type == nil || value.IsType() || value.IsVoid() {
 			continue
 		}
-		typ := p.analysisType(value.Type, selected, selectedNamespace)
+		valueType := value.Type
+		if selector, ok := expr.(*ast.SelectorExpr); ok {
+			if names, exists := p.AnalysisMethods[selector]; exists {
+				valueType = analysisMethodSignature(value.Type, names)
+			}
+		}
+		if valueType == nil {
+			continue
+		}
+		typ := p.analysisType(valueType, selected, selectedNamespace)
 		if typ == "" || seen[span] {
 			continue
 		}
@@ -166,9 +185,51 @@ func AnalyzeExpressionTypes(ctx context.Context, project, filename string, sourc
 	return
 }
 
+func (p *program) recordAnalysisMethod(selector *ast.SelectorExpr, method *functionDecl) {
+	if !p.AnalyzeTypes {
+		return
+	}
+	if p.AnalysisMethods == nil {
+		p.AnalysisMethods = map[*ast.SelectorExpr][]string{}
+	}
+	var names []string
+	for _, field := range method.Node.Type.Params.List {
+		for _, name := range field.Names {
+			if name.Name != "this" {
+				names = append(names, name.Name)
+			}
+		}
+	}
+	p.AnalysisMethods[selector] = names
+}
+
+// Forwarding methods use compiler-owned argument names. Preserve the final
+// instantiated types, restoring only names from the actual source declaration.
+func analysisMethodSignature(typ types.Type, names []string) types.Type {
+	signature, ok := functionSignature(typ)
+	if !ok {
+		return typ
+	}
+	if len(names) != signature.Params().Len() {
+		return nil
+	}
+	params := make([]*types.Var, len(names))
+	for i, name := range names {
+		params[i] = types.NewVar(token.NoPos, nil, name, signature.Params().At(i).Type())
+	}
+	var typeParams []*types.TypeParam
+	if signature.TypeParams() != nil {
+		for i := 0; i < signature.TypeParams().Len(); i++ {
+			typeParams = append(typeParams, signature.TypeParams().At(i))
+		}
+	}
+	return types.NewSignatureType(nil, nil, typeParams, types.NewTuple(params...), signature.Results(), signature.Variadic())
+}
+
 // Capture user nodes before lowering mutates names and injects expressions.
-// Both endpoint origins and the complete token sequence must match the source.
-// Width-changing rewrites with inserted bytes are deliberately omitted.
+// Both endpoint origins and the normalized token sequence must match the source.
+// Surface wrappers have grammar-owned full boundaries; generated fragments
+// without an original expression boundary remain deliberately omitted.
 func (p *program) expressionCandidates(file *sourceFile) map[ast.Expr][2]int {
 	result := map[ast.Expr][2]int{}
 	// User line directives can override fragment positions. Do not interpret
@@ -216,7 +277,21 @@ func (p *program) expressionCandidates(file *sourceFile) map[ast.Expr][2]int {
 				location.Column += fn.SourceTail.Column - 1
 			}
 		}
-		location = file.Unit.CoverageSource.position(location)
+		mapping := file.Unit.CoverageSource
+		if mapping.offsets != nil {
+			if location.Line < 1 || location.Line > len(mapping.lines) || location.Column < 1 {
+				return -1
+			}
+			original := mapping.expressionBoundary(mapping.lines[location.Line-1] + location.Column - 1)
+			if original < 0 {
+				return -1
+			}
+			line := sort.Search(len(mapping.originalLines), func(i int) bool { return mapping.originalLines[i] > original })
+			if line < 1 {
+				return -1
+			}
+			location.Line, location.Column = line, original-mapping.originalLines[line-1]+1
+		}
 		// The namespace header and optional BOM change first-line widths.
 		// Current parser origins do not expose that header transformation.
 		if location.Line == 1 {
@@ -240,12 +315,6 @@ func (p *program) expressionCandidates(file *sourceFile) map[ast.Expr][2]int {
 			if start < 0 || last < start || last >= len(file.Source) {
 				return true
 			}
-			// Reject any injected byte or discontinuity inside the expression.
-			for pos := expr.Pos(); pos < expr.End(); pos++ {
-				if offset(pos) != start+int(pos-expr.Pos()) {
-					return true
-				}
-			}
 			var printed bytes.Buffer
 			if printer.Fprint(&printed, p.Fset, expr) != nil || !sameExpressionTokens(file.Source[start:last+1], printed.Bytes()) {
 				return true
@@ -258,7 +327,30 @@ func (p *program) expressionCandidates(file *sourceFile) map[ast.Expr][2]int {
 }
 
 func sameExpressionTokens(source, printed []byte) bool {
+	// Apply exactly the parser's expression rewrites to this positionally
+	// recovered source range. This validates parent calls containing wrappers
+	// without selecting among repeated expressions by textual similarity.
+	var err error
+	for _, normalize := range []func(string, []byte) ([]byte, error){
+		normalizeNullable,
+		func(name string, data []byte) ([]byte, error) { return normalizeTernaries(name, data) },
+		func(name string, data []byte) ([]byte, error) { return normalizeMatches(name, data) },
+		func(name string, data []byte) ([]byte, error) { return normalizeArrows(name, data) },
+	} {
+		source, err = normalize("source", source)
+		if err != nil {
+			return false
+		}
+	}
 	left, err := lexSource("source", source)
+	if err != nil {
+		return false
+	}
+	source, err = normalizeNew("source", source, left)
+	if err != nil {
+		return false
+	}
+	left, err = lexSource("source", source)
 	if err != nil {
 		return false
 	}

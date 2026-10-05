@@ -176,6 +176,12 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								fun, _ := parser.ParseExpr(p.runtimeSymbol(name, file, ns))
 								changed = true
 								bridge := &ast.CallExpr{Fun: fun, Args: []ast.Expr{n}}
+								if p.AnalyzeTypes {
+									if p.AnalysisCalls == nil {
+										p.AnalysisCalls = map[*ast.CallExpr]*ast.CallExpr{}
+									}
+									p.AnalysisCalls[n] = bridge
+								}
 								// Only the original final error is operational; any
 								// remaining error-valued result is ordinary data.
 								p.Wrapped[bridge] = true
@@ -259,6 +265,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 									return node
 								}
 								selector.Sel.Name = "GhiM_" + method.Name
+								p.recordAnalysisMethod(selector, method)
 								fillDefaults(n, method, 0, func(value ast.Expr) ast.Expr {
 									bindings := p.inheritedCallBindings(c, method.Owner, selector.X, value, info, file, ns)
 									return p.classDefaultTransform(method.Owner, bindings, file, ns)(value)
@@ -292,6 +299,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								return node
 							}
 							n.Sel.Name = "GhiM_" + method.Name
+							p.recordAnalysisMethod(n, method)
 							changed = true
 						}
 					}

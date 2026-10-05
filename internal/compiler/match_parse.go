@@ -128,7 +128,7 @@ func normalizeMatches(filename string, source []byte, mappings ...*coverageSourc
 		}
 		sort.SliceStable(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
 		for _, m := range mappings {
-			m.apply(source, edits)
+			m.applyExpression(source, edits, tokens[start].Start, tokens[close].End)
 		}
 		var out strings.Builder
 		previous := 0

@@ -152,7 +152,7 @@ func normalizeTernaries(filename string, source []byte, mappings ...*coverageSou
 			{last, last, " })()"},
 		}
 		for _, m := range mappings {
-			m.apply(source, edits)
+			m.applyExpression(source, edits, ts[start].start, last)
 		}
 		var out strings.Builder
 		previous := 0
