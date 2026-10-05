@@ -68,22 +68,19 @@ func (p *program) validateConstraintVisibility(info *types.Info) error {
 		}
 		for i := 0; i < parameters.Len() && i < instance.TypeArgs.Len(); i++ {
 			actual := p.classType(instance.TypeArgs.At(i))
+			if actual == nil {
+				actual, _ = p.constraintClass(instance.TypeArgs.At(i), func(bound *classDecl) bool { return !bound.Interface })
+			}
 			if actual == nil || actual.Interface {
 				continue
 			}
 			var hidden *functionDecl
-			p.constraintClass(parameters.At(i).Constraint(), func(bound *classDecl) bool {
-				if !bound.Interface {
-					return false
+			for _, name := range p.publicInterfaceRequirements(parameters.At(i).Constraint()) {
+				if method := actual.method(name); method != nil && method.Visibility != "public" {
+					hidden = method
+					break
 				}
-				for _, requirement := range bound.Methods {
-					if method := actual.method(requirement.Name); method != nil && method.Visibility != "public" {
-						hidden = method
-						return true
-					}
-				}
-				return false
-			})
+			}
 			if hidden != nil {
 				return fmt.Errorf("%s: type %s cannot satisfy interface constraint: method %s is %s", p.Fset.Position(id.Pos()), actual.Name, hidden.Name, hidden.Visibility)
 			}

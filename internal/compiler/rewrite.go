@@ -155,6 +155,13 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 					case *ast.CallExpr:
+						if captured, err := p.captureScopedDefer(n, info, file, ns); err != nil {
+							reject(err.Error())
+							return node
+						} else if captured {
+							changed = true
+							return node
+						}
 						target, explicitNew := unwrapConstruction(n.Fun)
 						n.Fun = target
 						base, typeArguments := genericBase(n.Fun)

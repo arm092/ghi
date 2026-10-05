@@ -20,18 +20,20 @@ type fieldDecl struct {
 	Name, Visibility string
 	Type             ast.Expr
 	Owner            *classDecl
+	TypeOrigins      map[*ast.StarExpr]token.Position
 }
 type functionDecl struct {
 	// Class members are parsed as separate Go fragments. Preserve the tail
 	// offset so source tooling can recover columns on their declaration line.
-	SourceTail  token.Position
-	HeaderWidth int
-	Name        string
-	Node        *ast.FuncDecl
-	Defaults    map[int]ast.Expr
-	Visibility  string
-	Override    bool
-	Owner       *classDecl
+	SourceTail       token.Position
+	HeaderWidth      int
+	ParameterOrigins map[*ast.StarExpr]token.Position
+	Name             string
+	Node             *ast.FuncDecl
+	Defaults         map[int]ast.Expr
+	Visibility       string
+	Override         bool
+	Owner            *classDecl
 }
 type classDecl struct {
 	Name           string
@@ -49,6 +51,8 @@ type classDecl struct {
 	Interfaces     []*classDecl
 }
 type unit struct {
+	NullableTypes  map[*ast.StarExpr]bool
+	NativePointers map[*ast.StarExpr]bool
 	CoverageSource *coverageSourceMap
 	Enums          []*enumDecl
 	TypeImports    []selectedTypeImport
@@ -413,7 +417,8 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			if err != nil {
 				return err
 			}
-			parameters := string(source[tokens[i].End:tokens[close].Start])
+			parameterStart := tokens[i].End
+			parameters := string(source[parameterStart:tokens[close].Start])
 			i = close + 1
 			resultStart := tokens[close].End
 			for i < end && tokens[i].Kind != token.LBRACE && tokens[i].Kind != token.SEMICOLON {
@@ -440,6 +445,19 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			if err != nil {
 				return err
 			}
+			// Parameter types live in a separately parsed function fragment. Keep
+			// their physical byte origins before class lowering rewrites its header.
+			fn.ParameterOrigins = map[*ast.StarExpr]token.Position{}
+			fragment := fset.File(fn.Node.Pos())
+			parameterOffset := fragment.Offset(fn.Node.Type.Params.Opening) + 1
+			ast.Inspect(fn.Node.Type.Params, func(node ast.Node) bool {
+				if star, ok := node.(*ast.StarExpr); ok {
+					offset := parameterStart + fragment.Offset(star.Pos()) - parameterOffset
+					prefix := string(source[:offset])
+					fn.ParameterOrigins[star] = token.Position{Line: 1 + strings.Count(prefix, "\n"), Column: offset - strings.LastIndex(prefix, "\n")}
+				}
+				return true
+			})
 			fn.Visibility = visibility
 			prefix := string(source[:resultStart])
 			fn.SourceTail = token.Position{Filename: filename, Line: 1 + strings.Count(prefix, "\n"), Column: resultStart - strings.LastIndex(prefix, "\n")}
@@ -474,7 +492,16 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			if err != nil {
 				return err
 			}
-			class.Fields = append(class.Fields, &fieldDecl{Name: name, Visibility: visibility, Type: typ, Owner: class})
+			field := &fieldDecl{Name: name, Visibility: visibility, Type: typ, Owner: class, TypeOrigins: map[*ast.StarExpr]token.Position{}}
+			ast.Inspect(typ, func(node ast.Node) bool {
+				if star, ok := node.(*ast.StarExpr); ok {
+					offset := typeStart + int(star.Pos()) - 1
+					prefix := string(source[:offset])
+					field.TypeOrigins[star] = token.Position{Line: 1 + strings.Count(prefix, "\n"), Column: offset - strings.LastIndex(prefix, "\n")}
+				}
+				return true
+			})
+			class.Fields = append(class.Fields, field)
 		}
 	}
 	return nil

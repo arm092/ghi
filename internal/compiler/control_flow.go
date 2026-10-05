@@ -17,15 +17,17 @@ type returnSlot struct {
 	named bool
 }
 type controlFlow struct {
-	program  *program
-	file     *sourceFile
-	ns       *namespace
-	slots    []returnSlot
-	used     bool
-	nextCode int
-	nextTemp int
-	err      error
-	nested   map[*ast.FuncLit]bool
+	program     *program
+	file        *sourceFile
+	ns          *namespace
+	slots       []returnSlot
+	used        bool
+	nextCode    int
+	nextTemp    int
+	err         error
+	nested      map[*ast.FuncLit]bool
+	defers      []*ast.DeferStmt
+	scopedDefer bool
 }
 
 func callNamed(expression ast.Expr, name string) (*ast.CallExpr, bool) {
@@ -105,6 +107,9 @@ func (p *program) lowerFunctionControl(typ *ast.FuncType, body *ast.BlockStmt, f
 	body.List = ctx.block(body.List, 0, nil)
 	if ctx.err != nil {
 		return ctx.err
+	}
+	if ctx.scopedDefer {
+		p.lowerScopedDefers(body, ctx.defers, file, ns)
 	}
 	if ctx.used {
 		prefix := []ast.Stmt{&ast.DeclStmt{Decl: &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("ghi_flow")}, Type: ast.NewIdent("int")}}}}}
@@ -283,6 +288,8 @@ func (c *controlFlow) statement(statement ast.Stmt, depth int, targets []flowTar
 		}
 	case *ast.DeferStmt:
 		s.Call = c.expressions(s.Call).(*ast.CallExpr)
+		c.defers = append(c.defers, s)
+		c.scopedDefer = c.scopedDefer || depth > 0
 	case *ast.GoStmt:
 		s.Call = c.expressions(s.Call).(*ast.CallExpr)
 	case *ast.SendStmt:

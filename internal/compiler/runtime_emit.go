@@ -40,6 +40,7 @@ const runtimeCode = `package runtime
 import (
  "go:fmt"
  "go:os"
+ "go:reflect"
  goruntime "go:runtime"
  "go:strings"
  "go:sync"
@@ -192,8 +193,37 @@ func Equal[L any,R any](left *L,right *R)bool {
  if left==nil || right==nil{return left==nil && right==nil}
  return any(*left)==any(*right)
 }
+// Only source nullable types call this helper. Native *T keeps pointer identity.
+// Non-object instantiations also retain pointer identity, including slices.
+func NullableEqual[T any](left *T,right *T)bool {
+ if left==nil || right==nil{return left==nil && right==nil}
+ typ:=reflect.TypeOf((*T)(nil)).Elem()
+ if typ.Kind()==reflect.Interface {
+  for i:=0;i<typ.NumMethod();i++ {
+   name:=typ.Method(i).Name
+   if strings.HasPrefix(name,"GhiIs_") || strings.HasPrefix(name,"GhiM_") || strings.HasPrefix(name,"GhiGet_") {
+    return any(*left)==any(*right)
+   }
+  }
+ }
+ return left==right
+}
 type raised struct { value Exception }
-func (exception raised) Error() string { return "Ghi exception: " + exception.value.GhiM_Error() }
+func (exception raised) Error() string {
+ value:=exception.value
+ var output strings.Builder
+ fmt.Fprintf(&output,"%s (code %d): %s",value.GhiGet_6768692e72756e74696d65_Exception_typeName(),value.GhiGet_6768692e72756e74696d65_Exception_code(),value.GhiM_Error())
+ for _,frame:=range value.GhiGet_6768692e72756e74696d65_Exception_stackTrace() {
+  fmt.Fprintf(&output,"\n  at %s (%s:%d)",frame.GhiGet_6768692e72756e74696d65_StackFrame_functionName(),frame.GhiGet_6768692e72756e74696d65_StackFrame_file(),frame.GhiGet_6768692e72756e74696d65_StackFrame_line())
+ }
+ return output.String()
+}
+func RegisterDefer(stack *[]func(),callback func()) { *stack=append(*stack,callback) }
+func RunDefers(stack *[]func()) {
+ value:=recover()
+ for _,callback:=range *stack { defer callback() }
+ if value!=nil { panic(value) }
+}
 func Raise(value Exception) any {
  if len(value.GhiGet_6768692e72756e74696d65_Exception_stackTrace())==0 {
   value.GhiSet_6768692e72756e74696d65_Exception_stackTrace(CaptureStack())

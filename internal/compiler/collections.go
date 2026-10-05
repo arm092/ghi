@@ -11,6 +11,208 @@ import (
 
 func (p *program) lowerClassMaps(info *types.Info) bool {
 	changed := false
+	// Pointer type identity preserves declaration origin through identifier
+	// uses, inference and container element access. Do not use types.Identical:
+	// the backend intentionally has the same representation for ?T and *T.
+	nullableTypes := map[types.Type]bool{}
+	nativePointers := map[types.Type]bool{}
+	getters := map[string]*fieldDecl{}
+	for _, class := range p.classes() {
+		for _, field := range class.Fields {
+			getters[fieldGet(field)] = field
+		}
+	}
+	var fieldOrigin func(ast.Expr, ast.Expr, *unit)
+	fieldsOrigin := func(original, generated *ast.FieldList, unit *unit) {
+		if original == nil || generated == nil || len(original.List) != len(generated.List) {
+			return
+		}
+		for i := range original.List {
+			fieldOrigin(original.List[i].Type, generated.List[i].Type, unit)
+		}
+	}
+	fieldOrigin = func(original, generated ast.Expr, unit *unit) {
+		switch original := original.(type) {
+		case *ast.StarExpr:
+			if target, ok := generated.(*ast.StarExpr); ok {
+				if typ := info.TypeOf(target); typ != nil {
+					if unit.NullableTypes[original] {
+						nullableTypes[typ] = true
+					}
+					if unit.NativePointers[original] {
+						nativePointers[typ] = true
+					}
+				}
+				fieldOrigin(original.X, target.X, unit)
+			}
+		case *ast.ArrayType:
+			if target, ok := generated.(*ast.ArrayType); ok {
+				fieldOrigin(original.Elt, target.Elt, unit)
+			}
+		case *ast.MapType:
+			if target, ok := generated.(*ast.MapType); ok {
+				fieldOrigin(original.Key, target.Key, unit)
+				fieldOrigin(original.Value, target.Value, unit)
+			}
+		case *ast.ChanType:
+			if target, ok := generated.(*ast.ChanType); ok {
+				fieldOrigin(original.Value, target.Value, unit)
+			}
+		case *ast.FuncType:
+			if target, ok := generated.(*ast.FuncType); ok {
+				fieldsOrigin(original.Params, target.Params, unit)
+				fieldsOrigin(original.Results, target.Results, unit)
+			}
+		case *ast.StructType:
+			if target, ok := generated.(*ast.StructType); ok {
+				fieldsOrigin(original.Fields, target.Fields, unit)
+			}
+		case *ast.ParenExpr:
+			if target, ok := generated.(*ast.ParenExpr); ok {
+				fieldOrigin(original.X, target.X, unit)
+			}
+		case *ast.Ellipsis:
+			if target, ok := generated.(*ast.Ellipsis); ok {
+				fieldOrigin(original.Elt, target.Elt, unit)
+			}
+		case *ast.IndexExpr:
+			if target, ok := generated.(*ast.IndexExpr); ok {
+				fieldOrigin(original.Index, target.Index, unit)
+			}
+		case *ast.IndexListExpr:
+			if target, ok := generated.(*ast.IndexListExpr); ok && len(original.Indices) == len(target.Indices) {
+				for i := range original.Indices {
+					fieldOrigin(original.Indices[i], target.Indices[i], unit)
+				}
+			}
+		case *ast.InterfaceType:
+			if target, ok := generated.(*ast.InterfaceType); ok {
+				fieldsOrigin(original.Methods, target.Methods, unit)
+			}
+		}
+	}
+	for _, ns := range p.Ordered {
+		for _, file := range ns.Files {
+			ast.Inspect(file.Tree, func(node ast.Node) bool {
+				var name string
+				var signature *ast.FuncType
+				switch node := node.(type) {
+				case *ast.FuncDecl:
+					name = node.Name.Name
+					signature = node.Type
+				case *ast.Field:
+					if len(node.Names) == 1 {
+						name = node.Names[0].Name
+						signature, _ = node.Type.(*ast.FuncType)
+					}
+				}
+				if field := getters[name]; field != nil && signature != nil && signature.Results != nil && len(signature.Results.List) == 1 {
+					fieldOrigin(field.Type, signature.Results.List[0].Type, field.Owner.File.Unit)
+				}
+				return true
+			})
+			for star := range file.Unit.NullableTypes {
+				if typ := info.TypeOf(star); typ != nil && info.Types[star].IsType() {
+					nullableTypes[typ] = true
+				}
+			}
+			for star := range file.Unit.NativePointers {
+				if typ := info.TypeOf(star); typ != nil && info.Types[star].IsType() {
+					nativePointers[typ] = true
+				}
+			}
+		}
+	}
+	// Instantiation creates fresh pointer types. Carry the spelling origin from
+	// generic declarations into substituted function and container signatures.
+	var propagate func(types.Type, types.Type)
+	seen := map[[2]types.Type]bool{}
+	propagate = func(original, instantiated types.Type) {
+		if original == nil || instantiated == nil {
+			return
+		}
+		pair := [2]types.Type{original, instantiated}
+		if seen[pair] {
+			return
+		}
+		seen[pair] = true
+		if nullableTypes[original] {
+			nullableTypes[instantiated] = true
+		}
+		if nativePointers[original] {
+			nativePointers[instantiated] = true
+		}
+		switch original := types.Unalias(original).(type) {
+		case *types.Pointer:
+			if target, ok := types.Unalias(instantiated).(*types.Pointer); ok {
+				propagate(original.Elem(), target.Elem())
+			}
+		case *types.Signature:
+			if target, ok := types.Unalias(instantiated).(*types.Signature); ok {
+				propagate(original.Params(), target.Params())
+				propagate(original.Results(), target.Results())
+			}
+		case *types.Tuple:
+			if target, ok := types.Unalias(instantiated).(*types.Tuple); ok && original.Len() == target.Len() {
+				for i := 0; i < original.Len(); i++ {
+					propagate(original.At(i).Type(), target.At(i).Type())
+				}
+			}
+		case *types.Slice:
+			if target, ok := types.Unalias(instantiated).(*types.Slice); ok {
+				propagate(original.Elem(), target.Elem())
+			}
+		case *types.Array:
+			if target, ok := types.Unalias(instantiated).(*types.Array); ok {
+				propagate(original.Elem(), target.Elem())
+			}
+		case *types.Map:
+			if target, ok := types.Unalias(instantiated).(*types.Map); ok {
+				propagate(original.Key(), target.Key())
+				propagate(original.Elem(), target.Elem())
+			}
+		case *types.Chan:
+			if target, ok := types.Unalias(instantiated).(*types.Chan); ok {
+				propagate(original.Elem(), target.Elem())
+			}
+		case *types.Named:
+			if target, ok := types.Unalias(instantiated).(*types.Named); ok {
+				propagate(original.Underlying(), target.Underlying())
+			}
+		case *types.Struct:
+			if target, ok := types.Unalias(instantiated).(*types.Struct); ok && original.NumFields() == target.NumFields() {
+				for i := 0; i < original.NumFields(); i++ {
+					propagate(original.Field(i).Type(), target.Field(i).Type())
+				}
+			}
+		case *types.Interface:
+			if target, ok := types.Unalias(instantiated).(*types.Interface); ok && original.NumMethods() == target.NumMethods() {
+				for i := 0; i < original.NumMethods(); i++ {
+					propagate(original.Method(i).Type(), target.Method(i).Type())
+				}
+			}
+		}
+	}
+	for identifier, instance := range info.Instances {
+		if object := info.Uses[identifier]; object != nil {
+			// Compiler helpers return nullable wrappers for absent collection
+			// values and explicit boxing, despite their native Go signatures.
+			if p.Runtime != nil && object.Pkg() != nil && object.Pkg().Path() == namespacePath(p.Runtime) {
+				switch object.Name() {
+				case "Some", "MapGet", "MapGetOK", "Receive", "ReceiveOK", "Received", "Assert":
+					if signature, ok := functionSignature(object.Type()); ok && signature.Results().Len() > 0 {
+						nullableTypes[signature.Results().At(0).Type()] = true
+					}
+				}
+			}
+			propagate(object.Type(), instance.Type)
+		}
+	}
+	for _, selection := range info.Selections {
+		if function, ok := selection.Obj().(*types.Func); ok {
+			propagate(function.Origin().Type(), selection.Type())
+		}
+	}
 	for _, ns := range p.Ordered {
 		for _, file := range ns.Files {
 			if file.Unit.Native {
@@ -43,8 +245,18 @@ func (p *program) lowerClassMaps(info *types.Info) bool {
 					if binary, ok := node.(*ast.BinaryExpr); ok && (binary.Op == token.EQL || binary.Op == token.NEQ) {
 						left, lok := info.TypeOf(binary.X).(*types.Pointer)
 						right, rok := info.TypeOf(binary.Y).(*types.Pointer)
-						if lok && rok && p.classType(left.Elem()) != nil && p.classType(right.Elem()) != nil && (types.AssignableTo(left.Elem(), right.Elem()) || types.AssignableTo(right.Elem(), left.Elem())) {
-							fun, _ := parser.ParseExpr(p.runtimeSymbol("Equal", file, ns))
+						name := ""
+						if lok && rok {
+							if _, generic := types.Unalias(left.Elem()).(*types.TypeParam); generic {
+								if types.Identical(left.Elem(), right.Elem()) && nullableTypes[left] && nullableTypes[right] {
+									name = "NullableEqual"
+								}
+							} else if !nativePointers[left] && !nativePointers[right] && p.classType(left.Elem()) != nil && p.classType(right.Elem()) != nil && (types.AssignableTo(left.Elem(), right.Elem()) || types.AssignableTo(right.Elem(), left.Elem())) {
+								name = "Equal"
+							}
+						}
+						if name != "" {
+							fun, _ := parser.ParseExpr(p.runtimeSymbol(name, file, ns))
 							call := &ast.CallExpr{Fun: fun, Args: []ast.Expr{binary.X, binary.Y}}
 							changed = true
 							if binary.Op == token.NEQ {

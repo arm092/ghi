@@ -130,15 +130,31 @@ func (p *program) boxNullable(info *types.Info) bool {
 							}
 						}
 					case *ast.CallExpr:
+						if id, ok := n.Fun.(*ast.Ident); ok {
+							if builtin, ok := info.Uses[id].(*types.Builtin); ok && builtin.Name() == "append" && !n.Ellipsis.IsValid() && len(n.Args) > 1 {
+								if typ := info.TypeOf(n.Args[0]); typ != nil {
+									if slice, ok := typ.Underlying().(*types.Slice); ok {
+										for i := 1; i < len(n.Args); i++ {
+											n.Args[i] = box(n.Args[i], slice.Elem())
+										}
+									}
+								}
+							}
+						}
 						if signature, ok := functionSignature(info.TypeOf(n.Fun)); ok {
 							for i, value := range n.Args {
-								if i >= signature.Params().Len() {
+								index := i
+								if index >= signature.Params().Len() && signature.Variadic() {
+									index = signature.Params().Len() - 1
+								}
+								if index < 0 || index >= signature.Params().Len() {
 									break
 								}
-								if signature.Variadic() && i == signature.Params().Len()-1 {
-									break
+								expected := signature.Params().At(index).Type()
+								if signature.Variadic() && index == signature.Params().Len()-1 && !n.Ellipsis.IsValid() {
+									expected = expected.(*types.Slice).Elem()
 								}
-								n.Args[i] = box(value, signature.Params().At(i).Type())
+								n.Args[i] = box(value, expected)
 							}
 						}
 					case *ast.ReturnStmt:

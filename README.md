@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.2.13](https://github.com/arm092/ghi/releases/tag/v0.2.13), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.9](https://github.com/arm092/ghi-goland/releases/tag/v0.1.9).
+**Current release:** [Ghi v0.3.0](https://github.com/arm092/ghi/releases/tag/v0.3.0), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.10](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10).
 
 Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -37,7 +37,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.2.13).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.3.0).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.2.13/ghi_v0.2.13_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.3.0/ghi_v0.3.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -75,7 +75,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
 
-For v0.2.13 on macOS, use the portable archive or Homebrew. A native v0.2.13 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.2.13/ghi_v0.2.13_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+For v0.3.0 on macOS, use the portable archive or Homebrew. A native v0.3.0 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.3.0/ghi_v0.3.0_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -102,7 +102,7 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The v0.2.13 compiler test suite and `go vet ./...` passed locally on Windows amd64. Release binaries created and ran a new project and the ternary example on Windows amd64 and Linux amd64; syntax analysis also passed in an emulated Linux ARM64 container without Go. Ghi Quality v0.1.1 and GoLand platforms 251/262 were checked for ternary compatibility. Native macOS and Homebrew checks remain deferred. The native v0.2.1 macOS installer was previously verified on Apple silicon. GitHub Actions is disabled for this repository.
+The v0.3.0 compiler test suite and `go vet ./...` passed locally on Windows amd64. The parser completed 163,646 fuzz executions without a crash. Windows amd64 and Linux amd64 archive binaries created and ran new projects; Linux checks also covered nullable/generic equality, defers, callback exceptions and expression types. GoLand plugin v0.1.10 passed 81 compatibility tests against the compiler on platform 251. Native macOS and Homebrew checks remain deferred. The native v0.2.1 macOS installer was previously verified on Apple silicon. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -673,6 +673,8 @@ Multiple bounds can be combined with `type Entity interface { Identifiable; Labe
 
 Individual methods cannot introduce additional type parameters. Generic fields and locals need initialization because `T` may represent a nonnullable object.
 
+Statically known class-to-interface conversions require public methods in declarations, assignments, arguments, returns and collections. This also applies to embedded and generic interfaces. Values erased to native `any` retain the generated Go method set: a runtime interface assertion can currently expose a nonpublic implementation. Keep class values statically typed when relying on Ghi visibility; runtime assertions from `any` do not enforce that boundary yet.
+
 ## Nullable values
 
 Ghi object references are nonnullable by default. Put `?` **before** the type to permit absence: `?User`, `[]?User`, `map[string]?User`. Check for `nil` before accessing a nullable object.
@@ -704,6 +706,24 @@ func main() {
 ```
 
 Constructors must initialize nonnullable fields on every successful path. The compiler tracks proven non-null values; reassignment and closure writes can invalidate that proof. Map lookups and channel receives involving Ghi objects or type parameters preserve absence through nullable results.
+
+Concrete objects can be passed to nullable parameters and appended to nullable collections:
+
+```ghi
+func count(users ...?User) int {
+	return len(users)
+}
+
+func collect() {
+	users := []?User{}
+	users = append(users, new User("Ada"), nil)
+	println(count(new User("Grace"), nil), count(users...))
+}
+```
+
+Nullable declarations and slices are invariant: `?Child` cannot be assigned directly to `?Base`, and `[]?Child` cannot be passed as `[]?Base`. After checking a nullable child for `nil`, its concrete object can be assigned to a nullable base. Variadic spread arguments must already have the declared slice type.
+
+For a Ghi object type `T`, equality between `?T` values compares the contained object reference, including inside generic functions and methods. Two nullable values containing the same object compare equal. Explicit native pointers (`*T`) retain Go pointer identity.
 
 ## Functions and closures
 
@@ -765,6 +785,8 @@ func main() {
 
 `Exception(message = "", code = 0)` is directly constructible. The trace is captured at the first throw; rethrowing the same object preserves it. Catches are considered in source order. `finally` runs on normal completion and exception unwinding.
 
+Uncaught Ghi exceptions include their concrete type, code, message and original source trace. This metadata is also retained when a native Go library runs a callback on its own goroutine, such as `time.AfterFunc`; Go may additionally print its native panic stack. Synchronous callbacks still propagate exceptions to an enclosing Ghi `catch`.
+
 Native Go calls with a trailing `error` automatically raise `GoError` for non-nil errors and yield the other results on success:
 
 ```ghi
@@ -784,7 +806,7 @@ func main() {
 
 `GoError` preserves the native error as `cause` and defaults to code `0`. Go runtime faults are not ordinary catchable Ghi exceptions. Handle exceptions inside the goroutine that can throw them; an outer goroutine's catch cannot intercept them.
 
-The development compiler applies the trailing-error rule to every Ghi call site, including calls to Ghi functions, callbacks passed through parameters, function fields, closures and reassigned aliases. A non-nil last result of type `error` raises `GoError`; a nil error is removed and the other results are returned. A function returning only `error` therefore produces no result on success. Function declarations and callback signatures still describe their raw Go-compatible results; native `.go` call sites are not transformed. Accessing an error-valued field such as `err.cause` returns the error as data and does not throw.
+The compiler applies the trailing-error rule to every Ghi call site, including calls to Ghi functions, callbacks passed through parameters, function fields, closures and reassigned aliases. A non-nil last result of type `error` raises `GoError`; a nil error is removed and the other results are returned. A function returning only `error` therefore produces no result on success. Function declarations and callback signatures still describe their raw Go-compatible results; native `.go` call sites are not transformed. Accessing an error-valued field such as `err.cause` returns the error as data and does not throw.
 
 ```ghi
 func value() (int, error) {
@@ -805,6 +827,21 @@ This unified rule is available in Ghi 0.2.13. It applies consistently to direct 
 ## Control flow and match
 
 Use Go-style `if`, `for`, `range`, `switch`, `select`, `break`, `continue`, `return` and `defer`. Conditions do not require parentheses. Newline and semicolon rules follow Go, so opening braces normally stay on the declaration or condition line.
+
+`defer` belongs to its enclosing user function, including when registered inside `try`, `catch` or `finally`. The function and arguments are captured at registration; deferred calls run in reverse registration order when that function exits. A deferred error at function exit can be caught by the caller.
+
+```ghi
+func finish() {
+	try {
+		defer println("deferred")
+		println("body")
+	} finally {
+		println("finally")
+	}
+	println("after try")
+}
+// Output: body, finally, after try, deferred.
+```
 
 `match` is a value expression:
 
@@ -1060,7 +1097,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 
 The Ghi 0.2.13 compiler was checked with Ghi Quality v0.1.1 (`run --dry-run`, `run`, and `format --check`) on an isolated service copy. No fixes were needed. The remaining `empty_catch` warning in `discardBody` is intentional: rejected request bodies are bounded, and drain failures are ignored before returning the original HTTP error. A fresh-consumer run passed integration tests, 4,488 verified HTTP responses, 320 cascading deletes, and persistence of all 162 remaining records and their histories after restart.
 
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.2.13 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.3.0 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
 
 ```sh
 cd services/request-journal
@@ -1130,6 +1167,14 @@ python tests/docker_smoke.py
 ```
 
 Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.8 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
+
+### Stabilization in v0.3.0
+
+This release fixes nullable arguments in `append` and variadic calls, preserves object-reference equality through generic functions, inherited fields and callback fields, and enforces public methods at statically known structural interface conversions. Native pointer comparisons retain Go pointer identity.
+
+Defers registered inside exception blocks run at the enclosing function's exit, with eager argument capture and reverse registration order. Uncaught exceptions in callbacks scheduled by Go libraries retain the concrete type, code and original source trace. These changes do not introduce a new language syntax or a 1.0 compatibility guarantee.
+
+The regression suite covers normal and debug builds, source origins with BOM/CRLF, source coverage, import aliases, generic constraints, named returns, native recovery and synchronous/asynchronous callbacks. Dynamic interface assertions from `any` still have the visibility limitation described above. Native macOS and Homebrew verification remain deferred.
 
 ### Compiler fixes in v0.2.5
 
