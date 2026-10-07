@@ -49,6 +49,7 @@ def main():
         process = None
         log = None
         base = ""
+        token = ""
 
         def stop():
             nonlocal process, log
@@ -87,7 +88,7 @@ def main():
 
         def request(method, path, body=None, expected=200, raw=False):
             data = body.encode() if raw else (json.dumps(body).encode() if body is not None else None)
-            req = urllib.request.Request(base + path, data=data, method=method, headers={"Content-Type": "application/json"})
+            req = urllib.request.Request(base + path, data=data, method=method, headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {})})
             try:
                 response = opener.open(req, timeout=10)
             except urllib.error.HTTPError as error:
@@ -105,6 +106,9 @@ def main():
         try:
             start()
             assert request("GET", "/health") == {"status": "ok"}
+            request("GET", "/requests", expected=401)
+            session = request("POST", "/auth/register", {"email": "owner@example.test", "password": "a secure smoke test password"}, 201)
+            token = session["token"]
             assert request("GET", "/requests") == []
             item = request("POST", "/requests", {"title": "  Restore notification delivery  "}, 201)
             identity = "/requests/" + str(item["id"])
@@ -171,7 +175,7 @@ def main():
                 results = list(pool.map(lambda n: request("POST", "/requests", {"title": "Concurrent " + str(n)}, 201), range(12)))
             assert len({record["id"] for record in results}) == 12
             assert len(request("GET", "/requests?limit=2&offset=1")) == 2
-            survivors = mixed.exercise(request, base, root / "journal.db")
+            survivors = mixed.exercise(request, base, root / "journal.db", token=token)
             stop()
             start()
             mixed.verify_persisted(request, survivors)
@@ -181,15 +185,15 @@ def main():
             request("GET", identity, expected=404)
             stop()
             with closing(sqlite3.connect(root / "journal.db")) as database:
-                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 1
+                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
                 assert database.execute("SELECT COUNT(*) FROM request_events WHERE request_id = ?", (item["id"],)).fetchone()[0] == 0
             # Startup must fail before opening a listener if a migration is invalid.
-            (root / "migrations/002_invalid.sql").write_text("CREATE TABLE unfinished(id INTEGER); INSERT INTO absent VALUES(1);")
+            (root / "migrations/003_invalid.sql").write_text("CREATE TABLE unfinished(id INTEGER); INSERT INTO absent VALUES(1);")
             failed = subprocess.run([str(executable)], cwd=root, env=environment, capture_output=True, text=True, timeout=30)
             assert failed.returncode != 0 and '"msg":"listening"' not in failed.stdout
             with closing(sqlite3.connect(root / "journal.db")) as database:
                 assert database.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='unfinished'").fetchone()[0] == 0
-                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 1
+                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
             print("PASS: fresh install, transactional tests, HTTP CRUD, validation, concurrency, restart persistence and migration failure")
         except Exception:
             print((root / "server.log").read_text(errors="replace"), flush=True)

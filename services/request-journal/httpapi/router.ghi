@@ -9,6 +9,7 @@ import http "go:net/http"
 import strconv "go:strconv"
 import strings "go:strings"
 import time "go:time"
+import journal.application.AuthService
 import journal.application.Service
 import journal.domain
 
@@ -63,10 +64,26 @@ func discardBody(w http.ResponseWriter, r *http.Request) {
 
 func guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 5 * time.Second)
 		defer cancel()
 		try {
 			next(w, r.WithContext(ctx))
+		} catch err domain.Unauthorized {
+			discardBody(w, r)
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			send(w, 401, map[string]string{
+				"error": err.message,
+			})
+		} catch err domain.Conflict {
+			send(w, 409, map[string]string{
+				"error": err.message,
+			})
+		} catch err domain.TooManyRequests {
+			w.Header().Set("Retry-After", "60")
+			send(w, 429, map[string]string{
+				"error": err.message,
+			})
 		} catch err BadRequest {
 			send(w, 400, map[string]string{
 				"error": err.message,
@@ -124,8 +141,27 @@ func number(value string, fallback int, field string) int {
 	}
 }
 
-func Router(service Service) http.Handler {
+func Router(service Service, auth AuthService) http.Handler {
 	router := chi.NewRouter()
+	limiter := new AuthLimiter()
+	router.Post("/auth/register", guard(func(w http.ResponseWriter, r *http.Request) {
+		input := decodeCredentials(w, r)
+		limiter.Check(r)
+		send(w, 201, auth.Register(r.Context(), input.Email, input.Password))
+	}))
+	router.Post("/auth/login", guard(func(w http.ResponseWriter, r *http.Request) {
+		input := decodeCredentials(w, r)
+		limiter.Check(r)
+		send(w, 200, auth.Login(r.Context(), input.Email, input.Password))
+	}))
+	router.Get("/me", secured(auth, func(w http.ResponseWriter, r *http.Request) {
+		send(w, 200, auth.Authenticate(r.Context(), bearer(r)))
+	}))
+	router.Post("/auth/logout", secured(auth, func(w http.ResponseWriter, r *http.Request) {
+		discardBody(w, r)
+		auth.Logout(r.Context(), bearer(r))
+		w.WriteHeader(204)
+	}))
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		discardBody(w, r)
 		send(w, 404, map[string]string{
@@ -156,28 +192,28 @@ func Router(service Service) http.Handler {
 			"status": "ok",
 		})
 	}))
-	router.Get("/requests", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/requests", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		send(w, 200, service.List(r.Context(), query.Get("status"), number(query.Get("limit"), 20, "limit"), number(query.Get("offset"), 0, "offset")))
 	}))
-	router.Post("/requests", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Post("/requests", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		input := decode(w, r)
 		item := service.Create(r.Context(), input.Title, input.Status)
 		w.Header().Set("Location", "/requests/" + strconv.FormatInt(item.ID, 10))
 		send(w, 201, item)
 	}))
-	router.Get("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/requests/{id}", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, service.Get(r.Context(), id(r)))
 	}))
-	router.Put("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Put("/requests/{id}", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		input := decode(w, r)
 		send(w, 200, service.Update(r.Context(), id(r), input.Title, input.Status))
 	}))
-	router.Delete("/requests/{id}", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Delete("/requests/{id}", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		service.Delete(r.Context(), id(r))
 		w.WriteHeader(204)
 	}))
-	router.Get("/requests/{id}/history", guard(func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/requests/{id}/history", secured(auth, func(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, service.History(r.Context(), id(r)))
 	}))
 

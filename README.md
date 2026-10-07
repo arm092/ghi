@@ -481,13 +481,13 @@ The initial missing-record allocation profile attributed about 10% of allocated 
 
 A separate controlled Ghi before/after comparison used the saved original binary, 30000 requests per sample and five alternating repeats. On 404, median allocation bytes fell from 7002 to 6375 with one client and 7169 to 6541 with 16 (about 9%); approximately five allocations/request were removed. Median throughput increased 5.5% and 1.6% respectively. Successful reads/history saved about one allocation; their timing changes were mixed. These are measured service improvements, not a general exception-runtime speedup. [Before/after samples](tests/performance/results/request-journal-query-before-after.json), [initial allocation profile](tests/performance/results/request-journal-initial-ghi-allocs.txt), [final allocation profile](tests/performance/results/request-journal-final-ghi-allocs.txt), [final CPU profile](tests/performance/results/request-journal-final-ghi-cpu.txt).
 
-Reproduce from the repository root with Go, Git and Python 3 installed:
+Reproduce from a Git checkout containing tag `v1.0.0`, with Go, Git and Python 3 installed:
 
 ```sh
 python benchmarks/request-journal/run.py --requests 10000 --runs 5 --profile --output .work/journal-results.json
 ```
 
-The runner builds both implementations, installs locked Ghi packages, checks Go dependency versions, verifies responses and records binary/source fingerprints. It retains temporary binaries/databases/profiles under `.work/journal-bench-*` for inspection. `--baseline-ghi PATH` compares with a saved instrumented Ghi server; `--scenarios get history missing` restricts the workload. Native benchmark commands shown above provide smaller in-process measurements of Request Journal.
+The comparison runner uses the pre-authentication service source from tag `v1.0.0` so its workload matches the independent Go implementation. The current production service additionally checks sessions and scopes SQL by owner; these historical comparison numbers do not measure that extra work. The runner builds both implementations, installs locked Ghi packages, checks Go dependency versions, verifies responses and records binary/source fingerprints. It retains temporary binaries/databases/profiles under `.work/journal-bench-*` for inspection. `--baseline-ghi PATH` compares with a saved instrumented Ghi server; `--scenarios get history missing` restricts the workload. The native `BenchmarkRequestRead` command measures the current authenticated handler.
 
 ## Files, namespaces and imports
 
@@ -1113,82 +1113,126 @@ Configuration uses `GHI_TASK_ADDR`, `GHI_TASK_DB` (default `tasks.db`) and `GHI_
 
 For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `store/migrations/`, and set `GHI_TASK_MIGRATIONS` to the deployed SQL directory. The source-tree migration path is only a development default. Use an `.exe` output name on Windows. Rollbacks are explicit maintenance operations through `Migrator.Down`; the example never runs them automatically.
 
-### Standalone request journal
+### Standalone Request Journal
 
-[Request Journal](services/request-journal) is a standalone backend outside the compiler examples. It tracks operational requests, their status and an ordered history of status changes. The source is split into `domain/`, `application/`, `storage/` and `httpapi/`; SQL migrations are in `migrations/` and tests in `tests/`.
-
-The Ghi 0.2.13 compiler was checked with Ghi Quality v0.1.1 (`run --dry-run`, `run`, and `format --check`) on an isolated service copy. No fixes were needed. The remaining `empty_catch` warning in `discardBody` is intentional: rejected request bodies are bounded, and drain failures are ignored before returning the original HTTP error. A fresh-consumer run passed integration tests, 4,488 verified HTTP responses, 320 cascading deletes, and persistence of all 162 remaining records and their histories after restart.
-
-The fresh-consumer workflow has been verified on Windows amd64 with the Ghi v0.3.0 release binary, published **Mojave v0.1.0**, **arm092/migrations v0.4.0**, [**arm092/validation v0.1.0**](https://github.com/arm092/ghi-validation/releases/tag/v0.1.0) and [**arm092/config v0.1.0**](https://github.com/arm092/ghi-config/releases/tag/v0.1.0), using only the committed manifest and lockfile. It uses chi v5.3.2 and modernc SQLite v1.59.0. Copy this directory to use it independently:
+[Request Journal](services/request-journal) is an authenticated backend service
+written in Ghi. It uses the published Ghi 1.0.0 compiler, Mojave 0.1.0 and locked
+`arm092/migrations`, `arm092/validation` and `arm092/config` packages. PostgreSQL
+uses pgx; SQLite remains the default for local development.
 
 ```sh
 cd services/request-journal
 mojave install
-ghi test .
 ghi run .
 ```
 
-| Method and route | Behavior |
-| --- | --- |
-| `GET /health` | Database readiness |
-| `POST /requests` | Create with `{"title":"Restore notifications"}`; returns 201 |
-| `GET /requests?status=open&limit=20&offset=0` | Filtered, paginated list, newest first |
-| `GET /requests/{id}` | Read one request |
-| `PUT /requests/{id}` | Replace title and status, e.g. `{"title":"Restored","status":"resolved"}` |
-| `GET /requests/{id}/history` | Ordered status history |
-| `DELETE /requests/{id}` | Delete request and its history; returns 204 |
+Registration returns a user and a session token. Supply that token using the
+`Authorization: Bearer TOKEN` header. Request data and history are scoped to the
+signed-in user, including lists, reads, updates and deletes. Another user's IDs
+return 404. Health, registration and login are public; all other routes below
+require a session.
 
-Statuses are `open`, `in_progress` and `resolved`; reopening is supported. New requests start as `open`. Updating a title without changing status does not add a history event. Request changes and history insertion share a transaction. Queries use bound SQL parameters. Foreign keys and the busy timeout are configured for every SQLite connection, including replacements after cancellation.
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/health` | Database readiness |
+| POST | `/auth/register` | Register with `email` and `password`; return a session (201) |
+| POST | `/auth/login` | Verify credentials and create an independent session |
+| POST | `/auth/logout` | Revoke the current token (204) |
+| GET | `/me` | Return the current user |
+| GET | `/requests` | Own requests; optional `status`, `limit` (1–100), `offset` |
+| POST | `/requests` | Create an own request from `title`; initial status is `open` |
+| GET | `/requests/{id}` | Read an own request |
+| PUT | `/requests/{id}` | Update `title` and `status` atomically with history |
+| DELETE | `/requests/{id}` | Delete an own request and cascade its history (204) |
+| GET | `/requests/{id}/history` | Ordered status changes for an own request |
 
-The API returns JSON: malformed/oversized bodies and unknown fields return 400, invalid values return 422, missing resources return 404 and internal failures return a generic 500. Titles contain 1–200 characters after trimming and cannot include NUL; pagination accepts a limit of 1–100 and a nonnegative offset. Bodies are limited to 4 KiB. The service binds to localhost by default and has no authentication layer.
-
-Validation uses the published `arm092/validation` package. Title length counts Unicode code points. Semantic checks collect all violations before accessing storage, and a rejected update preserves both the record and its history. Each 422 response includes field names and stable codes, for example:
-
-```json
-{"error":"invalid request fields","fields":[{"field":"title","code":"required"},{"field":"title","code":"min_length"},{"field":"status","code":"one_of"}]}
-```
-
-Independent rules may report more than one violation for a field. Create requests reject an explicit nonempty status with `initial_status`; NUL characters produce `nul_character`. Invalid integer syntax stops at the conversion boundary with `integer` for pagination or `positive_integer` for an ID; semantic checks run after conversion succeeds.
-
-| Environment variable | Default |
-| --- | --- |
-| `JOURNAL_ADDR` | `127.0.0.1:8080` |
-| `JOURNAL_DB` | `journal.db` (file path) |
-| `JOURNAL_MIGRATIONS` | `migrations` (relative to the working directory) |
-| `JOURNAL_SHUTDOWN_TIMEOUT` | `5s` (positive Go duration) |
-
-Settings use `arm092/config`: defaults apply only when a variable is absent, explicit empty paths/addresses are rejected, and the shutdown timeout is parsed as a duration and must be positive. Configuration errors identify the variable without exposing its value and stop startup before database initialization. No `.env` file is loaded automatically.
-
-Startup applies pending migrations, and a migration failure prevents the listener from opening. Run from the project directory, or set absolute database/migration paths. For deployment, use `ghi build -o bin/journal .` (`bin/journal.exe` on Windows), then copy the executable and `migrations/`. Go and Ghi are not needed to run the binary. Database files should live on persistent storage. Shutdown handles interrupt/SIGTERM with the configured HTTP grace period (five seconds by default).
-
-`ghi test .` checks atomic rollback on history failure, connection replacement after cancellation, cascading deletion and sanitized storage errors. The Python 3 smoke runner copies the project into a fresh temporary directory, installs locked dependencies, runs Ghi tests, builds and starts the executable, exercises real HTTP requests including 16 concurrent clients performing 480 CRUD lifecycles (4,488 checked responses), shared-record status/history consistency, 320 cascading deletions, SQLite write-lock recovery, and disconnected writes leaving no persisted records. It checks database integrity, verifies all 162 surviving records and their histories after restart, and checks failed migration rollback:
+Example using curl and jq:
 
 ```sh
-python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/mojave
+TOKEN=$(curl -fsS http://127.0.0.1:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com","password":"a long unique passphrase"}' | jq -r .token)
+curl -fsS http://127.0.0.1:8080/requests \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Restore notification delivery"}'
 ```
 
-### Request Journal in Docker
+Passwords require at least 12 UTF-8 characters and at most 1024 bytes. They are
+salted and hashed with Argon2id (19 MiB, two iterations, one lane). Tokens contain
+32 cryptographically random bytes; only their SHA-256 hashes are stored in the
+database. Logout revokes one session immediately; expiration is checked on each
+request. Registration/login allow ten attempts per source IP per minute, with
+at most four simultaneous password-hashing operations per process. Forwarded
+IP headers are not trusted. Behind a proxy, the source-IP limit applies to that
+proxy unless its network topology is changed. Expose the API through an HTTPS
+reverse proxy when accessed beyond localhost. Authentication responses use
+`Cache-Control: no-store`; passwords and hashes are never included in user JSON.
 
-Build from the service directory using the published Ghi v0.2.8 Linux archive, bundled Mojave v0.1.0 and the committed package lock:
+JSON bodies are bounded to 4096 bytes and reject unknown fields or trailing
+objects. Invalid input returns 422, malformed JSON 400, missing/expired/revoked
+sessions 401, duplicate email 409, and authentication throttling 429. Storage
+errors return a generic 500 response. Status changes append history in the same
+transaction; PostgreSQL serializes concurrent updates with a row lock.
+
+| Environment variable | Default / meaning |
+| --- | --- |
+| `JOURNAL_ADDR` | `127.0.0.1:8080` |
+| `JOURNAL_DB_DRIVER` | `sqlite`; alternative `postgres` |
+| `JOURNAL_DB` | `journal.db` for SQLite; PostgreSQL connection string for `postgres` |
+| `JOURNAL_MIGRATIONS` | `migrations`; PostgreSQL uses its `postgres/` subdirectory |
+| `JOURNAL_SESSION_TTL` | `24h`, between `1m` and `168h` |
+| `JOURNAL_SHUTDOWN_TIMEOUT` | `5s`, must be positive |
+
+For PostgreSQL, set `JOURNAL_DB_DRIVER=postgres` and a connection string in
+`JOURNAL_DB`. Standard pgx connection settings such as `PGPASSWORD` are supported.
+Use certificate-verified PostgreSQL TLS for connections outside a trusted local
+network. Schema changes are numbered SQL files. Startup applies pending
+migrations before opening the listener; failures stop startup. SQLite migration
+001 is unchanged. Migration 002 retains existing records with a null owner;
+those records are not exposed to newly registered users. An operator must
+explicitly assign each retained record to its verified owner. Rolling back
+migration 002 removes account/session data and ownership assignments, so back up
+the database before that maintenance operation.
+
+Build with `ghi build -o bin/journal .` (`bin/journal.exe` on Windows). Deploy the
+binary and the entire `migrations/` tree, set absolute migration/database paths,
+and keep the database on persistent storage. Go, Ghi and Mojave are not needed
+to run the binary. Shutdown drains active HTTP requests before closing storage.
+
+### Request Journal deployment
+
+The [Compose deployment](services/request-journal/compose.yml) runs PostgreSQL 18
+and the application with persistent database storage. The app runs as UID 10001
+with a read-only filesystem. Database credentials must be supplied explicitly;
+the database port is not published and the API binds to localhost on the host.
 
 ```sh
 cd services/request-journal
-docker build --platform linux/amd64 -t ghi-request-journal:0.2.8 .
-docker volume create ghi-journal-data
-docker run -d --name ghi-journal --read-only --tmpfs /tmp:rw,noexec,nosuid --mount type=volume,source=ghi-journal-data,target=/data -p 127.0.0.1:8080:8080 ghi-request-journal:0.2.8
+export JOURNAL_POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+docker compose up --build -d
+docker compose logs -f journal
 ```
 
-The build verifies the release archive checksum, installs Go in the build stage, installs locked packages, runs Ghi tests and compiles the service. The final image runs as UID 10001 and contains the executable and SQL migrations without Go, Ghi or Mojave. Inside the container, the service binds to `0.0.0.0:8080`, stores SQLite data at `/data/journal.db`, and loads SQL from `/app/migrations`. The host port is bound to localhost. `/health` is the container health check.
+Set `JOURNAL_PORT` to change host port 8080. Store the database password in your
+deployment secret manager or an untracked `.env` file and keep it when restarting
+the stack. Changing the variable does not rotate credentials in an existing
+PostgreSQL volume. `docker compose down` retains data; deleting the volume deletes
+the database. The Docker build uses the published Ghi 1.0.0 archive and the
+committed dependency lock, and the runtime image contains only the service and
+migrations. For SQLite deployments, the same image accepts a writable `/data`
+volume and defaults to `/data/journal.db`.
 
-Stop gracefully with `docker stop --time 10 ghi-journal`. Remove and recreate the container with the same volume to retain requests and history. Removing the volume deletes the database. Mount a writable `/data` owned by UID 10001 if using a host directory instead of a named volume.
-
-Run the deployment check from the service directory:
+Developer commands from the service directory:
 
 ```sh
+ghi test .
+python tests/smoke.py --ghi /absolute/path/to/ghi --mojave /absolute/path/to/mojave
+python tests/postgres_smoke.py --binary /absolute/path/to/journal
 python tests/docker_smoke.py
 ```
 
-Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.8 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
+The PostgreSQL runner owns a temporary Docker database; the Docker runner owns
+temporary containers and volumes. Both clean up their own resources.
 
 ### Ghi 1.0
 

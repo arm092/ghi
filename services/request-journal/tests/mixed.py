@@ -10,7 +10,7 @@ import time
 import urllib.parse
 
 
-def exercise(request, base, database, workers=16, rounds=30):
+def exercise(request, base, database, workers=16, rounds=30, token=""):
     shared = request("POST", "/requests", {"title": "Shared contention"}, 201)
     shared_path = "/requests/" + str(shared["id"])
     survivors = []
@@ -92,7 +92,7 @@ def exercise(request, base, database, workers=16, rounds=30):
             blocker.execute("BEGIN IMMEDIATE")
             connection = http.client.HTTPConnection(address.hostname, address.port, timeout=10)
             try:
-                connection.request("POST", "/requests", json.dumps({"title": title}), {"Content-Type": "application/json"})
+                connection.request("POST", "/requests", json.dumps({"title": title}), {"Content-Type": "application/json", "Authorization": "Bearer " + token})
                 time.sleep(.25)
                 connection.sock.shutdown(socket.SHUT_RDWR)
                 connection.close()

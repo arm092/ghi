@@ -4,6 +4,7 @@ import arm092.migrations.Migrator
 import context "go:context"
 import sql "go:database/sql"
 import errors "go:errors"
+import _ "go:github.com/jackc/pgx/v5/stdlib"
 import _ "go:modernc.org/sqlite"
 import url "go:net/url"
 import filepath "go:path/filepath"
@@ -23,23 +24,45 @@ func rollback(tx *sql.Tx) {
 
 class Repository {
 	private db * sql.DB
+	private postgres bool
 
-	constructor(path string, directory string) {
-		connection := url.URL{
-			Scheme: "file",
-			Path: "/" + strings.TrimPrefix(filepath.ToSlash(filepath.Abs(path)), "/"),
-			RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)",
+	constructor(path string, directory string, driver string = "sqlite") {
+		if driver != "sqlite" && driver != "postgres" {
+			throw new Exception("unsupported database driver")
 		}
-		this.db = sql.Open("sqlite", connection.String())
-		this.db.SetMaxOpenConns(1)
+		this.postgres = driver == "postgres"
+		if this.postgres {
+			this.db = sql.Open("pgx", path)
+			this.db.SetMaxOpenConns(10)
+			this.db.SetMaxIdleConns(10)
+			this.db.SetConnMaxLifetime(30 * time.Minute)
+			directory = filepath.Join(directory, "postgres")
+		} else {
+			connection := url.URL{
+				Scheme: "file",
+				Path: "/" + strings.TrimPrefix(filepath.ToSlash(filepath.Abs(path)), "/"),
+				RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)",
+			}
+			this.db = sql.Open("sqlite", connection.String())
+			this.db.SetMaxOpenConns(1)
+		}
 		try {
-			this.db.Exec("PRAGMA journal_mode = WAL")
-			migrator := new Migrator(this.db, directory)
+			ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+			defer cancel()
+			this.db.PingContext(ctx)
+			if !this.postgres {
+				this.db.Exec("PRAGMA journal_mode = WAL")
+			}
+			migrator := new Migrator(this.db, directory, driver)
 			migrator.Up()
 		} catch err Exception {
 			this.db.Close()
 			throw err
 		}
+	}
+
+	public func Database() *sql.DB {
+		return this.db
 	}
 
 	public func Close() {
@@ -54,9 +77,9 @@ class Repository {
 		tx := this.db.BeginTx(ctx, nil)
 		defer rollback(tx)
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		result := tx.ExecContext(ctx, "INSERT INTO requests(title, status, created_at, updated_at) VALUES (?, ?, ?, ?)", title, domain.Status.Open, now, now)
-		id := result.LastInsertId()
-		tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES (?, ?, ?)", id, domain.Status.Open, now)
+		id := int64(0)
+		tx.QueryRowContext(ctx, "INSERT INTO requests(title, status, created_at, updated_at,user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id", title, domain.Status.Open, now, now, domain.UserID(ctx)).Scan(&id)
+		tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES ($1,$2,$3)", id, domain.Status.Open, now)
 		tx.Commit()
 
 		return domain.Request{
@@ -69,7 +92,7 @@ class Repository {
 	}
 
 	public func Get(ctx context.Context, id int64) domain.Request {
-		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id)
+		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = $1 AND user_id=$2", id, domain.UserID(ctx))
 		defer rows.Close()
 		if !rows.Next() {
 			rows.Err()
@@ -82,7 +105,7 @@ class Repository {
 	}
 
 	public func List(ctx context.Context, status string, limit int, offset int) []domain.Request {
-		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE (? = '' OR status = ?) ORDER BY id DESC LIMIT ? OFFSET ?", status, status, limit, offset)
+		rows := this.db.QueryContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE user_id=$1 AND ($2 = '' OR status=$2) ORDER BY id DESC LIMIT $3 OFFSET $4", domain.UserID(ctx), status, limit, offset)
 		defer rows.Close()
 		items := []domain.Request{}
 		for rows.Next() {
@@ -99,8 +122,9 @@ class Repository {
 		tx := this.db.BeginTx(ctx, nil)
 		defer rollback(tx)
 		var item domain.Request
+		lock := this.postgres ? " FOR UPDATE" : ""
 		try {
-			tx.QueryRowContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = ?", id).Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
+			tx.QueryRowContext(ctx, "SELECT id, title, status, created_at, updated_at FROM requests WHERE id = $1 AND user_id=$2" + lock, id, domain.UserID(ctx)).Scan(&item.ID, &item.Title, &item.Status, &item.CreatedAt, &item.UpdatedAt)
 		} catch err GoError {
 			if errors.Is(err.cause, sql.ErrNoRows) {
 				throw new domain.NotFound()
@@ -109,9 +133,9 @@ class Repository {
 		}
 		item.Title = title
 		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		tx.ExecContext(ctx, "UPDATE requests SET title = ?, status = ?, updated_at = ? WHERE id = ?", title, status, item.UpdatedAt, id)
+		tx.ExecContext(ctx, "UPDATE requests SET title=$1,status=$2,updated_at=$3 WHERE id=$4 AND user_id=$5", title, status, item.UpdatedAt, id, domain.UserID(ctx))
 		if item.Status != status {
-			tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES (?, ?, ?)", id, status, item.UpdatedAt)
+			tx.ExecContext(ctx, "INSERT INTO request_events(request_id, status, created_at) VALUES ($1,$2,$3)", id, status, item.UpdatedAt)
 		}
 		item.Status = status
 		tx.Commit()
@@ -120,7 +144,7 @@ class Repository {
 	}
 
 	public func Delete(ctx context.Context, id int64) {
-		result := this.db.ExecContext(ctx, "DELETE FROM requests WHERE id = ?", id)
+		result := this.db.ExecContext(ctx, "DELETE FROM requests WHERE id = $1 AND user_id=$2", id, domain.UserID(ctx))
 		if result.RowsAffected() == 0 {
 			throw new domain.NotFound()
 		}
@@ -128,7 +152,7 @@ class Repository {
 
 	public func History(ctx context.Context, id int64) []domain.Event {
 		this.Get(ctx, id)
-		rows := this.db.QueryContext(ctx, "SELECT id, status, created_at FROM request_events WHERE request_id = ? ORDER BY id", id)
+		rows := this.db.QueryContext(ctx, "SELECT id, status, created_at FROM request_events WHERE request_id=$1 AND EXISTS (SELECT 1 FROM requests WHERE id=$1 AND user_id=$2) ORDER BY id", id, domain.UserID(ctx))
 		defer rows.Close()
 		events := []domain.Event{}
 		for rows.Next() {

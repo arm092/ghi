@@ -4,3 +4,6 @@ bin/
 *.db-shm
 *.db-wal
 __pycache__/
+.env
+.env.*
+!.env.example

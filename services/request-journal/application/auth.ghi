@@ -1,0 +1,156 @@
+namespace journal.application
+
+import context "go:context"
+import rand "go:crypto/rand"
+import sha256 "go:crypto/sha256"
+import subtle "go:crypto/subtle"
+import base64 "go:encoding/base64"
+import hex "go:encoding/hex"
+import argon2 "go:golang.org/x/crypto/argon2"
+import mail "go:net/mail"
+import strings "go:strings"
+import time "go:time"
+import utf8 "go:unicode/utf8"
+import journal.domain
+import journal.storage.AuthRepository
+
+func passwordHash(password string) string {
+	salt := make([]byte, 16)
+	rand.Read(salt)
+	hash := argon2.IDKey([]byte(password), salt, 2, 19456, 1, 32)
+
+	return "a1$" + base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(hash)
+}
+
+func passwordMatches(password string, encoded string) bool {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 3 || parts[0] != "a1" {
+		return false
+	}
+	try {
+		salt := base64.RawStdEncoding.DecodeString(parts[1])
+		expected := base64.RawStdEncoding.DecodeString(parts[2])
+		if len(salt) != 16 || len(expected) != 32 {
+			return false
+		}
+		actual := argon2.IDKey([]byte(password), salt, 2, 19456, 1, 32)
+
+		return subtle.ConstantTimeCompare(actual, expected) == 1
+	} catch err GoError {
+		return false
+	}
+}
+
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+
+	return hex.EncodeToString(sum[:])
+}
+
+func email(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) > 254 || value == "" {
+		throw new domain.InvalidInput("invalid email address")
+	}
+	try {
+		address := mail.ParseAddress(value)
+		if address.Address != value || address.Name != "" {
+			throw new domain.InvalidInput("invalid email address")
+		}
+	} catch err GoError {
+		throw new domain.InvalidInput("invalid email address")
+	}
+
+	return value
+}
+
+func validatePassword(value string) {
+	if !utf8.ValidString(value) || utf8.RuneCountInString(value) < 12 || len(value) > 1024 {
+		throw new domain.InvalidInput("password must contain at least 12 characters and at most 1024 bytes")
+	}
+}
+
+class AuthService {
+	private repository AuthRepository
+	private ttl time.Duration
+	private dummyHash string
+	private slots chan struct{}
+
+	constructor(repository AuthRepository, ttl time.Duration = 24 *time.Hour) {
+		if ttl < time.Minute || ttl > 7 * 24 * time.Hour {
+			throw new Exception("invalid session lifetime")
+		}
+		this.repository = repository
+		this.ttl = ttl
+		this.dummyHash = passwordHash("dummy-password-not-an-account")
+		this.slots = make(chan struct{}, 4)
+	}
+
+	private func acquire() {
+		select {
+			case this.slots <- struct{}{}:
+			default:
+				throw new domain.TooManyRequests()
+		}
+	}
+
+	private func freshSession() domain.Session {
+		random := make([]byte, 32)
+		rand.Read(random)
+
+		return domain.Session{
+			Token: base64.RawURLEncoding.EncodeToString(random),
+			ExpiresAt: time.Now().Add(this.ttl).UTC().Format(time.RFC3339),
+		}
+	}
+
+	public func Register(ctx context.Context, address string, password string) domain.Session {
+		address = email(address)
+		validatePassword(password)
+		this.acquire()
+		defer func() {
+			<-this.slots
+		}()
+		session := this.freshSession()
+		expires := time.Parse(time.RFC3339, session.ExpiresAt).Unix()
+		session.User = this.repository.Register(ctx, address, passwordHash(password), tokenHash(session.Token), expires)
+
+		return session
+	}
+
+	public func Login(ctx context.Context, address string, password string) domain.Session {
+		address = email(address)
+		if len(password) > 1024 {
+			throw new domain.Unauthorized()
+		}
+		this.acquire()
+		defer func() {
+			<-this.slots
+		}()
+		user, hash, found := this.repository.Credentials(ctx, address)
+		if !found {
+			hash = this.dummyHash
+		}
+		matches := passwordMatches(password, hash)
+		if !matches || !found {
+			throw new domain.Unauthorized()
+		}
+		session := this.freshSession()
+		session.User = user
+		this.repository.StoreSession(ctx, user.ID, tokenHash(session.Token), time.Parse(time.RFC3339, session.ExpiresAt).Unix())
+
+		return session
+	}
+
+	public func Authenticate(ctx context.Context, token string) domain.User {
+		if len(token) != 43 {
+			throw new domain.Unauthorized()
+		}
+
+		return this.repository.SessionUser(ctx, tokenHash(token))
+	}
+
+	public func Logout(ctx context.Context, token string) {
+		this.repository.Revoke(ctx, tokenHash(token))
+	}
+}

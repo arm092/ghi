@@ -13,8 +13,8 @@ import uuid
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", default="ghi-request-journal:0.2.8")
-    parser.add_argument("--version", default="0.2.8")
+    parser.add_argument("--image", default="ghi-request-journal:1.0.0-auth")
+    parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -34,11 +34,12 @@ def main():
     docker("volume", "create", volume)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     base = ""
+    token = ""
 
     def request(method, path, body=None, expected=200):
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(base + path, data=data, method=method,
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {})})
         with opener.open(req, timeout=15) as response:
             assert response.status == expected
             return json.load(response)
@@ -65,6 +66,8 @@ def main():
 
     try:
         port = start()
+        session = request("POST", "/auth/register", {"email": "docker@example.test", "password": "a secure docker test password"}, 201)
+        token = session["token"]
         deadline = time.monotonic() + 20
         while docker("inspect", "-f", "{{.State.Health.Status}}", container) != "healthy":
             assert time.monotonic() < deadline, "container health check did not pass"
@@ -85,6 +88,7 @@ def main():
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         connection.putrequest("POST", "/requests")
         connection.putheader("Content-Type", "application/json")
+        connection.putheader("Authorization", "Bearer " + token)
         connection.putheader("Content-Length", str(len(payload)))
         connection.endheaders()
         connection.send(payload[:5])
@@ -118,7 +122,7 @@ def main():
             docker("cp", container + ":/data/journal.db", snapshot)
             database = sqlite3.connect(snapshot)
             try:
-                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 1
+                assert database.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 2
                 assert database.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == 2
             finally:
                 database.close()

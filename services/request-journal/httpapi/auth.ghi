@@ -1,0 +1,97 @@
+namespace journal.httpapi
+
+import json "go:encoding/json"
+import errors "go:errors"
+import io "go:io"
+import net "go:net"
+import http "go:net/http"
+import strings "go:strings"
+import sync "go:sync"
+import time "go:time"
+import journal.application.AuthService
+import journal.domain
+
+type Credentials struct {
+	Email string `json:"email"`
+	Password string `json:"password"`
+}
+
+type authWindow struct {
+	Start time.Time
+	Count int
+}
+
+class AuthLimiter {
+	private mu * sync.Mutex
+	private windows map[string]authWindow
+
+	constructor() {
+		this.mu = &sync.Mutex{}
+		this.windows = map[string]authWindow{}
+	}
+
+	public func Check(r *http.Request) {
+		ip, _ := net.SplitHostPort(r.RemoteAddr)
+		this.mu.Lock()
+		defer this.mu.Unlock()
+		now := time.Now()
+		for key, value := range this.windows {
+			if now.Sub(value.Start) >= time.Minute {
+				delete(this.windows, key)
+			}
+		}
+		window := this.windows[ip]
+		if window.Count == 0 {
+			if len(this.windows) >= 4096 {
+				throw new domain.TooManyRequests()
+			}
+			window.Start = now
+		}
+		if window.Count >= 10 {
+			throw new domain.TooManyRequests()
+		}
+		window.Count++
+		this.windows[ip] = window
+	}
+}
+
+func decodeCredentials(w http.ResponseWriter, r *http.Request) Credentials {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var input * Credentials
+	try {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		decoder.Decode(&input)
+		if input == nil {
+			throw new BadRequest()
+		}
+		var trailing any
+		try {
+			decoder.Decode(&trailing)
+		} catch err GoError {
+			if errors.Is(err.cause, io.EOF) {
+				return * input
+			}
+			throw err
+		}
+	} catch err GoError {
+		throw new BadRequest()
+	}
+	throw new BadRequest()
+}
+
+func bearer(r *http.Request) string {
+	parts := strings.Fields(r.Header.Get("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		throw new domain.Unauthorized()
+	}
+
+	return parts[1]
+}
+
+func secured(auth AuthService, next http.HandlerFunc) http.HandlerFunc {
+	return guard(func(w http.ResponseWriter, r *http.Request) {
+		user := auth.Authenticate(r.Context(), bearer(r))
+		next(w, r.WithContext(domain.WithUser(r.Context(), user.ID)))
+	})
+}

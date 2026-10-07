@@ -1,18 +1,32 @@
 namespace tests.integration
 
+import arm092.migrations.Migrator
 import context "go:context"
 import sql "go:database/sql"
+import json "go:encoding/json"
+import fmt "go:fmt"
+import http "go:net/http"
 import httptest "go:net/http/httptest"
 import os "go:os"
 import filepath "go:path/filepath"
 import runtime "go:runtime"
+import strings "go:strings"
 import testing "go:testing"
 import time "go:time"
+import journal.application.AuthService
 import journal.application.Service
 import journal.config
 import journal.domain
 import journal.httpapi
+import journal.storage.AuthRepository
 import journal.storage.Repository
+
+func principal(repository Repository) context.Context {
+	auth := new AuthService(new AuthRepository(repository.Database()))
+	session := auth.Register(context.Background(), "benchmark@example.test", "a secure benchmark password")
+
+	return domain.WithUser(context.Background(), session.User.ID)
+}
 
 func migrations() string {
 	_, source, _, _ := runtime.Caller(0)
@@ -26,6 +40,8 @@ func TestEnvironmentSettings(t *testing.T) {
 		"JOURNAL_DB",
 		"JOURNAL_MIGRATIONS",
 		"JOURNAL_SHUTDOWN_TIMEOUT",
+		"JOURNAL_DB_DRIVER",
+		"JOURNAL_SESSION_TTL",
 	} {
 		t.Setenv(name, "temporary")
 		os.Unsetenv(name)
@@ -57,7 +73,7 @@ func TestAtomicStatusHistory(t *testing.T) {
 	repository := new Repository(path, migrations())
 	defer repository.Close()
 	service := new Service(repository)
-	ctx := context.Background()
+	ctx := principal(repository)
 	item := service.Create(ctx, "Fix notification delivery")
 	db := sql.Open("sqlite", path)
 	defer db.Close()
@@ -91,10 +107,10 @@ func TestAtomicStatusHistory(t *testing.T) {
 
 func TestStorageErrorsStayPrivate(t *testing.T) {
 	repository := new Repository(filepath.Join(t.TempDir(), "journal.db"), migrations())
-	router := httpapi.Router(new Service(repository))
+	router := httpapi.Router(new Service(repository), new AuthService(new AuthRepository(repository.Database())))
 	repository.Close()
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest("GET", "/requests", nil))
+	router.ServeHTTP(response, httptest.NewRequest("GET", "/health", nil))
 	if response.Code != 500 || response.Body.String() != "{\"error\":\"internal server error\"}\n" {
 		t.Fatalf("storage details leaked: %d %s", response.Code, response.Body.String())
 	}
@@ -104,7 +120,7 @@ func TestForeignKeysAfterCancellation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reconnect.db")
 	repository := new Repository(path, migrations())
 	defer repository.Close()
-	ctx := context.Background()
+	ctx := principal(repository)
 	item := repository.Create(ctx, "Must cascade")
 	db := sql.Open("sqlite", path)
 	defer db.Close()
@@ -134,16 +150,229 @@ func BenchmarkRequestRead(b *testing.B) {
 	repository := new Repository(filepath.Join(b.TempDir(), "benchmark.db"), migrations())
 	defer repository.Close()
 	service := new Service(repository)
-	service.Create(context.Background(), "Benchmark request")
-	handler := httpapi.Router(service)
+	ctx := principal(repository)
+	service.Create(ctx, "Benchmark request")
+	auth := new AuthService(new AuthRepository(repository.Database()))
+	session := auth.Login(context.Background(), "benchmark@example.test", "a secure benchmark password")
+	handler := httpapi.Router(service, auth)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest("GET", "/requests/1", nil))
+		request := httptest.NewRequest("GET", "/requests/1", nil)
+		request.Header.Set("Authorization", "Bearer " + session.Token)
+		handler.ServeHTTP(response, request)
 		if response.Code != 200 {
 			b.Fatal("request read failed")
 		}
 	}
 	b.StopTimer()
+}
+
+func call(t *testing.T, handler http.Handler, method string, path string, body string, token string, expected int) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	if token != "" {
+		r.Header.Set("Authorization", "Bearer " + token)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, r)
+	if response.Code != expected {
+		t.Fatalf("%s %s expected %d got %d: %s", method, path, expected, response.Code, response.Body.String())
+	}
+
+	return response
+}
+
+func TestAuthenticationAndOwnerIsolation(t *testing.T) {
+	repository := new Repository(filepath.Join(t.TempDir(), "auth.db"), migrations())
+	defer repository.Close()
+	auth := new AuthService(new AuthRepository(repository.Database()))
+	handler := httpapi.Router(new Service(repository), auth)
+	call(t, handler, "GET", "/requests", "", "", 401)
+	call(t, handler, "POST", "/auth/register", "null", "", 400)
+	call(t, handler, "POST", "/auth/register", "{} {}", "", 400)
+	call(t, handler, "POST", "/auth/register", "{\"unknown\":1}", "", 400)
+	call(t, handler, "POST", "/auth/register", "{\"email\":\"bad\",\"password\":\"short\"}", "", 422)
+	response := call(t, handler, "POST", "/auth/register", "{\"email\":\"Alice@example.test\",\"password\":\"a secure test password\"}", "", 201)
+	var alice domain.Session
+	json.Unmarshal(response.Body.Bytes(), &alice)
+	if alice.User.Email != "alice@example.test" || len(alice.Token) != 43 || strings.Contains(response.Body.String(), "password") {
+		t.Fatal("registration exposed credentials or returned invalid identity")
+	}
+	response = call(t, handler, "POST", "/auth/register", "{\"email\":\"bob@example.test\",\"password\":\"another secure password\"}", "", 201)
+	var bob domain.Session
+	json.Unmarshal(response.Body.Bytes(), &bob)
+	call(t, handler, "POST", "/auth/register", "{\"email\":\"ALICE@example.test\",\"password\":\"a secure test password\"}", "", 409)
+	call(t, handler, "POST", "/auth/login", "{\"email\":\"alice@example.test\",\"password\":\"wrong password\"}", "", 401)
+	call(t, handler, "POST", "/auth/login", "{\"email\":\"absent@example.test\",\"password\":\"wrong password\"}", "", 401)
+	response = call(t, handler, "POST", "/auth/login", "{\"email\":\"alice@example.test\",\"password\":\"a secure test password\"}", "", 200)
+	var login domain.Session
+	json.Unmarshal(response.Body.Bytes(), &login)
+	if login.Token == alice.Token || login.User.ID != alice.User.ID {
+		t.Fatal("login did not create an independent session")
+	}
+	response = call(t, handler, "POST", "/requests", "{\"title\":\"Alice only\"}", alice.Token, 201)
+	var item domain.Request
+	json.Unmarshal(response.Body.Bytes(), &item)
+	path := "/requests/" + strings.TrimSpace(string(json.Marshal(item.ID)))
+	call(t, handler, "GET", path, "", bob.Token, 404)
+	call(t, handler, "GET", path + "/history", "", bob.Token, 404)
+	call(t, handler, "PUT", path, "{\"title\":\"stolen\",\"status\":\"resolved\"}", bob.Token, 404)
+	call(t, handler, "DELETE", path, "", bob.Token, 404)
+	if call(t, handler, "GET", "/requests", "", bob.Token, 200).Body.String() != "[]\n" {
+		t.Fatal("list leaked another user's requests")
+	}
+	call(t, handler, "GET", path, "", alice.Token, 200)
+	call(t, handler, "GET", "/me", "", strings.Repeat("a", 43), 401)
+	call(t, handler, "POST", "/auth/logout", "", login.Token, 204)
+	call(t, handler, "GET", "/me", "", login.Token, 401)
+	call(t, handler, "GET", "/me", "", alice.Token, 200)
+	hash := ""
+	tokenHash := ""
+	repository.Database().QueryRow("SELECT password_hash FROM users WHERE id=$1", alice.User.ID).Scan(&hash)
+	repository.Database().QueryRow("SELECT token_hash FROM sessions WHERE user_id=$1", alice.User.ID).Scan(&tokenHash)
+	if hash == "a secure test password" || !strings.HasPrefix(hash, "a1$") || tokenHash == alice.Token || len(tokenHash) != 64 {
+		t.Fatal("plaintext secret persisted")
+	}
+	repository.Database().Exec("UPDATE sessions SET expires_at=0 WHERE user_id=$1", alice.User.ID)
+	call(t, handler, "GET", "/me", "", alice.Token, 401)
+	call(t, handler, "GET", "/me", "", bob.Token, 200)
+}
+
+func TestAuthenticationRateLimit(t *testing.T) {
+	repository := new Repository(filepath.Join(t.TempDir(), "rate.db"), migrations())
+	defer repository.Close()
+	handler := httpapi.Router(new Service(repository), new AuthService(new AuthRepository(repository.Database())))
+	for i := 0; i < 10; i++ {
+		call(t, handler, "POST", "/auth/login", "{}", "", 422)
+	}
+	response := call(t, handler, "POST", "/auth/login", "{}", "", 429)
+	if response.Header().Get("Retry-After") != "60" {
+		t.Fatal("rate limit response omitted retry delay")
+	}
+}
+
+func TestAuthLimiterRetainsExistingClientsAtCapacity(t *testing.T) {
+	limiter := new httpapi.AuthLimiter()
+	r := httptest.NewRequest("POST", "/auth/login", nil)
+	r.RemoteAddr = "192.0.2.1:1234"
+	limiter.Check(r)
+	for i := 0; i < 4095; i++ {
+		r.RemoteAddr = fmt.Sprintf("198.51.%d.%d:1234", i / 256, i % 256)
+		limiter.Check(r)
+	}
+	r.RemoteAddr = "192.0.2.1:5678"
+	limiter.Check(r)
+	r.RemoteAddr = "203.0.113.1:1234"
+	rejected := false
+	try {
+		limiter.Check(r)
+	} catch err domain.TooManyRequests {
+		rejected = true
+	}
+	if !rejected {
+		t.Fatal("new IP was admitted beyond limiter capacity")
+	}
+}
+
+func TestConcurrentRegistrationIsAtomic(t *testing.T) {
+	repository := new Repository(filepath.Join(t.TempDir(), "register.db"), migrations())
+	defer repository.Close()
+	auth := new AuthService(new AuthRepository(repository.Database()))
+	results := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			try {
+				auth.Register(context.Background(), "same@example.test", "a secure concurrent password")
+				results <- 201
+			} catch err domain.Conflict {
+				results <- 409
+			}
+		}()
+	}
+	a := <-results
+	b := <-results
+	if a + b != 610 || a == b {
+		t.Fatal("concurrent duplicate registration did not have exactly one winner")
+	}
+	users := 0
+	sessions := 0
+	repository.Database().QueryRow("SELECT COUNT(*) FROM users").Scan(&users)
+	repository.Database().QueryRow("SELECT COUNT(*) FROM sessions").Scan(&sessions)
+	if users != 1 || sessions != 1 {
+		t.Fatal("failed registration left an account or orphan session")
+	}
+}
+
+func TestInvalidAuthConfiguration(t *testing.T) {
+	t.Setenv("JOURNAL_DB_DRIVER", "mysql")
+	failed := false
+	try {
+		config.Load()
+	} catch err Exception {
+		failed = true
+	}
+	if !failed {
+		t.Fatal("unsupported database driver was accepted")
+	}
+	t.Setenv("JOURNAL_DB_DRIVER", "sqlite")
+	for _, ttl := range []string{
+		"0s",
+		"1ns",
+		"169h",
+	} {
+		t.Setenv("JOURNAL_SESSION_TTL", ttl)
+		failed = false
+		try {
+			config.Load()
+		} catch err Exception {
+			failed = true
+		}
+		if !failed {
+			t.Fatal("invalid session lifetime was accepted")
+		}
+	}
+}
+
+func TestAccountMigrationKeepsLegacyRecordsPrivate(t *testing.T) {
+	old := filepath.Join(t.TempDir(), "old")
+	os.MkdirAll(old, 0755)
+	for _, name := range []string{
+		"001_requests.sql",
+		"001_requests.down.sql",
+	} {
+		os.WriteFile(filepath.Join(old, name), os.ReadFile(filepath.Join(migrations(), name)), 0600)
+	}
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db := sql.Open("sqlite", path)
+	new Migrator(db, old).Up()
+	db.Exec("INSERT INTO requests(title,status,created_at,updated_at) VALUES ('Legacy private record','open','old','old')")
+	db.Close()
+	repository := new Repository(path, migrations())
+	defer repository.Close()
+	ctx := principal(repository)
+	if len(repository.List(ctx, "", 20, 0)) != 0 {
+		t.Fatal("registration claimed legacy records")
+	}
+	missing := false
+	try {
+		repository.Get(ctx, 1)
+	} catch err domain.NotFound {
+		missing = true
+	}
+	if !missing {
+		t.Fatal("legacy record exposed to new account")
+	}
+	count := 0
+	repository.Database().QueryRow("SELECT COUNT(*) FROM requests WHERE user_id IS NULL AND title='Legacy private record'").Scan(&count)
+	if count != 1 {
+		t.Fatal("migration discarded legacy data")
+	}
+	new Migrator(repository.Database(), migrations()).Down(1)
+	new Migrator(repository.Database(), migrations()).Up()
+	count = 0
+	repository.Database().QueryRow("SELECT COUNT(*) FROM requests WHERE user_id IS NULL").Scan(&count)
+	if count != 1 {
+		t.Fatal("account migration rollback/reapply lost legacy records")
+	}
 }

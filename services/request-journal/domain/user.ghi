@@ -1,0 +1,48 @@
+namespace journal.domain
+
+import context "go:context"
+
+type User struct {
+	ID int64 `json:"id"`
+	Email string `json:"email"`
+	CreatedAt string `json:"created_at"`
+}
+
+type Session struct {
+	Token string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+	User User `json:"user"`
+}
+
+type principalKey struct{}
+
+func WithUser(ctx context.Context, id int64) context.Context {
+	return context.WithValue(ctx, principalKey{}, id)
+}
+
+func UserID(ctx context.Context) int64 {
+	id, ok := ctx.Value(principalKey{}).(int64)
+	if !ok || id < 1 {
+		throw new Unauthorized()
+	}
+
+	return id
+}
+
+class Unauthorized extends Exception {
+	constructor() {
+		parent("invalid credentials or session", 401)
+	}
+}
+
+class Conflict extends Exception {
+	constructor() {
+		parent("email is already registered", 409)
+	}
+}
+
+class TooManyRequests extends Exception {
+	constructor() {
+		parent("too many authentication attempts", 429)
+	}
+}

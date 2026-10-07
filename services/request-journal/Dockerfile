@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM alpine:3.22 AS build
 ARG TARGETARCH
-ARG GHI_VERSION=0.2.8
+ARG GHI_VERSION=1.0.0
 ENV GHI_INSTALL_DIR=/usr/local/bin GHI_NO_PATH=1 CGO_ENABLED=0
 RUN apk add --no-cache ca-certificates curl git
 WORKDIR /toolchain

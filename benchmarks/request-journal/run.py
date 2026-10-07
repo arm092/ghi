@@ -5,6 +5,7 @@ import concurrent.futures
 from contextlib import closing
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import platform
@@ -13,12 +14,14 @@ import socket
 import sqlite3
 import statistics
 import subprocess
+import tarfile
 import tempfile
 import time
 import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
+SERVICE_REF = 'v1.0.0'
 spec = importlib.util.spec_from_file_location('http_benchmark', ROOT / 'benchmarks/http-api/run.py')
 helpers = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(helpers)
@@ -60,7 +63,19 @@ def main():
             print(error.output, flush=True)
             raise
     project = work / 'project'
-    shutil.copytree(ROOT / 'services/request-journal', project, ignore=shutil.ignore_patterns('.ghi', '.idea', 'bin', '__pycache__', '*.db*'))
+    # Freeze the historical workload to match the unauthenticated Go baseline.
+    archive = subprocess.check_output(['git', 'archive', SERVICE_REF, 'services/request-journal'], cwd=ROOT)
+    project.mkdir()
+    prefix = 'services/request-journal/'
+    with tarfile.open(fileobj=io.BytesIO(archive)) as files:
+        for member in files:
+            if not member.isfile() or not member.name.startswith(prefix):
+                continue
+            destination = project / member.name[len(prefix):]
+            if not destination.resolve().is_relative_to(project.resolve()):
+                raise ValueError('Invalid benchmark fixture path')
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(files.extractfile(member).read())
     instrument = ROOT / 'benchmarks/request-journal/metrics.ghi'
     shutil.copyfile(instrument, project / 'benchmark_metrics.ghi')
     mainfile = project / 'main.ghi'
@@ -82,8 +97,8 @@ def main():
     labels = {'Ghi':'Ghi-after','Go':'Ghi-before'} if args.baseline_ghi else {'Ghi':'Ghi','Go':'Go'}
     run([go, 'build', '-o', binaries['client'], './benchmarks/http-api/client'])
     print('Built both servers and client:', work, flush=True)
-    sources=[*sorted((ROOT/'services/request-journal').rglob('*.ghi')), *sorted((ROOT/'benchmarks/request-journal').rglob('*.go')), *sorted((ROOT/'benchmarks/http-api/client').glob('*.go')), instrument, Path(__file__).resolve(), ROOT/'services/request-journal/mojave.lock', ROOT/'benchmarks/request-journal/go/go.mod', ROOT/'benchmarks/request-journal/go/go.sum']
-    source_hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources if '.ghi' not in p.relative_to(ROOT).parts}
+    sources=[*sorted(project.rglob('*.ghi')), *sorted((ROOT/'benchmarks/request-journal').rglob('*.go')), *sorted((ROOT/'benchmarks/http-api/client').glob('*.go')), instrument, Path(__file__).resolve(), project/'mojave.lock', ROOT/'benchmarks/request-journal/go/go.mod', ROOT/'benchmarks/request-journal/go/go.sum']
+    source_hashes={('services/request-journal/'+str(p.relative_to(project)) if p.is_relative_to(project) else str(p.relative_to(ROOT))):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources if '.ghi' not in p.relative_to(ROOT).parts}
     compiler_source_hash=hashlib.sha256(b''.join(str(p.relative_to(ROOT)).encode()+b'\0'+p.read_bytes() for folder in ('cmd/ghi','internal') for p in sorted((ROOT/folder).rglob('*.go')))).hexdigest()
 
 
@@ -191,7 +206,9 @@ def main():
             'methodology':'Closed-loop localhost HTTP/1.1 keep-alive, 300 warmup requests, alternating implementation order, new server and identical 1000-row SQLite snapshot for every sample. Same Chi/SQLite dependencies, WAL, FK/busy timeout, one DB connection, context/server timeouts, SQL and JSON. Reference Go implements measured read routes only; startup/migrations/writes are not compared. Ghi uses typed exceptions and the published validation package; Go uses ordinary errors and equivalent direct validation. Differences include these implementation choices, not only compiler overhead. MemStats deltas include server HTTP work and the amortized stats request; peak working set includes startup/warmup. No race/coverage/debug instrumentation. Profiles are a separate missing-record workload after timings.',
             'comparison':'Ghi before/after' if args.baseline_ghi else 'Ghi versus Go',
             'binary_bytes':{labels[k]:binaries[k].stat().st_size for k in ('Ghi','Go')},'binary_sha256':{labels[k]:hashlib.sha256(binaries[k].read_bytes()).hexdigest() for k in ('Ghi','Go')},
-            'source_sha256':source_hashes,'samples':records}
+            'source_sha256':source_hashes,'samples':records,
+            'service_source_ref':SERVICE_REF,
+            'service_source_commit':run(['git','rev-parse',SERVICE_REF+'^{}']).strip()}
     if args.baseline_ghi:
         output['methodology'] = output['methodology'].replace('Reference Go implements measured read routes only; startup/migrations/writes are not compared. Ghi uses typed exceptions and the published validation package; Go uses ordinary errors and equivalent direct validation. Differences include these implementation choices, not only compiler overhead.', 'Both binaries are Ghi; baseline supplied with --baseline-ghi. Source hashes describe current implementation only. The before binary SHA-256 links to the prior full comparison.')
     destination=ROOT/args.output;destination.parent.mkdir(parents=True,exist_ok=True);destination.write_text(json.dumps(output,indent=2)+'\n',encoding='utf-8')

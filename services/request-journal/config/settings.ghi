@@ -7,8 +7,10 @@ import time "go:time"
 type Settings struct {
 	Address string
 	Database string
+	Driver string
 	Migrations string
 	ShutdownTimeout time.Duration
+	SessionTTL time.Duration
 }
 
 func nonempty(name string, value string) string {
@@ -24,8 +26,16 @@ func Load() Settings {
 	settings := Settings{
 		Address: nonempty("JOURNAL_ADDR", env.String("JOURNAL_ADDR", "127.0.0.1:8080")),
 		Database: nonempty("JOURNAL_DB", env.String("JOURNAL_DB", "journal.db")),
+		Driver: env.String("JOURNAL_DB_DRIVER", "sqlite"),
 		Migrations: nonempty("JOURNAL_MIGRATIONS", env.String("JOURNAL_MIGRATIONS", "migrations")),
 		ShutdownTimeout: env.Duration("JOURNAL_SHUTDOWN_TIMEOUT", 5 * time.Second),
+		SessionTTL: env.Duration("JOURNAL_SESSION_TTL", 24 * time.Hour),
+	}
+	if settings.Driver != "sqlite" && settings.Driver != "postgres" {
+		throw new Exception("JOURNAL_DB_DRIVER must be sqlite or postgres")
+	}
+	if settings.SessionTTL < time.Minute || settings.SessionTTL > 7 * 24 * time.Hour {
+		throw new Exception("JOURNAL_SESSION_TTL must be between 1m and 168h")
 	}
 	if settings.ShutdownTimeout <= 0 {
 		throw new Exception("JOURNAL_SHUTDOWN_TIMEOUT must be positive")

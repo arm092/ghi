@@ -1,0 +1,36 @@
+name: ghi-request-journal
+services:
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: journal
+      POSTGRES_USER: journal
+      POSTGRES_PASSWORD: ${JOURNAL_POSTGRES_PASSWORD:?Set JOURNAL_POSTGRES_PASSWORD}
+    volumes:
+      - journal-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U journal -d journal"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  journal:
+    build: .
+    image: ghi-request-journal:1.0.0-auth
+    environment:
+      JOURNAL_DB_DRIVER: postgres
+      JOURNAL_DB: postgres://journal@database:5432/journal?sslmode=disable
+      PGPASSWORD: ${JOURNAL_POSTGRES_PASSWORD:?Set JOURNAL_POSTGRES_PASSWORD}
+      JOURNAL_SESSION_TTL: ${JOURNAL_SESSION_TTL:-24h}
+    ports:
+      - "127.0.0.1:${JOURNAL_PORT:-8080}:8080"
+    depends_on:
+      database:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid
+    stop_grace_period: 15s
+    restart: unless-stopped
+volumes:
+  journal-postgres:

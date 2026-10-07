@@ -9,17 +9,19 @@ import os "go:os"
 import signal "go:os/signal"
 import syscall "go:syscall"
 import time "go:time"
+import journal.application.AuthService
 import journal.application.Service
 import journal.config
 import journal.httpapi
+import journal.storage.AuthRepository
 import journal.storage.Repository
 
 func run() {
 	settings := config.Load()
-	repository := new Repository(settings.Database, settings.Migrations)
+	repository := new Repository(settings.Database, settings.Migrations, settings.Driver)
 	defer repository.Close()
 	server := &http.Server{
-		Handler: httpapi.Router(new Service(repository)),
+		Handler: httpapi.Router(new Service(repository), new AuthService(new AuthRepository(repository.Database()), settings.SessionTTL)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 10 * time.Second,
 		WriteTimeout: 10 * time.Second,

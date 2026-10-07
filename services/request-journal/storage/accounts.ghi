@@ -1,0 +1,74 @@
+namespace journal.storage
+
+import context "go:context"
+import sql "go:database/sql"
+import errors "go:errors"
+import time "go:time"
+import journal.domain
+
+class AuthRepository {
+	private db * sql.DB
+
+	constructor(db *sql.DB) {
+		this.db = db
+	}
+
+	public func Register(ctx context.Context, email string, passwordHash string, tokenHash string, expires int64) domain.User {
+		tx := this.db.BeginTx(ctx, nil)
+		defer rollback(tx)
+		user := domain.User{
+			Email: email,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		}
+		try {
+			tx.QueryRowContext(ctx, "INSERT INTO users(email,password_hash,created_at) VALUES ($1,$2,$3) ON CONFLICT(email) DO NOTHING RETURNING id", email, passwordHash, user.CreatedAt).Scan(&user.ID)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new domain.Conflict()
+			}
+			throw err
+		}
+		tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES ($1,$2,$3)", tokenHash, user.ID, expires)
+		tx.Commit()
+
+		return user
+	}
+
+	public func Credentials(ctx context.Context, email string)(domain.User, string, bool) {
+		var user domain.User
+		hash := ""
+		try {
+			this.db.QueryRowContext(ctx, "SELECT id,email,created_at,password_hash FROM users WHERE email=$1", email).Scan(&user.ID, &user.Email, &user.CreatedAt, &hash)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				return user, "", false
+			}
+			throw err
+		}
+
+		return user, hash, true
+	}
+
+	public func StoreSession(ctx context.Context, userID int64, hash string, expires int64) {
+		this.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= $1", time.Now().Unix())
+		this.db.ExecContext(ctx, "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES ($1,$2,$3)", hash, userID, expires)
+	}
+
+	public func SessionUser(ctx context.Context, hash string) domain.User {
+		var user domain.User
+		try {
+			this.db.QueryRowContext(ctx, "SELECT u.id,u.email,u.created_at FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>$2", hash, time.Now().Unix()).Scan(&user.ID, &user.Email, &user.CreatedAt)
+		} catch err GoError {
+			if errors.Is(err.cause, sql.ErrNoRows) {
+				throw new domain.Unauthorized()
+			}
+			throw err
+		}
+
+		return user
+	}
+
+	public func Revoke(ctx context.Context, hash string) {
+		this.db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash=$1 AND user_id=$2", hash, domain.UserID(ctx))
+	}
+}
