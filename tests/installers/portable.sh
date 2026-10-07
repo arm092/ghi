@@ -3,7 +3,7 @@
 set -eu
 if [ "$(uname -s)" != Linux ]; then echo 'This cache-isolation test requires Linux; test macOS in a fresh user account.' >&2; exit 1; fi
 bundle=$(CDPATH= cd -- "$1" && pwd)
-version=${2:-0.3.0}
+version=${2:-1.0.0}
 mojave_version=${3:-0.1.0}
 if command -v go >/dev/null 2>&1; then echo 'Go must not be on PATH.' >&2; exit 1; fi
 work=$(mktemp -d)

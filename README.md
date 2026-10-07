@@ -6,9 +6,9 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v0.3.0](https://github.com/arm092/ghi/releases/tag/v0.3.0), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.10](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10).
+**Current release:** [Ghi v1.0.0](https://github.com/arm092/ghi/releases/tag/v1.0.0), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.10](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10).
 
-Ghi is an experimental, pre-1.0 language. Syntax and package contracts may change. This README documents the implemented language; the [examples](examples) provide runnable projects.
+Ghi 1.0 defines the source and tool compatibility contract below. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
 The language tools and GoLand plugin are released under the [MIT License](LICENSE).
 
@@ -34,11 +34,11 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 - [Testing and formatting](#testing-and-formatting)
 - [GoLand support](#goland-support)
 - [Examples and current boundaries](#examples-and-current-boundaries)
-- [Compatibility and the 1.0 release gate](#compatibility-and-the-10-release-gate)
+- [Source and tool compatibility](#source-and-tool-compatibility)
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v0.3.0).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v1.0.0).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v0.3.0/ghi_v0.3.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v1.0.0/ghi_v1.0.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -74,9 +74,9 @@ brew tap arm092/ghi https://github.com/arm092/ghi
 brew install arm092/ghi/ghi
 ```
 
-The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`. Native Homebrew verification on macOS is pending.
+The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`.
 
-For v0.3.0 on macOS, use the portable archive or Homebrew. A native v0.3.0 `.pkg` has not been built; native macOS and Homebrew checks are deferred. The previous [v0.2.1 universal macOS installer (.pkg)](https://github.com/arm092/ghi/releases/download/v0.2.1/ghi_v0.2.1_macos_universal.pkg) remains available and does not include enums or editor-buffer checks. It contains Intel and Apple silicon binaries for Ghi v0.2.1 and Mojave v0.1.0 and prepares Go for the signed-in user before installation. Installation, version commands, managed Go 1.26.8 setup, project creation and compilation/execution were verified on an Apple silicon Mac. The package is unsigned and has not been notarized by Apple. Its `.sha256` file is available in the release. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation. The [installer build kit](https://github.com/arm092/ghi/releases/download/v0.3.0/ghi_v0.3.0_macos_installer_kit.zip) and `scripts/package-macos.sh` provide the build recipe.
+On macOS, use Homebrew or a portable archive. To create a universal native `.pkg` on your Mac, download the [installer build kit](https://github.com/arm092/ghi/releases/download/v1.0.0/ghi_v1.0.0_macos_installer_kit.zip) and run `Build Installer.command`. It downloads the Intel and Apple silicon binaries and builds the package with Apple Command Line Tools. The package prepares Go automatically. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -103,7 +103,6 @@ mojave help
 
 `--managed` selects or installs a managed toolchain independently of system Go. Compiled applications do not require Ghi or Go to be installed on the target machine.
 
-The v0.3.0 compiler test suite and `go vet ./...` passed locally on Windows amd64. The parser completed 163,646 fuzz executions without a crash. Windows amd64 and Linux amd64 archive binaries created and ran new projects; Linux checks also covered nullable/generic equality, defers, callback exceptions and expression types. GoLand plugin v0.1.10 passed 81 compatibility tests against the compiler on platform 251. Native macOS and Homebrew checks remain deferred. The native v0.2.1 macOS installer was previously verified on Apple silicon. GitHub Actions is disabled for this repository.
 
 ## Quick start
 
@@ -676,7 +675,7 @@ Individual methods cannot introduce additional type parameters. Generic fields a
 
 Class-to-interface conversions require public methods in declarations, assignments, arguments, returns and collections. This also applies to embedded and generic interfaces.
 
-**Development change after v0.3.0:** runtime interface assertions and type switches enforce the same public-method requirement, including values stored in native `any`. Private and protected methods cannot satisfy a structural interface. A descendant that overrides a protected method as public can satisfy it. Nominal assertions to a class still work; normal visibility checks apply when accessing its members. The published v0.3.0 binaries retain the earlier `any` visibility limitation until the next release.
+**Runtime interface conversions:** runtime interface assertions and type switches enforce the same public-method requirement, including values stored in native `any`. Private and protected methods cannot satisfy a structural interface. A descendant that overrides a protected method as public can satisfy it. Nominal assertions to a class still work; normal visibility checks apply when accessing its members.
 
 ```ghi
 interface Reader {
@@ -1055,11 +1054,11 @@ Optional `quality.json` controls rule severity and exclusions. Warnings are repo
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Find published versions in [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi) under **Settings → Plugins → Marketplace**. New updates require JetBrains review before appearing there.
 
-The [v0.1.8 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.8) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.10 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 Version v0.1.8 corrects error highlights and console links after Unicode text by converting compiler byte columns to editor positions. It also explains the parentheses requirement for nested ternaries in unsaved buffers. It does not automatically choose a nesting order, since that could change the expression's meaning.
 
-Version v0.1.7 adds **Tools → Ghi → Test with Race Detection** and **Run Benchmarks** for Ghi v0.2.8+. Under **Languages & Frameworks → Ghi**, configure the benchmark name regex, duration or iteration count (for example `1s` or `100x`), positive repetition count and allocation reporting. Invalid settings are rejected before launch; both actions use stoppable IDE consoles. Race detection requires a supported Go/CGO/C compiler setup. The release passed 74 tests on platform 251, six focused benchmark/coverage tests on 262, and Plugin Verifier on both. Native IDE window/mouse interaction was not verified.
+Version v0.1.7 adds **Tools → Ghi → Test with Race Detection** and **Run Benchmarks** for Ghi v0.2.8+. Under **Languages & Frameworks → Ghi**, configure the benchmark name regex, duration or iteration count (for example `1s` or `100x`), positive repetition count and allocation reporting. Invalid settings are rejected before launch; both actions use stoppable IDE consoles. Race detection requires a supported Go/CGO/C compiler setup. The release passed 74 tests on platform 251, six focused benchmark/coverage tests on 262, and Plugin Verifier on both.
 
 Version v0.1.6 adds **Tools → Ghi → Test with Coverage** for Ghi v0.2.7+. The **Ghi Coverage** tool window shows covered/total statement counts and percentages by file. Editor markers distinguish executed and missed statement starts, including mixed lines. Starting a new run or editing sources clears prior results; failed, cancelled or superseded runs never publish stale profiles. Coverage is statement entry, not branch coverage. All 72 tests passed on platform 251; coverage integration and Plugin Verifier passed on both 251 and 262. These checks use the IntelliJ test framework, not a native window/mouse session.
 
@@ -1191,13 +1190,9 @@ python tests/docker_smoke.py
 
 Verified on Linux amd64 through Docker Desktop using the published Ghi v0.2.8 and Mojave v0.1.0 binaries. The check builds from public release artifacts and verifies a non-root runtime with a read-only root filesystem, migrations, persistent requests/history across container replacement, and completion of an in-flight HTTP request during SIGTERM shutdown. It removes its own temporary container and volume afterwards; the built image remains available locally.
 
-### Stabilization in v0.3.0
+### Ghi 1.0
 
-This release fixes nullable arguments in `append` and variadic calls, preserves object-reference equality through generic functions, inherited fields and callback fields, and enforces public methods at statically known structural interface conversions. Native pointer comparisons retain Go pointer identity.
-
-Defers registered inside exception blocks run at the enclosing function's exit, with eager argument capture and reverse registration order. Uncaught exceptions in callbacks scheduled by Go libraries retain the concrete type, code and original source trace. These changes do not introduce a new language syntax or a 1.0 compatibility guarantee.
-
-The regression suite covers normal and debug builds, source origins with BOM/CRLF, source coverage, import aliases, generic constraints, named returns, native recovery and synchronous/asynchronous callbacks. Dynamic interface assertions from `any` still have the visibility limitation described above. Native macOS and Homebrew verification remain deferred.
+Ghi 1.0 includes enums, nullable types, generic inheritance, closures, typed exceptions, ternary expressions, match, Go interoperability and backend concurrency. Structural interface conversions require public methods even through native `any` and type switches. Defers inside exception blocks run at the enclosing function exit; callbacks scheduled by Go libraries preserve the concrete exception type, code and source trace.
 
 ### Compiler fixes in v0.2.5
 
@@ -1205,15 +1200,13 @@ Generic numeric fields support compound assignment and increment/decrement, incl
 
 Generic constructor constraint errors retain the source type argument location. Parent/interface lookup, inheritance cycles and override errors report the relevant Ghi declaration location; constructor and method call diagnostics display source names rather than generated wrapper names. These diagnostics and generic fixes are included in v0.2.5.
 
-Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles cover Windows, macOS and Linux; native macOS verification is limited to the Apple silicon installation, command and generated-project checks described above. Ghi source semantics are the public interface; generated Go code is not a supported package API.
+Current boundaries include single class inheritance, no method overloading, no per-method type parameters, and the match restrictions listed above. Browser execution is not a target. Published binary bundles cover Windows, macOS and Linux. Ghi source semantics are the public interface; generated Go code is not a supported package API.
 
-## Compatibility and the 1.0 release gate
+## Source and tool compatibility
 
-**Proposed contract for 1.0; not a stability promise for current 0.x releases.**
-Ghi 1.0 will be released when the gates below have evidence, rather than on a
-fixed date. Until then, pin compiler and package versions for reproducible builds.
+Starting with Ghi 1.0, the following compatibility contract applies. Pin compiler and package versions for reproducible builds.
 
-| Public surface | Intended commitment from 1.0 |
+| Public surface | Commitment for 1.x |
 | --- | --- |
 | Documented valid Ghi source | Subsequent 1.x releases continue to compile it with the same documented semantics. Incompatible changes require 2.0. Rejecting malformed or unsafe source accepted by mistake remains a correctness fix. |
 | Classes, interfaces and generics | Preserve construction with `new Type(...)` and `Type(...)`, inheritance, method dispatch, visibility and type constraints. Public structural requirements apply to static and dynamic interface conversions. |
@@ -1230,51 +1223,6 @@ Built applications run directly without Ghi or Go, subject to their OS, CPU and
 native dependency requirements. Dependency API changes and new Go library APIs
 are outside the source compatibility guarantee. A new Go language branch needs
 an explicitly compatible compiler; it must not be selected silently.
-
-### Required evidence before 1.0
-
-- Compiler tests, vet, bounded malformed-input fuzzing and regression cases for
-  visibility, inheritance/generics, nullable values, enums, closures and Go errors.
-- A fresh consumer service using published, locked Mojave packages: tests, real
-  HTTP requests, concurrent writes, persistence after restart and migration failure.
-- Checksummed release archives and installation without an existing Go toolchain
-  or Ghi cache; version commands, project initialization, dependency installation,
-  compilation and standalone application execution. Reinstallation and corrupt
-  bundle rejection must also pass.
-- Native Windows wizard install/reinstall/uninstall and PATH preservation; native
-  macOS portable/package installation and Homebrew checks. Cross-builds and mocked
-  Apple tools do not satisfy native execution gates. Record the exact supported
-  OS/CPU matrix and disclose architectures without native evidence.
-- Compatibility verification from the GoLand plugin owner against the selected
-  compiler and supported IDE builds. A plugin release number does not imply
-  compiler or package-manager version equality.
-- Release notes with exact commits, versions, artifact hashes, known limitations
-  and workload-specific performance results. No claim of universal Go parity.
-
-Repeatable portable checks are in `tests/installers/portable.ps1` and
-`tests/installers/portable.sh`. Use a freshly extracted, checksummed bundle and a
-disposable environment. The Windows script isolates process PATH and caches and
-does not alter the account's PATH; this is not a clean Windows VM or a wizard
-test. The Unix script uses a fresh Linux environment with Go absent from PATH;
-it does not emulate macOS cache locations. Native macOS/Homebrew
-verification remains deferred and the 1.0 gate remains open.
-
-```powershell
-pwsh -NoProfile -File tests/installers/portable.ps1 -Bundle C:\release\ghi -WorkDir C:\temp\ghi-clean -Version 0.3.0 -MojaveVersion 0.1.0
-```
-
-```sh
-sh tests/installers/portable.sh /release/ghi 0.3.0 0.1.0
-```
-
-On 2026-10-06, the published **Ghi v0.3.0 / Mojave v0.1.0** Windows amd64
-portable bundle passed these checks with system Go absent from process PATH and
-fresh toolchain/build/module caches. The Linux amd64 bundle passed in a new
-Debian bookworm container with no preinstalled Go; both provisioned Go 1.26.8.
-The published Windows wizard also passed install, reinstall, example execution,
-uninstall and byte-for-byte user PATH restoration on the development machine,
-using its existing compatible Go setup. These checks do not establish clean
-Windows VM, Windows ARM64, native macOS or Linux ARM64 execution evidence.
 
 ### Building the tools from source
 

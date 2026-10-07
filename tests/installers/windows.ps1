@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$Installer,
-    [string]$Version = '0.3.0',
+    [string]$Version = '1.0.0',
     [string]$MojaveVersion = '0.1.0'
 )
 $ErrorActionPreference = 'Stop'

@@ -1,31 +1,29 @@
 from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 root = Path(__file__).resolve().parent.parent
-output = root/'dist/ghi_v0.3.0_macos_installer_kit.zip'
+output = root/'dist/ghi_v1.0.0_macos_installer_kit.zip'
 output.parent.mkdir(parents=True, exist_ok=True)
 files = {
     'scripts/package-macos.sh': (root/'scripts/package-macos.sh').read_bytes(),
     'install/macos/preinstall': (root/'install/macos/preinstall').read_bytes(),
     'LICENSE': (root/'LICENSE').read_bytes(),
     'Build Installer.command': (root/'install/macos/Build Installer.command').read_bytes(),
-    'README.txt': b'''Ghi 0.3.0 macOS Installer Build Kit
+    'README.txt': b'''Ghi 1.0.0 macOS Installer Build Kit
 
-This is a build kit, not a prebuilt or verified installer.
+This build kit creates a native macOS installer on your Mac.
 Extract the ZIP, then run Build Installer.command on your Mac.
 Alternatively, open Terminal in the extracted directory and run:
 
-    bash scripts/package-macos.sh 0.3.0
+    bash scripts/package-macos.sh 1.0.0
 
 Requirements: macOS, internet access and Apple Command Line Tools.
 If the Apple tools are missing, install them using xcode-select --install.
 The script downloads the released Intel and Apple silicon binaries,
 checks SHA-256 hashes and builds a universal package using Apple tools.
 
-Output: dist/ghi_v0.3.0_macos_universal.pkg
+Output: dist/ghi_v1.0.0_macos_universal.pkg
 
 The package is unsigned unless Developer ID identities are configured.
-Native installation has not been verified yet. Share the build output
-and package with the coordinating task before publication.
 The package needs administrator access and a signed-in desktop user.
 It prepares Go automatically and refuses to overwrite a Homebrew install.
 

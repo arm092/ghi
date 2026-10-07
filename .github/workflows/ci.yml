@@ -165,9 +165,12 @@ jobs:
         with:
           name: ghi-distributions
           path: dist
-      - name: Publish prerelease
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --verify-tag --prerelease --title "Ghi $TAG" --notes "Ghi compiler and Mojave package manager prerelease. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed. This is a pre-1.0 release; see the release notes for changes and compatibility limits."
+        run: |
+          release_args=()
+          case "$TAG" in *-*) release_args+=(--prerelease) ;; esac
+          gh release create "$TAG" dist/* --verify-tag "${release_args[@]}" --title "Ghi $TAG" --notes "Ghi compiler with the independently versioned Mojave package manager. Download the archive for your platform, extract it, and run the included installer. Go is installed automatically when needed. See the README for language syntax and the source/tool compatibility contract."
