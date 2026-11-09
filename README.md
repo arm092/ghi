@@ -634,6 +634,48 @@ func main() {
 - Trailing parameters may have defaults. Required parameters cannot follow optional parameters. Method overloading is not supported.
 - An omitted parent constructor call is allowed when the parent can be initialized without arguments.
 
+### Abstract classes and static members (development)
+
+The following features are available in development builds after Ghi 1.0.0.
+
+```ghi
+abstract class Greeter {
+	public abstract func greet() string
+}
+
+class FriendlyGreeter extends Greeter {
+	public static created int = 0
+	private name string
+
+	constructor(name string = "Guest") {
+		this.name = name
+		FriendlyGreeter.created++
+	}
+
+	public static func make(name string = "Guest") FriendlyGreeter {
+		return new FriendlyGreeter(name)
+	}
+
+	public override func greet() string {
+		return "Hello, " + this.name + "!"
+	}
+}
+
+func main() {
+	var greeter Greeter = FriendlyGreeter.make("Ada")
+	println(greeter.greet())
+	println(FriendlyGreeter.created)
+}
+```
+
+An `abstract class` may contain fields, constructors, implemented methods and abstract methods. It cannot be instantiated, with or without `new`. Abstract methods have no body, must be `public` or `protected`, and require an abstract class. A concrete descendant must implement every inherited abstract method using `override`, with a compatible signature and no reduction in visibility. Calls through an abstract parent reference dispatch to the concrete implementation. `parent.method()` requires an implemented parent method. An abstract class that declares `implements` must explicitly declare the required methods, using abstract declarations where appropriate.
+
+Static fields belong to their declaring class, and static methods are called without creating an object. Use `Class.field` and `Class.method()`; access through an instance, `this` or `parent` is rejected. Visibility and parameter defaults work as with instance members. Static methods cannot be abstract, overridden or hidden by descendant methods, and do not satisfy instance interface requirements. Constructors cannot be static.
+
+Static fields require an explicit type and may have an initializer. A nonnullable class field requires an initializer; zero-safe types can omit it. Initialization follows Go package initialization order and cycle checks. Inherited static fields refer to the same storage as their declaring class. For generic classes this storage is shared across all type arguments, so static field types cannot depend on the class type parameters. Static methods may use those parameters: `Factory[int].make(...)`. Generic arguments and their constraints are checked even for inherited members. Synchronize mutable static fields when accessing them from multiple goroutines.
+
+`abstract` and `static` are contextual modifiers: existing ordinary identifiers with these names remain valid. A runnable example is in [`examples/abstract-static`](examples/abstract-static).
+
 ## Interfaces and generics
 
 Interfaces describe method contracts. Classes are nominal types; interfaces are structural. An explicit `implements` clause checks and documents the intended contract. A matching public method set can satisfy an interface without the clause.

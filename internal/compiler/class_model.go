@@ -88,6 +88,9 @@ func (c *classDecl) allMethods() []*functionDecl {
 		result = append(result, c.Parent.allMethods()...)
 	}
 	for _, m := range c.Methods {
+		if m.Static {
+			continue
+		}
 		replaced := false
 		for i, old := range result {
 			if old.Name == m.Name {
@@ -342,6 +345,39 @@ func (p *program) prepareClasses() error {
 	}
 	for _, c := range classes {
 		for _, method := range c.Methods {
+			if method.Abstract {
+				if !c.Abstract {
+					return fmt.Errorf("%s: abstract method %s requires an abstract class", p.Fset.Position(method.Node.Pos()), method.Name)
+				}
+				if method.Static {
+					return fmt.Errorf("%s: abstract methods cannot be static", p.Fset.Position(method.Node.Pos()))
+				}
+				if method.Visibility == "private" {
+					return fmt.Errorf("%s: abstract methods cannot be private", p.Fset.Position(method.Node.Pos()))
+				}
+			}
+			if method.Static {
+				if method.Override {
+					return fmt.Errorf("%s: static methods cannot be overridden", p.Fset.Position(method.Node.Pos()))
+				}
+				var invalid string
+				selectors := map[*ast.Ident]bool{}
+				ast.Inspect(method.Node.Body, func(n ast.Node) bool {
+					if s, ok := n.(*ast.SelectorExpr); ok {
+						selectors[s.Sel] = true
+					}
+					return true
+				})
+				ast.Inspect(method.Node.Body, func(n ast.Node) bool {
+					if id, ok := n.(*ast.Ident); ok && !selectors[id] && (id.Name == "this" || id.Name == "parent") {
+						invalid = id.Name
+					}
+					return true
+				})
+				if invalid != "" {
+					return fmt.Errorf("%s: %s is unavailable in static methods", p.Fset.Position(method.Node.Pos()), invalid)
+				}
+			}
 			var base *functionDecl
 			if c.Parent != nil {
 				base = c.Parent.method(method.Name)
@@ -350,6 +386,9 @@ func (p *program) prepareClasses() error {
 				return fmt.Errorf("%s: %s.%s: override requires an accessible parent method", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 			}
 			if base != nil {
+				if base.Static || method.Static {
+					return fmt.Errorf("%s: static methods cannot be overridden or hide inherited methods", p.Fset.Position(method.Node.Pos()))
+				}
 				if !method.Override {
 					return fmt.Errorf("%s: %s.%s: overriding a parent method requires override", p.Fset.Position(method.Node.Pos()), c.Name, method.Name)
 				}
@@ -361,10 +400,25 @@ func (p *program) prepareClasses() error {
 				}
 			}
 		}
+		if !c.Interface && !c.Abstract {
+			for _, method := range c.allMethods() {
+				if method.Abstract {
+					return fmt.Errorf("%s:%d: concrete class %s must implement abstract method %s", c.File.Path, c.Line, c.Name, method.Name)
+				}
+			}
+		}
+		for _, field := range c.Fields {
+			if field.Static && c.mentionsTypeParameter(field.Type) {
+				return fmt.Errorf("%s:%d: static field %s cannot use class type parameters", c.File.Path, c.Line, field.Name)
+			}
+			if field.Static && field.Initial == nil && p.sourceNeedsInitialization(field.Type, c.File, c.Namespace, map[string]bool{}) {
+				return fmt.Errorf("%s:%d: nonnullable static field %s requires initialization", c.File.Path, c.Line, field.Name)
+			}
+		}
 		for _, iface := range c.Interfaces {
 			for _, requirement := range iface.Methods {
 				method := c.method(requirement.Name)
-				if method == nil || method.Visibility != "public" || (iface.TypeParams == nil && p.signature(method, c) != p.signature(requirement, c)) {
+				if method == nil || method.Static || method.Visibility != "public" || (iface.TypeParams == nil && p.signature(method, c) != p.signature(requirement, c)) {
 					return fmt.Errorf("%s:%d: class %s does not implement %s.%s", c.File.Path, c.Line, c.Name, iface.Name, requirement.Name)
 				}
 			}

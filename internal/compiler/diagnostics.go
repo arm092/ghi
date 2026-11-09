@@ -79,6 +79,16 @@ func (p *program) sourceError(err error) error {
 						replacements[prefix+"GhiNew_"+selected.Name] = selected.Alias
 						replacements[prefix+"ghiData_"+selected.Name] = selected.Alias
 						replacements[prefix+"GhiInit_"+selected.Name] = selected.Alias + ".constructor"
+						replacements[prefix+"GhiStaticType_"+selected.Name] = selected.Alias
+						if c := p.classes()[selected.Namespace+"."+selected.Name]; c != nil {
+							for _, field := range c.Fields {
+								replacements[prefix+staticField(field)] = selected.Alias + "." + field.Name
+								replacements[prefix+staticRef(field)] = selected.Alias + "." + field.Name
+							}
+							for _, method := range c.Methods {
+								replacements[prefix+staticMethod(method)] = selected.Alias + "." + method.Name
+							}
+						}
 					}
 				}
 			}
@@ -86,13 +96,17 @@ func (p *program) sourceError(err error) error {
 				replacements["GhiIs_"+c.key()] = c.Name
 				replacements["GhiNew_"+c.Name] = c.Name
 				replacements["GhiInit_"+c.Name] = c.Name + ".constructor"
+				replacements["GhiStaticType_"+c.Name] = c.Name
 				replacements["ghiData_"+c.Name] = c.Name
 				for _, field := range c.Fields {
+					replacements[staticField(field)] = c.Name + "." + field.Name
+					replacements[staticRef(field)] = c.Name + "." + field.Name
 					for _, name := range []string{fieldGet(field), fieldSet(field), fieldRef(field)} {
 						replacements[name] = c.Name + "." + field.Name
 					}
 				}
 				for _, method := range c.Methods {
+					replacements[staticMethod(method)] = c.Name + "." + method.Name
 					replacements[bodyName(method)] = c.Name + "." + method.Name
 					replacements["GhiM_"+method.Name] = method.Name
 					replacements["GhiPublic_"+method.Name] = "public " + method.Name

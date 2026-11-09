@@ -103,6 +103,9 @@ func (p *program) validateConstruction() error {
 					}
 				}
 				for _, field := range class.Fields {
+					if field.Static {
+						continue
+					}
 					if p.sourceNeedsInitialization(field.Type, file, ns, map[string]bool{}) || class.mentionsTypeParameter(field.Type) {
 						check.required[field.Name] = true
 					}

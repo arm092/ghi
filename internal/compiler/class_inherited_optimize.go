@@ -47,6 +47,9 @@ func (p *program) specializeInheritedReceivers(info *types.Info) {
 			continue
 		}
 		for _, method := range c.allMethods() {
+			if method.Abstract {
+				continue
+			}
 			if p.reusedNamespace(method.Owner.Namespace) {
 				continue
 			}

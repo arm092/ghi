@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/token"
 	"strings"
 )
 
@@ -18,6 +19,9 @@ func (p *program) emitClass(c *classDecl) error {
 		}
 	}
 	for _, field := range c.allFields() {
+		if field.Static {
+			continue
+		}
 		typ := p.typeText(field.Type, field.Owner, c.File, c.Namespace, c)
 		fmt.Fprintf(&out, "%s() %s\n%s(ghi_value %s)\n", fieldGet(field), typ, fieldSet(field), typ)
 		fmt.Fprintf(&out, "%s() *%s\n", fieldRef(field), typ)
@@ -39,6 +43,9 @@ func (p *program) emitClass(c *classDecl) error {
 	if !c.Interface {
 		fmt.Fprintf(&out, "type ghiData_%s%s struct {\n", c.Name, parameters)
 		for _, f := range c.allFields() {
+			if f.Static {
+				continue
+			}
 			fmt.Fprintf(&out, "F_%s_%s %s\n", f.Owner.key(), f.Name, p.typeText(f.Type, f.Owner, c.File, c.Namespace, c))
 		}
 		out.WriteString("}\n")
@@ -46,6 +53,9 @@ func (p *program) emitClass(c *classDecl) error {
 			fmt.Fprintf(&out, "func (this *%s) GhiIs_%s(%s) {}\n", receiver, a.key(), p.ancestorMarkerParameters(c, a))
 		}
 		for _, f := range c.allFields() {
+			if f.Static {
+				continue
+			}
 			typ := p.typeText(f.Type, f.Owner, c.File, c.Namespace, c)
 			fmt.Fprintf(&out, "func (this *%s) %s() %s { return this.F_%s_%s }\n", receiver, fieldGet(f), typ, f.Owner.key(), f.Name)
 			fmt.Fprintf(&out, "func (this *%s) %s(ghi_value %s) { this.F_%s_%s = ghi_value }\n", receiver, fieldSet(f), typ, f.Owner.key(), f.Name)
@@ -54,6 +64,10 @@ func (p *program) emitClass(c *classDecl) error {
 		for _, m := range c.allMethods() {
 			if m.Visibility == "public" {
 				fmt.Fprintf(&out, "func (this *%s) GhiPublic_%s() {}\n", receiver, m.Name)
+			}
+			if m.Abstract {
+				fmt.Fprintf(&out, "func (this *%s) GhiM_%s(%s)%s { panic(%q) }\n", receiver, m.Name, p.parameters(m, c.File, c.Namespace, c), p.results(m, c.File, c.Namespace, c), "abstract method "+m.Name)
+				continue
 			}
 			ret := ""
 			if m.Node.Type.Results != nil {
@@ -72,11 +86,23 @@ func (p *program) emitClass(c *classDecl) error {
 		}
 		metadata := ""
 		for _, field := range c.allFields() {
+			if field.Static {
+				continue
+			}
 			if field.Owner.Namespace.Name == runtimeNamespace && field.Owner.Name == "Exception" && field.Name == "typeName" {
 				metadata = fmt.Sprintf("this.%s(%q); ", fieldSet(field), c.Namespace.Name+"."+c.Name)
 			}
 		}
 		fmt.Fprintf(&out, "func GhiNew_%s%s(%s) %s%s { this := &%s{}; GhiInit_%s%s(this%s); %sreturn this }\n", c.Name, parameters, p.parameters(ctor, c.File, c.Namespace), c.Name, arguments, receiver, c.Name, arguments, args, metadata)
+	}
+	for _, field := range c.Fields {
+		if !field.Static {
+			continue
+		}
+		fmt.Fprintf(&out, "func %s%s() *%s { return &%s }\n", staticRef(field), parameters, p.typeText(field.Type, c, c.File, c.Namespace), staticField(field))
+	}
+	if c.TypeParams != nil {
+		fmt.Fprintf(&out, "func GhiStaticType_%s%s, ghi_static_value any](ghi_static_input ghi_static_value) ghi_static_value { return ghi_static_input }\n", c.Name, strings.TrimSuffix(parameters, "]"))
 	}
 	parsed, err := parser.ParseFile(p.Fset, c.File.Path+".generated", out.String(), parser.AllErrors|parser.SkipObjectResolution)
 	if err != nil {
@@ -97,13 +123,29 @@ func (p *program) emitClass(c *classDecl) error {
 		generatedFile.AddLineColumnInfo(offset, c.File.Path, c.Line, 1)
 	}
 	c.File.Tree.Decls = append(c.File.Tree.Decls, parsed.Decls...)
+	for _, field := range c.Fields {
+		if !field.Static {
+			continue
+		}
+		spec := &ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent(staticField(field))}, Type: field.Type}
+		if field.Initial != nil {
+			spec.Values = []ast.Expr{field.Initial}
+		}
+		c.File.Tree.Decls = append(c.File.Tree.Decls, &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{spec}})
+	}
 	if c.Interface {
 		return nil
 	}
 	methods := append([]*functionDecl{}, c.Methods...)
 	methods = append(methods, c.Constructor)
 	for _, m := range methods {
+		if m.Abstract {
+			continue
+		}
 		name := bodyName(m)
+		if m.Static {
+			name = staticMethod(m)
+		}
 		if m == c.Constructor {
 			name = "GhiInit_" + c.Name
 		}
@@ -116,7 +158,9 @@ func (p *program) emitClass(c *classDecl) error {
 			}
 			m.Node.Type.TypeParams = prototype.Decls[0].(*ast.FuncDecl).Type.TypeParams
 		}
-		m.Node.Type.Params.List = append([]*ast.Field{{Names: []*ast.Ident{ast.NewIdent("this")}, Type: thisType}}, m.Node.Type.Params.List...)
+		if !m.Static {
+			m.Node.Type.Params.List = append([]*ast.Field{{Names: []*ast.Ident{ast.NewIdent("this")}, Type: thisType}}, m.Node.Type.Params.List...)
+		}
 		c.File.Tree.Decls = append(c.File.Tree.Decls, m.Node)
 	}
 	return nil

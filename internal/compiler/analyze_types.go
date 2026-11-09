@@ -146,9 +146,9 @@ func AnalyzeExpressionTypes(ctx context.Context, project, filename string, sourc
 				continue
 			}
 		}
-		// Field reads are replaced by getter calls. Their original candidate
-		// supplies the verified source span; only the final checked getter
-		// supplies a type, including instantiated generic/nullable fields.
+		// Member reads are replaced by getters or static values. Their original
+		// candidate supplies the source span; the checked replacement supplies
+		// the instantiated type, including nullable fields and method values.
 		if selector, ok := expr.(*ast.SelectorExpr); ok {
 			if getter := p.AnalysisFieldReads[selector]; getter != nil {
 				checked = getter

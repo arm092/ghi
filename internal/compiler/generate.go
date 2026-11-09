@@ -109,7 +109,15 @@ func (p *program) generate(ctx context.Context, dir, goPath string) error {
 		}
 	}
 	p.rebaseSources(origins)
-	// Exact names preserve user-facing stack frames for copied method bodies.
+	// Exact names preserve user-facing stack frames for copied and static methods.
+	if p.SpecializedNames == nil {
+		p.SpecializedNames = map[string]string{}
+	}
+	for symbol, fn := range p.debugMetadata().Functions {
+		if !fn.Helper && strings.Contains(symbol, ".GhiStatic_") {
+			p.SpecializedNames[symbol] = fn.Name
+		}
+	}
 	for _, file := range p.Runtime.Files {
 		for _, decl := range file.Tree.Decls {
 			general, ok := decl.(*ast.GenDecl)

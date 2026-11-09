@@ -19,6 +19,8 @@ type lexeme struct {
 type fieldDecl struct {
 	Name, Visibility string
 	Type             ast.Expr
+	Static           bool
+	Initial          ast.Expr
 	Owner            *classDecl
 	TypeOrigins      map[*ast.StarExpr]token.Position
 }
@@ -33,6 +35,8 @@ type functionDecl struct {
 	Defaults         map[int]ast.Expr
 	Visibility       string
 	Override         bool
+	Static           bool
+	Abstract         bool
 	Owner            *classDecl
 }
 type classDecl struct {
@@ -42,6 +46,7 @@ type classDecl struct {
 	ParentName     string
 	InterfaceNames []string
 	Interface      bool
+	Abstract       bool
 	Fields         []*fieldDecl
 	Methods        []*functionDecl
 	Constructor    *functionDecl
@@ -227,7 +232,7 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte, cove
 		if t.Kind != token.IDENT {
 			continue
 		}
-		for _, prefix := range []string{"GhiEnum_", "GhiGet_", "GhiSet_", "GhiRef_", "GhiM_", "GhiPublic_", "GhiBody_", "GhiNew_", "GhiInit_", "GhiIs_", "GhiTry", "GhiThrow", "ghiData_", "ghi_"} {
+		for _, prefix := range []string{"GhiEnum_", "GhiGet_", "GhiSet_", "GhiRef_", "GhiM_", "GhiPublic_", "GhiBody_", "GhiStatic_", "GhiStaticRef_", "GhiStaticType_", "GhiNew_", "GhiInit_", "GhiIs_", "GhiTry", "GhiThrow", "ghiData_", "ghi_"} {
 			if strings.HasPrefix(t.Text, prefix) {
 				return nil, nil, fmt.Errorf("%s:%d: identifier %s is reserved for the compiler", filename, t.Line, t.Text)
 			}
@@ -268,8 +273,12 @@ func extractExtensions(fset *token.FileSet, filename string, source []byte, cove
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if depth == 0 && (t.Text == "class" || (t.Kind == token.INTERFACE && i+1 < len(tokens) && tokens[i+1].Kind == token.IDENT)) {
-			class := &classDecl{Interface: t.Kind == token.INTERFACE, Line: t.Line}
+		abstractClass := depth == 0 && t.Text == "abstract" && i+1 < len(tokens) && tokens[i+1].Text == "class"
+		if abstractClass {
+			i++
+		}
+		if depth == 0 && (abstractClass || t.Text == "class" || (t.Kind == token.INTERFACE && i+1 < len(tokens) && tokens[i+1].Kind == token.IDENT)) {
+			class := &classDecl{Interface: t.Kind == token.INTERFACE, Abstract: abstractClass, Line: t.Line}
 			i++
 			if tokens[i].Kind != token.IDENT {
 				return nil, nil, fmt.Errorf("%s:%d: expected class name", filename, t.Line)
@@ -384,19 +393,33 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 		}
 		visibility := "private"
 		override := false
+		static, abstract := false, false
 		if class.Interface {
 			visibility = "public"
 		}
-		for tokens[i].Text == "public" || tokens[i].Text == "private" || tokens[i].Text == "protected" || tokens[i].Text == "override" {
+		for i < end && memberModifier(source, tokens, i, end) {
 			if tokens[i].Text == "override" {
 				override = true
+			} else if tokens[i].Text == "static" {
+				if static {
+					return fmt.Errorf("%s:%d: duplicate static modifier", filename, tokens[i].Line)
+				}
+				static = true
+			} else if tokens[i].Text == "abstract" {
+				if abstract {
+					return fmt.Errorf("%s:%d: duplicate abstract modifier", filename, tokens[i].Line)
+				}
+				abstract = true
 			} else {
 				visibility = tokens[i].Text
 			}
 			i++
 		}
+		if i >= end {
+			return fmt.Errorf("%s: expected class member after modifiers", filename)
+		}
 		first := tokens[i]
-		if class.Interface && (visibility != "public" || override) {
+		if class.Interface && (visibility != "public" || override || static || abstract) {
 			return fmt.Errorf("%s:%d: interface methods must be public and cannot override", filename, first.Line)
 		}
 		if first.Kind == token.FUNC || first.Text == "constructor" {
@@ -425,8 +448,11 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 				i++
 			}
 			var tail string
-			if class.Interface {
+			if class.Interface || abstract {
 				if i < end && tokens[i].Kind == token.LBRACE {
+					if abstract {
+						return fmt.Errorf("%s:%d: abstract methods cannot have a body", filename, first.Line)
+					}
 					return fmt.Errorf("%s:%d: interfaces cannot contain method implementations", filename, first.Line)
 				}
 				tail = string(source[resultStart:tokens[i].Start]) + " {}"
@@ -462,16 +488,26 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			prefix := string(source[:resultStart])
 			fn.SourceTail = token.Position{Filename: filename, Line: 1 + strings.Count(prefix, "\n"), Column: resultStart - strings.LastIndex(prefix, "\n")}
 			fn.Override = override
+			fn.Static, fn.Abstract = static, abstract
 			fn.Owner = class
 			if name == "constructor" {
 				if class.Interface {
 					return fmt.Errorf("interface cannot declare a constructor")
+				}
+				if static {
+					return fmt.Errorf("%s:%d: constructor cannot be static", filename, first.Line)
+				}
+				if abstract {
+					return fmt.Errorf("%s:%d: constructor cannot be abstract", filename, first.Line)
 				}
 				class.Constructor = fn
 			} else {
 				class.Methods = append(class.Methods, fn)
 			}
 		} else {
+			if abstract || override {
+				return fmt.Errorf("%s:%d: abstract/override modifiers require a method", filename, first.Line)
+			}
 			if class.Interface {
 				return fmt.Errorf("%s:%d: interface members must be methods", filename, first.Line)
 			}
@@ -485,17 +521,34 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 			names[name] = true
 			i++
 			typeStart := tokens[i].Start
-			for i < end && tokens[i].Kind != token.SEMICOLON {
-				i++
-			}
-			typ, err := parser.ParseExpr(string(source[typeStart:tokens[i].Start]))
+			i = memberFieldEnd(tokens, i, end)
+			text := string(source[first.Start:tokens[i].Start])
+			tree, err := parser.ParseFile(fset, filename, "package field\nvar "+text, parser.AllErrors)
 			if err != nil {
 				return err
 			}
-			field := &fieldDecl{Name: name, Visibility: visibility, Type: typ, Owner: class, TypeOrigins: map[*ast.StarExpr]token.Position{}}
+			if len(tree.Decls) != 1 {
+				return fmt.Errorf("%s:%d: expected one field", filename, first.Line)
+			}
+			spec := tree.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+			staticFieldPosition(fset, tree, filename, source, first)
+			if spec.Type == nil || len(spec.Names) != 1 || len(spec.Values) > 1 {
+				return fmt.Errorf("%s:%d: fields require an explicit type", filename, first.Line)
+			}
+			typ := spec.Type
+			var initial ast.Expr
+			if len(spec.Values) == 1 {
+				initial = spec.Values[0]
+			}
+			if initial != nil && !static {
+				return fmt.Errorf("%s:%d: instance fields are initialized in constructors", filename, first.Line)
+			}
+			// Restore the fragment's type positions to the previous ParseExpr origin.
+			typeOffset := fset.File(typ.Pos()).Offset(typ.Pos())
+			field := &fieldDecl{Name: name, Visibility: visibility, Type: typ, Static: static, Initial: initial, Owner: class, TypeOrigins: map[*ast.StarExpr]token.Position{}}
 			ast.Inspect(typ, func(node ast.Node) bool {
 				if star, ok := node.(*ast.StarExpr); ok {
-					offset := typeStart + int(star.Pos()) - 1
+					offset := typeStart + fset.File(star.Pos()).Offset(star.Pos()) - typeOffset
 					prefix := string(source[:offset])
 					field.TypeOrigins[star] = token.Position{Line: 1 + strings.Count(prefix, "\n"), Column: offset - strings.LastIndex(prefix, "\n")}
 				}
@@ -505,4 +558,67 @@ func parseMembers(fset *token.FileSet, filename string, source []byte, tokens []
 		}
 	}
 	return nil
+}
+
+// static/abstract remain usable as ordinary identifiers in pre-1.1 source.
+func memberModifier(source []byte, tokens []lexeme, i, end int) bool {
+	switch tokens[i].Text {
+	case "public", "private", "protected", "override":
+		return true
+	case "static", "abstract":
+		if i+1 >= end {
+			return false
+		}
+		// A complete old-style field wins over contextual modifier parsing,
+		// including function types and types named constructor/public/static.
+		if memberLooksLikeField(source, tokens, i, end) {
+			return false
+		}
+		next := tokens[i+1]
+		if next.Kind == token.FUNC {
+			return i+2 < end && tokens[i+2].Kind == token.IDENT
+		}
+		if next.Text == "constructor" || next.Text == "public" || next.Text == "private" || next.Text == "protected" || next.Text == "override" {
+			return true
+		}
+		if next.Text == "abstract" || next.Text == "static" {
+			return true
+		}
+		if next.Kind != token.IDENT {
+			return false
+		}
+		return memberLooksLikeField(source, tokens, i+1, end)
+	}
+	return false
+}
+
+func memberLooksLikeField(source []byte, tokens []lexeme, start, end int) bool {
+	stop := memberFieldEnd(tokens, start, end)
+	tree, err := parser.ParseFile(token.NewFileSet(), "field", "package field\nvar "+string(source[tokens[start].Start:tokens[stop].Start]), 0)
+	if err != nil || len(tree.Decls) != 1 {
+		return false
+	}
+	group, ok := tree.Decls[0].(*ast.GenDecl)
+	if !ok || len(group.Specs) != 1 {
+		return false
+	}
+	spec, ok := group.Specs[0].(*ast.ValueSpec)
+	return ok && len(spec.Names) == 1 && spec.Type != nil
+}
+
+func memberFieldEnd(tokens []lexeme, i, end int) int {
+	depth := 0
+	for i < end {
+		if tokens[i].Kind == token.SEMICOLON && depth == 0 {
+			break
+		}
+		switch tokens[i].Kind {
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			depth++
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			depth--
+		}
+		i++
+	}
+	return i
 }

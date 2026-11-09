@@ -159,12 +159,14 @@ func walkStack(pcs []uintptr,visit func(string,string,int)) {
  for {
   frame,more:=frames.Next()
   name:=frame.Function
-  if at:=strings.Index(name,".ghi_specialized_");at>=0 {
+  at:=strings.Index(name,".ghi_specialized_")
+  if at<0 {at=strings.Index(name,".GhiStatic_")}
+  if at>=0 {
    symbol,suffix:=name,""
    if end:=strings.IndexAny(name[at+1:],".[");end>=0 {symbol,suffix=name[:at+1+end],name[at+1+end:]}
    if display,ok:=specializedNames[symbol];ok {name=display+suffix}
   }
-  if strings.HasSuffix(frame.File,".ghi") && !strings.Contains(frame.File,".ghi-runtime") && !strings.Contains(name,"GhiM_") && !strings.Contains(name,"GhiNew_") && !strings.Contains(name,"GhiGet_") && !strings.Contains(name,"GhiSet_") && !strings.Contains(name,"GhiRef_") {
+  if strings.HasSuffix(frame.File,".ghi") && !strings.Contains(frame.File,".ghi-runtime") && !strings.Contains(name,"GhiM_") && !strings.Contains(name,"GhiNew_") && !strings.Contains(name,"GhiGet_") && !strings.Contains(name,"GhiSet_") && !strings.Contains(name,"GhiRef_") && !strings.Contains(name,"GhiStaticRef_") {
    if at:=strings.LastIndex(name,".GhiBody_");at>=0 {name=name[:at+1]+strings.Replace(name[at+9:],"_",".",1)}
    name=strings.ReplaceAll(name,"GhiInit_","constructor.")
    name=strings.TrimPrefix(name,"ghi.generated/")

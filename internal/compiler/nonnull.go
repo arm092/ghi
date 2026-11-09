@@ -156,11 +156,14 @@ func (p *program) validateNonNull(info *types.Info) error {
 				authored[fn.Node] = true
 				for index, value := range fn.Defaults {
 					offset := 0
-					if fn.Owner != nil && !fn.Owner.Interface {
+					if fn.Owner != nil && !fn.Owner.Interface && !fn.Static && !fn.Abstract {
 						offset = 1
 					}
 					param := fn.Node.Type.Params.List[index+offset]
 					genericParameter := (&classDecl{TypeParams: fn.Node.Type.TypeParams}).mentionsTypeParameter(param.Type)
+					if fn.Owner != nil && fn.Owner.mentionsTypeParameter(param.Type) {
+						genericParameter = true
+					}
 					if (p.sourceNeedsInitialization(param.Type, file, ns, map[string]bool{}) || genericParameter) && nilSyntax(value) {
 						reject(fn.Node, "nil default requires a nullable parameter type")
 					}

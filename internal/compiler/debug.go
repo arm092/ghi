@@ -26,18 +26,37 @@ func (p *program) debugMetadata() debugMetadata {
 		name := c.Namespace.Name + "." + c.Name
 		m.Types[prefix+"."+c.Name] = name
 		m.Types[prefix+".ghiData_"+c.Name] = name
+		if c.TypeParams != nil {
+			m.Functions[prefix+".GhiStaticType_"+c.Name] = debugFunction{name, true}
+		}
 		if c.Interface {
 			continue
 		}
 		receiver := prefix + ".(*ghiData_" + c.Name + ")."
 		for _, f := range c.allFields() {
+			if f.Static {
+				continue
+			}
 			m.Fields["F_"+f.Owner.key()+"_"+f.Name] = f.Name
 			for _, symbol := range []string{fieldGet(f), fieldSet(f), fieldRef(f)} {
 				m.Functions[receiver+symbol] = debugFunction{name + "." + f.Name, true}
 			}
 		}
 		for _, method := range c.Methods {
-			m.Functions[prefix+"."+bodyName(method)] = debugFunction{name + "." + method.Name, false}
+			if method.Abstract {
+				continue
+			}
+			symbol := bodyName(method)
+			if method.Static {
+				symbol = staticMethod(method)
+			}
+			m.Functions[prefix+"."+symbol] = debugFunction{name + "." + method.Name, false}
+		}
+		for _, field := range c.Fields {
+			if field.Static {
+				m.Fields[staticField(field)] = name + "." + field.Name
+				m.Functions[prefix+"."+staticRef(field)] = debugFunction{name + "." + field.Name, true}
+			}
 		}
 		for _, method := range c.allMethods() {
 			m.Functions[receiver+"GhiM_"+method.Name] = debugFunction{name + "." + method.Name, true}

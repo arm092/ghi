@@ -31,7 +31,7 @@ type namespace struct {
 
 type program struct {
 	AnalysisInfo        *types.Info
-	AnalysisFieldReads  map[*ast.SelectorExpr]*ast.CallExpr
+	AnalysisFieldReads  map[*ast.SelectorExpr]ast.Expr
 	AnalysisCalls       map[*ast.CallExpr]*ast.CallExpr
 	AnalysisMethods     map[*ast.SelectorExpr][]string
 	AnalyzeTypes        bool

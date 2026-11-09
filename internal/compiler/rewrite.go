@@ -20,7 +20,7 @@ func fillDefaults(call *ast.CallExpr, fn *functionDecl, receiverArguments int, t
 		return false
 	}
 	count := len(fn.Node.Type.Params.List)
-	if fn.Owner != nil && !fn.Owner.Interface {
+	if fn.Owner != nil && !fn.Owner.Interface && !fn.Static && !fn.Abstract {
 		count--
 	}
 	changed := false
@@ -53,7 +53,8 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 			if file.Unit.Native || file.Cached != nil {
 				continue
 			}
-			owners := map[*ast.FuncDecl]*classDecl{}
+			owners := map[ast.Decl]*classDecl{}
+			staticOwners := map[string]*classDecl{}
 			for _, c := range file.Unit.Classes {
 				if c.Interface {
 					continue
@@ -62,11 +63,18 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 				for _, method := range c.Methods {
 					owners[method.Node] = c
 				}
+				for _, field := range c.Fields {
+					if field.Static {
+						staticOwners[staticField(field)] = c
+					}
+				}
 			}
 			for _, decl := range file.Tree.Decls {
-				var owner *classDecl
-				if fn, ok := decl.(*ast.FuncDecl); ok {
-					owner = owners[fn]
+				owner := owners[decl]
+				if group, ok := decl.(*ast.GenDecl); ok && group.Tok == token.VAR && len(group.Specs) == 1 {
+					if value, ok := group.Specs[0].(*ast.ValueSpec); ok && len(value.Names) == 1 {
+						owner = staticOwners[value.Names[0].Name]
+					}
 				}
 				walkNode(decl, func(node ast.Node) ast.Node {
 					if failure != nil {
@@ -128,6 +136,10 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							if selector, ok := n.Lhs[0].(*ast.SelectorExpr); ok {
 								if c := p.expressionClass(selector.X, info); c != nil {
 									if field := c.field(selector.Sel.Name); field != nil {
+										if field.Static {
+											reject("static field " + field.Name + " requires class-qualified access")
+											return node
+										}
 										if !accessible(field.Visibility, field.Owner, owner) {
 											reject("field " + field.Name + " is " + field.Visibility)
 											return node
@@ -204,6 +216,10 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 						if c := p.classNamed(text, file, ns); c != nil {
+							if c.Abstract {
+								reject("cannot instantiate abstract class " + c.Name)
+								return node
+							}
 							if c.Interface {
 								reject("cannot instantiate interface " + c.Name)
 								return node
@@ -250,12 +266,25 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 						if selector, ok := n.Fun.(*ast.SelectorExpr); ok {
+							if c, args := p.staticClass(selector.X, info, file, ns); c != nil {
+								if method := c.method(selector.Sel.Name); method != nil && method.Static {
+									fillDefaults(n, method, 0, p.classDefaultTransform(method.Owner, classBindings(method.Owner, p.staticArguments(c, method.Owner, args)), file, ns))
+								}
+							}
 							if id, ok := selector.X.(*ast.Ident); ok && id.Name == "parent" {
 								if owner == nil || owner.Parent == nil {
 									reject("parent method call requires a parent class")
 									return node
 								}
 								method := owner.Parent.method(selector.Sel.Name)
+								if method != nil && method.Static {
+									reject("static method " + method.Name + " requires class-qualified access")
+									return node
+								}
+								if method != nil && method.Abstract {
+									reject("cannot call abstract parent method " + method.Name)
+									return node
+								}
 								if method == nil || !accessible(method.Visibility, method.Owner, owner) {
 									reject("parent method is missing or inaccessible")
 									return node
@@ -267,6 +296,17 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								return node
 							}
 							if c, method := p.expressionMethod(selector.X, selector.Sel.Name, info); method != nil {
+								if method.Static {
+									if _, _, err := p.staticSelector(selector, owner, info, file, ns); err != nil {
+										reject(err.Error())
+										return node
+									}
+									if class, _ := p.staticClass(selector.X, info, file, ns); class == nil {
+										reject("static method " + method.Name + " requires class-qualified access")
+										return node
+									}
+									return node
+								}
 								if !accessible(method.Visibility, method.Owner, owner) {
 									reject("method " + method.Name + " is " + method.Visibility)
 									return node
@@ -282,8 +322,20 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 					case *ast.SelectorExpr:
+						if replacement, handled, err := p.staticSelector(n, owner, info, file, ns); handled {
+							if err != nil {
+								reject(err.Error())
+								return node
+							}
+							changed = true
+							return replacement
+						}
 						if c := p.expressionClass(n.X, info); c != nil {
 							if field := c.field(n.Sel.Name); field != nil {
+								if field.Static {
+									reject("static field " + field.Name + " requires class-qualified access")
+									return node
+								}
 								if !accessible(field.Visibility, field.Owner, owner) {
 									reject("field " + field.Name + " is " + field.Visibility)
 									return node
@@ -292,7 +344,7 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 								getter := &ast.CallExpr{Fun: &ast.SelectorExpr{X: n.X, Sel: ast.NewIdent(fieldGet(field))}}
 								if p.AnalyzeTypes {
 									if p.AnalysisFieldReads == nil {
-										p.AnalysisFieldReads = map[*ast.SelectorExpr]*ast.CallExpr{}
+										p.AnalysisFieldReads = map[*ast.SelectorExpr]ast.Expr{}
 									}
 									p.AnalysisFieldReads[n] = getter
 								}
@@ -301,6 +353,10 @@ func (p *program) rewrite(info *types.Info) (bool, error) {
 							}
 						}
 						if _, method := p.expressionMethod(n.X, n.Sel.Name, info); method != nil {
+							if method.Static {
+								reject("static method " + method.Name + " requires class-qualified access")
+								return node
+							}
 							if !accessible(method.Visibility, method.Owner, owner) {
 								reject("method " + method.Name + " is " + method.Visibility)
 								return node

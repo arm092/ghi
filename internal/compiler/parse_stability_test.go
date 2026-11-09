@@ -59,6 +59,8 @@ var parserSeeds = []string{
 	"namespace main\nfunc main() { try { throw new Exception(\"bad\", 1) } catch e Exception { println(e.message) } finally { println(\"done\") } }",
 	"namespace main\nfunc identity[T any](value T) T { return value }",
 	"namespace main\nclass User { public owner ?User; constructor(owner ?User = nil) { this.owner = owner } }",
+	"namespace main\nabstract class Reader[T any] { protected abstract func read(value T = nil) T }",
+	"namespace main\nclass Factory { public static count int = len([]int{1, 2}); public static func next(step int = 1) int { Factory.count += step; return Factory.count } }",
 }
 
 func FuzzParseFile(f *testing.F) {

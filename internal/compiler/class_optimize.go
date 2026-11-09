@@ -25,6 +25,9 @@ func (p *program) specializeLeafReceivers(info *types.Info) {
 		methods := append([]*functionDecl{}, c.Methods...)
 		methods = append(methods, c.Constructor)
 		for _, method := range methods {
+			if method.Static || method.Abstract {
+				continue
+			}
 			specializeReceiver(method.Node, c, info)
 		}
 	}
