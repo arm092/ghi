@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
   journal:
     build: .
-    image: ghi-request-journal:1.0.0-auth
+    image: ghi-request-journal:1.1.0-auth
     environment:
       JOURNAL_DB_DRIVER: postgres
       JOURNAL_DB: postgres://journal@database:5432/journal?sslmode=disable

@@ -6,7 +6,7 @@ Ghi is a statically typed language for backend applications. It combines Go-like
 
 Ghi compiles your project to Go, invokes the Go toolchain, and produces a native executable. Applications use Go's garbage collector, goroutines, channels and library ecosystem. There is no interpreter to install on the deployment machine.
 
-**Current release:** [Ghi v1.0.0](https://github.com/arm092/ghi/releases/tag/v1.0.0), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.10](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10).
+**Current release:** [Ghi v1.1.0](https://github.com/arm092/ghi/releases/tag/v1.1.0), bundled with independently versioned [Mojave v0.1.0](https://github.com/arm092/mojave/releases/tag/v0.1.0). **IDE:** [Ghi for GoLand v0.1.11](https://github.com/arm092/ghi-goland/releases/tag/v0.1.11).
 
 Ghi 1.0 defines the source and tool compatibility contract below. This README documents the implemented language; the [examples](examples) provide runnable projects.
 
@@ -38,7 +38,7 @@ The language tools and GoLand plugin are released under the [MIT License](LICENS
 
 ## Installation
 
-Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v1.0.0).
+Download the archive for your operating system and CPU from the [compiler release](https://github.com/arm092/ghi/releases/tag/v1.1.0).
 
 | Platform | CPU | Archive suffix |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ Extract the complete archive, keeping both executables, their checksum files and
 
 ### Windows
 
-Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v1.0.0/ghi_v1.0.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
+Download and run [Ghi Setup](https://github.com/arm092/ghi/releases/download/v1.1.0/ghi_v1.1.0_windows_setup.exe). The wizard selects the native x64 or ARM64 binaries, installs Ghi and Mojave, prepares Go and adds the commands to your user PATH. No administrator access is required. Open a new terminal after installation.
 
 The default directory is `%LOCALAPPDATA%\Ghi`. Uninstall through **Settings → Apps → Installed apps → Ghi and Mojave**. The uninstaller removes its own PATH entry and installed files; projects and downloaded Go caches are retained. The installer is currently unsigned. Its SHA-256 file is available alongside the executable in the release.
 
@@ -76,7 +76,7 @@ brew install arm092/ghi/ghi
 
 The formula builds Ghi and Mojave from the verified release source and installs Go as a dependency. Update with `brew update && brew upgrade ghi`; uninstall with `brew uninstall ghi`.
 
-On macOS, use Homebrew or a portable archive. To create a universal native `.pkg` on your Mac, download the [installer build kit](https://github.com/arm092/ghi/releases/download/v1.0.0/ghi_v1.0.0_macos_installer_kit.zip) and run `Build Installer.command`. It downloads the Intel and Apple silicon binaries and builds the package with Apple Command Line Tools. The package prepares Go automatically. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation.
+On macOS, use Homebrew or a portable archive. To create a universal native `.pkg` on your Mac, download the [installer build kit](https://github.com/arm092/ghi/releases/download/v1.1.0/ghi_v1.1.0_macos_installer_kit.zip) and run `Build Installer.command`. It downloads the Intel and Apple silicon binaries and builds the package with Apple Command Line Tools. The package prepares Go automatically. Homebrew and `.pkg` are alternative installation methods; the package refuses to overwrite another installation.
 
 For portable archive installation, extract the macOS archive and run:
 
@@ -634,9 +634,9 @@ func main() {
 - Trailing parameters may have defaults. Required parameters cannot follow optional parameters. Method overloading is not supported.
 - An omitted parent constructor call is allowed when the parent can be initialized without arguments.
 
-### Abstract classes and static members (development)
+### Abstract classes and static members (v1.1.0)
 
-The following features are available in development builds after Ghi 1.0.0.
+Abstract classes and static members are available starting with Ghi 1.1.0.
 
 ```ghi
 abstract class Greeter {
@@ -1096,7 +1096,7 @@ Optional `quality.json` controls rule severity and exclusions. Warnings are repo
 
 The plugin is developed in the separate [ghi-goland repository](https://github.com/arm092/ghi-goland). Find published versions in [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34508-ghi) under **Settings → Plugins → Marketplace**. New updates require JetBrains review before appearing there.
 
-The [v0.1.10 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.10) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
+The [v0.1.11 plugin ZIP](https://github.com/arm092/ghi-goland/releases/tag/v0.1.11) is available on GitHub; download it and use **Settings → Plugins → Install Plugin from Disk**. Configure the compiler path and project directory under **Languages & Frameworks → Ghi**. Check the plugin descriptor's IDE build compatibility before installing into a different GoLand version.
 
 Version v0.1.8 corrects error highlights and console links after Unicode text by converting compiler byte columns to editor positions. It also explains the parentheses requirement for nested ternaries in unsaved buffers. It does not automatically choose a nesting order, since that could change the expression's meaning.
 
@@ -1158,7 +1158,7 @@ For deployment, build with `ghi build -o bin/task-api .`, copy the binary and `s
 ### Standalone Request Journal
 
 [Request Journal](services/request-journal) is an authenticated backend service
-written in Ghi. It uses the published Ghi 1.0.0 compiler, Mojave 0.1.0 and locked
+written in Ghi. It uses the published Ghi 1.1.0 compiler, Mojave 0.1.0 and locked
 `arm092/migrations`, `arm092/validation` and `arm092/config` packages. PostgreSQL
 uses pgx; SQLite remains the default for local development.
 
@@ -1259,7 +1259,7 @@ Set `JOURNAL_PORT` to change host port 8080. Store the database password in your
 deployment secret manager or an untracked `.env` file and keep it when restarting
 the stack. Changing the variable does not rotate credentials in an existing
 PostgreSQL volume. `docker compose down` retains data; deleting the volume deletes
-the database. The Docker build uses the published Ghi 1.0.0 archive and the
+the database. The Docker build uses the published Ghi 1.1.0 archive and the
 committed dependency lock, and the runtime image contains only the service and
 migrations. For SQLite deployments, the same image accepts a writable `/data`
 volume and defaults to `/data/journal.db`.

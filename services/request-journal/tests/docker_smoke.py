@@ -13,8 +13,8 @@ import uuid
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", default="ghi-request-journal:1.0.0-auth")
-    parser.add_argument("--version", default="1.0.0")
+    parser.add_argument("--image", default="ghi-request-journal:1.1.0-auth")
+    parser.add_argument("--version", default="1.1.0")
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
